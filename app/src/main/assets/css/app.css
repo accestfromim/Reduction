@@ -1,13 +1,13 @@
 :root {
     color-scheme: dark;
-    --bg: #0B0F14;
-    --panel: #121821;
-    --panel-2: #1A2230;
-    --text: #E8EEF7;
-    --muted: #8A97A8;
-    --accent: #4F8CFF;
-    --accent-soft: rgba(79, 140, 255, 0.16);
-    --danger: #FF6B6B;
+    --bg: #000000;
+    --panel: #0E0E0E;
+    --panel-2: #1A1A1A;
+    --text: #F2F2F2;
+    --muted: #8A8A8A;
+    --accent: #FFFFFF;
+    --accent-soft: rgba(255,255,255,0.14);
+    --danger: #FFFFFF;
     --border: rgba(255, 255, 255, 0.08);
   }
 
@@ -46,7 +46,7 @@
     width: 38px;
     height: 38px;
     object-fit: contain;
-    filter: drop-shadow(0 6px 16px rgba(79, 140, 255, 0.28));
+    filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.22));
   }
 
   .brand-text { min-width: 0; }
@@ -103,7 +103,7 @@
     width: 70px;
     height: 70px;
     border-radius: 24px;
-    background: var(--accent-soft);
+    background: transparent;
     display: grid;
     place-items: center;
     margin-bottom: 4px;
@@ -137,11 +137,11 @@
   }
 
   .msg-row.user .bubble {
-    background: linear-gradient(145deg, #4F8CFF, #336FE0);
-    border-color: transparent;
+    background: #F2F2F2;
+    border-color: #F2F2F2;
     border-top-left-radius: 18px;
     border-top-right-radius: 6px;
-    color: #fff;
+    color: #000;
   }
 
   .bubble.streaming::after {
@@ -166,7 +166,7 @@
   .mini-btn {
     border: 0;
     background: transparent;
-    color: #7C8CA1;
+    color: #8A8A8A;
     font-size: 11px;
     padding: 0;
   }
@@ -175,7 +175,7 @@
 
   .composer {
     padding: 8px 14px calc(12px + env(safe-area-inset-bottom));
-    background: linear-gradient(180deg, rgba(11, 15, 20, 0), rgba(11, 15, 20, 0.96) 28%);
+    background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.96) 28%);
   }
 
   .voice-mode {
@@ -206,7 +206,7 @@
     place-items: center;
   }
 
-  .mode-btn:active { background: #222C3C; }
+  .mode-btn:active { background: #2A2A2A; }
 
   .text-input {
     flex: 1;
@@ -221,9 +221,9 @@
     font-size: 15px;
   }
 
-  .text-input::placeholder { color: #667386; }
+  .text-input::placeholder { color: #6E6E6E; }
 
-  .text-input:focus { border-color: rgba(79, 140, 255, 0.5); }
+  .text-input:focus { border-color: rgba(255,255,255,0.55); }
 
   .send-btn, .mic-btn {
     width: 48px;
@@ -233,10 +233,10 @@
     border-radius: 16px;
     display: grid;
     place-items: center;
-    color: #fff;
+    color: var(--text);
   }
 
-  .send-btn { background: var(--accent); }
+  .send-btn { background: var(--text); color: var(--bg); }
   .send-btn:disabled { opacity: 0.35; }
 
   .mic-btn {
@@ -250,20 +250,20 @@
     height: 70px;
     flex: 0 0 70px;
     border-radius: 50%;
-    background: linear-gradient(145deg, #2A3648, #1A2230);
+    background: #1A1A1A;
     border: 1px solid rgba(255, 255, 255, 0.09);
     box-shadow: 0 10px 26px rgba(0, 0, 0, 0.35);
   }
 
   .mic-btn.recording {
-    background: var(--danger);
-    color: #fff;
+    background: var(--text);
+    color: var(--bg);
     animation: pulse 1.2s ease-in-out infinite;
   }
 
   @keyframes pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(255, 107, 107, 0.35); }
-    50% { box-shadow: 0 0 0 10px rgba(255, 107, 107, 0); }
+    0%, 100% { box-shadow: 0 0 0 0 rgba(255,255,255,0.35); }
+    50% { box-shadow: 0 0 0 10px rgba(255,255,255,0); }
   }
 
   .recording-bar {
@@ -273,10 +273,10 @@
     margin: 0 2px 9px;
     padding: 9px 12px;
     border-radius: 14px;
-    background: rgba(255, 107, 107, 0.12);
-    border: 1px solid rgba(255, 107, 107, 0.28);
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.22);
     font-size: 13px;
-    color: #FFB3B3;
+    color: #F2F2F2;
   }
 
   .recording-bar.hidden { display: none; }
@@ -306,7 +306,7 @@
     margin-top: 0;
     text-align: center;
     font-size: 11px;
-    color: #5F6C7D;
+    color: #7A7A7A;
     min-height: 14px;
   }
 
@@ -328,7 +328,7 @@
     max-height: 88vh;
     overflow-y: auto;
     border-radius: 24px 24px 0 0;
-    background: #111821;
+    background: #0A0A0A;
     border-top: 1px solid var(--border);
     padding-bottom: calc(18px + env(safe-area-inset-bottom));
   }
@@ -390,7 +390,7 @@
     font-size: 14px;
   }
 
-  .primary-btn { background: var(--accent); color: #fff; }
+  .primary-btn { background: var(--text); color: var(--bg); }
 
   .secondary-btn {
     background: var(--panel);
@@ -403,7 +403,7 @@
     padding: 12px;
     border-radius: 12px;
     background: rgba(255, 255, 255, 0.03);
-    color: #748194;
+    color: #8A8A8A;
     font-size: 11px;
     line-height: 1.6;
     white-space: pre-wrap;
@@ -419,16 +419,16 @@
     font-size: 13px;
   }
 
-  .pc-status.ok { color: #7FE0A8; border-color: rgba(127, 224, 168, 0.3); }
-  .pc-status.err { color: #FF9C9C; border-color: rgba(255, 107, 107, 0.3); }
+  .pc-status.ok { color: #F2F2F2; border-color: rgba(255,255,255,0.35); }
+  .pc-status.err { color: #F2F2F2; border-color: rgba(255,255,255,0.22); border-style: dashed; }
 
   .pc-output {
     margin-top: 12px;
     padding: 12px;
     border-radius: 12px;
-    background: #0B0F14;
+    background: #000000;
     border: 1px solid var(--border);
-    color: #B9C6D8;
+    color: #C8C8C8;
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 11px;
     line-height: 1.5;
@@ -449,7 +449,7 @@
     max-width: 84vw;
     padding: 10px 14px;
     border-radius: 12px;
-    background: #202A38;
+    background: #1A1A1A;
     border: 1px solid var(--border);
     color: var(--text);
     font-size: 13px;
@@ -494,9 +494,9 @@
 .bubble.markdown blockquote {
   margin: 0.5em 0;
   padding: 0.35em 0.8em;
-  border-left: 3px solid rgba(79, 140, 255, 0.65);
-  color: #B9C6D8;
-  background: rgba(79, 140, 255, 0.08);
+  border-left: 3px solid rgba(255,255,255,0.5);
+  color: #C8C8C8;
+  background: rgba(255,255,255,0.06);
   border-radius: 0 8px 8px 0;
 }
 
@@ -513,7 +513,7 @@
   padding: 10px 12px;
   overflow-x: auto;
   border-radius: 10px;
-  background: #0B0F14;
+  background: #000000;
   border: 1px solid rgba(255, 255, 255, 0.09);
 }
 
@@ -525,7 +525,7 @@
 }
 
 .bubble.markdown a {
-  color: #7FE7FF;
+  color: #FFFFFF;
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -577,7 +577,7 @@
   gap: 8px;
   padding: 8px;
   border-radius: 16px;
-  background: #1A2230;
+  background: #1A1A1A;
   border: 1px solid var(--border);
   box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
 }
