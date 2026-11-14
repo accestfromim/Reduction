@@ -28,7 +28,7 @@
 
 ## 安装
 
-1. 把 `DeepSeekAssistant-v0.9.8.apk` 传到手机。
+1. 把 `DSAssist-v0.9.8.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -168,7 +168,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/DeepSeekAssistant-v0.9.8.apk`
+产物：`dist/DSAssist-v0.9.8.apk`
 
 免按住模式依赖：
 
