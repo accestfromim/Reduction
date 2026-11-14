@@ -2,7 +2,7 @@ package com.mindtravel.deepseekassistant.feature.voice.ui
 
 import com.mindtravel.deepseekassistant.core.Logs
 import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
-import com.mindtravel.deepseekassistant.feature.voice.model.AudioGateway
+import com.mindtravel.deepseekassistant.core.audio.AudioGateway
 import com.mindtravel.deepseekassistant.platform.audio.HandsFreeRecorder
 import com.mindtravel.deepseekassistant.platform.audio.WavRecorder
 import com.mindtravel.deepseekassistant.ui.activity.MainActivity

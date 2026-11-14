@@ -15,5 +15,5 @@ cd "$ROOT_DIR"
 "$GRADLE_BIN" --no-daemon assembleRelease
 
 mkdir -p dist
-cp app/build/outputs/apk/release/app-release.apk "dist/DeepSeekAssistant-v0.9.1.apk"
-echo "APK: $ROOT_DIR/dist/DeepSeekAssistant-v0.9.1.apk"
+cp app/build/outputs/apk/release/app-release.apk "dist/DeepSeekAssistant-v0.9.2.apk"
+echo "APK: $ROOT_DIR/dist/DeepSeekAssistant-v0.9.2.apk"

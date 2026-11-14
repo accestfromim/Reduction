@@ -3,7 +3,7 @@ package com.mindtravel.deepseekassistant.feature.voice.data
 import com.mindtravel.deepseekassistant.core.ApiException
 import com.mindtravel.deepseekassistant.core.Logs
 import com.mindtravel.deepseekassistant.core.stringOrNull
-import com.mindtravel.deepseekassistant.feature.voice.model.AudioGateway
+import com.mindtravel.deepseekassistant.core.audio.AudioGateway
 import com.mindtravel.deepseekassistant.network.DeepSeekHttp
 import org.json.JSONObject
 

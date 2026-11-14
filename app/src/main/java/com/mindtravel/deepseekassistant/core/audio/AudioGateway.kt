@@ -1,4 +1,4 @@
-package com.mindtravel.deepseekassistant.feature.voice.model
+package com.mindtravel.deepseekassistant.core.audio
 
 interface AudioGateway {
     fun transcribe(apiKey: String, wav: ByteArray): String
