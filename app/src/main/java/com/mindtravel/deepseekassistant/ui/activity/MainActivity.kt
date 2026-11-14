@@ -3,6 +3,8 @@ package com.mindtravel.deepseekassistant.ui.activity
 import android.annotation.SuppressLint
 import android.Manifest
 import android.content.Intent
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
@@ -18,6 +20,10 @@ import androidx.core.content.ContextCompat
 import androidx.webkit.WebViewAssetLoader
 import androidx.webkit.WebViewClientCompat
 import com.mindtravel.deepseekassistant.BuildConfig
+import com.mindtravel.deepseekassistant.core.host.AudioOutputHost
+import com.mindtravel.deepseekassistant.core.host.PermissionHost
+import com.mindtravel.deepseekassistant.core.host.UpdateHost
+import com.mindtravel.deepseekassistant.platform.update.UpdateInstaller
 import com.mindtravel.deepseekassistant.ui.di.AppGraph
 import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
 import com.mindtravel.deepseekassistant.ui.bridge.AndroidBridge
@@ -27,8 +33,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import java.io.File
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, UpdateHost {
 
     private lateinit var webView: WebView
     private lateinit var bridge: AndroidBridge
@@ -111,11 +118,11 @@ class MainActivity : AppCompatActivity() {
         webView.loadUrl("https://appassets.androidplatform.net/assets/index.html")
     }
 
-    fun hasMicPermission(): Boolean =
+    override fun hasMicPermission(): Boolean =
         ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) ==
             PackageManager.PERMISSION_GRANTED
 
-    fun requestMicPermission(callback: (Boolean) -> Unit) {
+    override fun requestMicPermission(callback: (Boolean) -> Unit) {
         runOnUiThread {
             if (hasMicPermission()) {
                 callback(true)
@@ -126,7 +133,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    fun requestBluetoothPermission(callback: (Boolean) -> Unit = {}) {
+    override fun requestBluetoothPermission(callback: (Boolean) -> Unit) {
         runOnUiThread {
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
                 checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) ==
@@ -138,6 +145,27 @@ class MainActivity : AppCompatActivity() {
             bluetoothCallback = callback
             bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
         }
+    }
+
+    override fun hasHeadsetOutput(): Boolean {
+        val manager = getSystemService(AudioManager::class.java) ?: return false
+        return manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { device ->
+            when (device.type) {
+                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                AudioDeviceInfo.TYPE_USB_HEADSET,
+                AudioDeviceInfo.TYPE_USB_DEVICE -> true
+                else -> false
+            }
+        }
+    }
+
+    override fun cacheDirectory(): File = cacheDir
+
+    override fun installApk(file: File) {
+        UpdateInstaller.installApk(this, file)
     }
 
     fun setWakeWordEnabled(enabled: Boolean) {

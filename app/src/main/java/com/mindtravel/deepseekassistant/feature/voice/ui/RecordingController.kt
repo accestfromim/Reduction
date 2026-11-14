@@ -1,13 +1,13 @@
 package com.mindtravel.deepseekassistant.feature.voice.ui
 
 import com.mindtravel.deepseekassistant.core.Logs
-import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
+import com.mindtravel.deepseekassistant.core.settings.SettingsGateway
 import com.mindtravel.deepseekassistant.core.audio.AudioGateway
 import com.mindtravel.deepseekassistant.platform.audio.HandsFreeRecorder
 import com.mindtravel.deepseekassistant.platform.audio.HeadsetMicController
 import com.mindtravel.deepseekassistant.platform.audio.WavRecorder
-import com.mindtravel.deepseekassistant.ui.activity.MainActivity
-import com.mindtravel.deepseekassistant.ui.bridge.JsEmitter
+import com.mindtravel.deepseekassistant.core.host.PermissionHost
+import com.mindtravel.deepseekassistant.core.events.EventSink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -15,20 +15,20 @@ import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
 
 class RecordingController(
-    private val activity: MainActivity,
-    private val settingsRepository: SettingsRepository,
+    private val host: PermissionHost,
+    private val settingsRepository: SettingsGateway,
     private val audioGateway: AudioGateway,
     private val wavRecorder: WavRecorder,
     private val handsFreeRecorder: HandsFreeRecorder,
     private val headsetMic: HeadsetMicController,
-    private val emitter: JsEmitter,
+    private val emitter: EventSink,
     private val scope: CoroutineScope
 ) {
 
     private val finishingPushToTalk = AtomicBoolean(false)
 
     fun requestMicPermission() {
-        activity.requestMicPermission { granted ->
+        host.requestMicPermission { granted ->
             emitter.emit("onMicPermission", granted)
         }
     }
@@ -38,8 +38,8 @@ class RecordingController(
             emitter.emit("onError", id, "正在处理上一段语音")
             return
         }
-        if (!activity.hasMicPermission()) {
-            activity.requestMicPermission { granted ->
+        if (!host.hasMicPermission()) {
+            host.requestMicPermission { granted ->
                 if (granted) {
                     startRecording(id)
                 } else {
@@ -84,8 +84,8 @@ class RecordingController(
             emitter.emit("onHandsFreeError", id, "请先在设置里填写 API Key")
             return
         }
-        if (!activity.hasMicPermission()) {
-            activity.requestMicPermission { granted ->
+        if (!host.hasMicPermission()) {
+            host.requestMicPermission { granted ->
                 if (granted) {
                     startHandsFree(id, followup)
                 } else {

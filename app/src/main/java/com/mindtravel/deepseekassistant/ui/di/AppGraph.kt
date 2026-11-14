@@ -53,7 +53,7 @@ class AppGraph(
         scope = scope
     )
     private val recordingController = RecordingController(
-        activity = activity,
+        host = activity,
         settingsRepository = settingsRepository,
         audioGateway = audioApi,
         wavRecorder = wavRecorder,
@@ -63,7 +63,8 @@ class AppGraph(
         scope = scope
     )
     private val ttsController = TtsController(
-        activity = activity,
+        permissionHost = activity,
+        audioOutputHost = activity,
         settingsRepository = settingsRepository,
         ttsPlayer = ttsPlayer,
         ttsCache = ttsCache,
@@ -76,7 +77,7 @@ class AppGraph(
         scope = scope
     )
     private val updateController = UpdateController(
-        activity = activity,
+        host = activity,
         settingsRepository = settingsRepository,
         pcClient = pcClient,
         emitter = emitter,

@@ -11,7 +11,8 @@ import android.os.VibratorManager
 import android.webkit.JavascriptInterface
 import com.mindtravel.deepseekassistant.BuildConfig
 import com.mindtravel.deepseekassistant.core.Logs
-import com.mindtravel.deepseekassistant.feature.settings.model.AppSettings
+import com.mindtravel.deepseekassistant.core.events.EventSink
+import com.mindtravel.deepseekassistant.core.settings.AppSettings
 import com.mindtravel.deepseekassistant.feature.chat.data.HistoryRepository
 import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
 import com.mindtravel.deepseekassistant.ui.activity.MainActivity
@@ -34,7 +35,7 @@ class AndroidBridge(
     private val ttsController: TtsController,
     private val pcController: PcController,
     private val updateController: UpdateController,
-    private val emitter: JsEmitter
+    private val emitter: EventSink
 ) {
 
     @JavascriptInterface

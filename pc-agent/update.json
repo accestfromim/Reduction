@@ -1,7 +1,7 @@
 {
-  "versionCode": 17,
-  "versionName": "0.9.5",
-  "apk": "DSAssist-v0.9.5.apk",
-  "sha256": "1bb68df56a42f4f0f97eb3098bf88bfc85eb08e3bc94c714afa806785ee85f11",
-  "notes": "v0.9.5: 统一流式 TTS；长按消息复制/朗读；蓝牙耳机麦克风路由；项目更名 DSAssist。"
+  "versionCode": 18,
+  "versionName": "0.9.6",
+  "apk": "DSAssist-v0.9.6.apk",
+  "sha256": "ab09bac76b8547e3066e9845297b68f8963fe5211065f6ba904a580c4e29d587",
+  "notes": "v0.9.6: 提取 EventSink/SettingsGateway/Host 共用接口；CI 与 Gradle wrapper。"
 }

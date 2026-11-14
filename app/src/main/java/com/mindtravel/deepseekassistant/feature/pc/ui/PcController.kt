@@ -1,17 +1,17 @@
 package com.mindtravel.deepseekassistant.feature.pc.ui
 
 import com.mindtravel.deepseekassistant.core.Logs
-import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
+import com.mindtravel.deepseekassistant.core.settings.SettingsGateway
 import com.mindtravel.deepseekassistant.feature.pc.data.PcClient
-import com.mindtravel.deepseekassistant.ui.bridge.JsEmitter
+import com.mindtravel.deepseekassistant.core.events.EventSink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class PcController(
-    private val settingsRepository: SettingsRepository,
+    private val settingsRepository: SettingsGateway,
     private val pcClient: PcClient,
-    private val emitter: JsEmitter,
+    private val emitter: EventSink,
     private val scope: CoroutineScope
 ) {
 

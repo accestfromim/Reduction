@@ -2,7 +2,7 @@ package com.mindtravel.deepseekassistant.feature.chat.ui
 
 import com.mindtravel.deepseekassistant.core.ApiException
 import com.mindtravel.deepseekassistant.core.Logs
-import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
+import com.mindtravel.deepseekassistant.core.settings.SettingsGateway
 import com.mindtravel.deepseekassistant.feature.chat.model.tools.CalculatorTool
 import com.mindtravel.deepseekassistant.feature.chat.model.ChatCallbacks
 import com.mindtravel.deepseekassistant.feature.chat.model.ChatMessage
@@ -12,16 +12,16 @@ import com.mindtravel.deepseekassistant.feature.chat.model.Role
 import com.mindtravel.deepseekassistant.feature.chat.model.tools.ToolRegistry
 import com.mindtravel.deepseekassistant.feature.chat.model.tools.WebSearchTool
 import com.mindtravel.deepseekassistant.feature.chat.model.SearchGateway
-import com.mindtravel.deepseekassistant.ui.bridge.JsEmitter
+import com.mindtravel.deepseekassistant.core.events.EventSink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 class ChatController(
-    private val settingsRepository: SettingsRepository,
+    private val settingsRepository: SettingsGateway,
     private val chatSession: ChatSession,
     private val searchApi: SearchGateway,
-    private val emitter: JsEmitter,
+    private val emitter: EventSink,
     private val scope: CoroutineScope
 ) {
 

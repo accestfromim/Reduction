@@ -1,21 +1,21 @@
 package com.mindtravel.deepseekassistant.feature.voice.ui
 
-import android.media.AudioDeviceInfo
-import android.media.AudioManager
 import com.mindtravel.deepseekassistant.core.Logs
-import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
+import com.mindtravel.deepseekassistant.core.settings.SettingsGateway
 import com.mindtravel.deepseekassistant.platform.audio.TtsCache
 import com.mindtravel.deepseekassistant.platform.audio.BargeInDetector
 import com.mindtravel.deepseekassistant.platform.audio.TtsPlayer
-import com.mindtravel.deepseekassistant.ui.activity.MainActivity
-import com.mindtravel.deepseekassistant.ui.bridge.JsEmitter
+import com.mindtravel.deepseekassistant.core.host.AudioOutputHost
+import com.mindtravel.deepseekassistant.core.host.PermissionHost
+import com.mindtravel.deepseekassistant.core.events.EventSink
 
 class TtsController(
-    private val activity: MainActivity,
-    private val settingsRepository: SettingsRepository,
+    private val permissionHost: PermissionHost,
+    private val audioOutputHost: AudioOutputHost,
+    private val settingsRepository: SettingsGateway,
     private val ttsPlayer: TtsPlayer,
     private val ttsCache: TtsCache,
-    private val emitter: JsEmitter
+    private val emitter: EventSink
 ) {
 
     @Volatile
@@ -85,8 +85,8 @@ class TtsController(
 
     private fun maybeStartBargeIn(id: String) {
         val settings = settingsRepository.load()
-        if (!settings.bargeInEnabled || !activity.hasMicPermission()) return
-        if (!hasHeadsetOutput()) {
+        if (!settings.bargeInEnabled || !permissionHost.hasMicPermission()) return
+        if (!audioOutputHost.hasHeadsetOutput()) {
             Logs.add("Barge-in skipped: no headset output")
             return
         }
@@ -110,18 +110,4 @@ class TtsController(
         bargeInDetector = null
     }
 
-    private fun hasHeadsetOutput(): Boolean {
-        val manager = activity.getSystemService(AudioManager::class.java) ?: return false
-        return manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { device ->
-            when (device.type) {
-                AudioDeviceInfo.TYPE_WIRED_HEADSET,
-                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
-                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
-                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
-                AudioDeviceInfo.TYPE_USB_HEADSET,
-                AudioDeviceInfo.TYPE_USB_DEVICE -> true
-                else -> false
-            }
-        }
-    }
 }

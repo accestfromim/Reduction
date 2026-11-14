@@ -5,10 +5,11 @@ import android.content.SharedPreferences
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 import com.mindtravel.deepseekassistant.core.Logs
-import com.mindtravel.deepseekassistant.feature.settings.model.AppSettings
+import com.mindtravel.deepseekassistant.core.settings.AppSettings
+import com.mindtravel.deepseekassistant.core.settings.SettingsGateway
 import org.json.JSONObject
 
-class SettingsRepository(context: Context) {
+class SettingsRepository(context: Context) : SettingsGateway {
 
     private val prefs: SharedPreferences = try {
         val masterKey = MasterKey.Builder(context)
@@ -26,7 +27,7 @@ class SettingsRepository(context: Context) {
         context.getSharedPreferences("deepseek_settings_plain", Context.MODE_PRIVATE)
     }
 
-    fun load(): AppSettings {
+    override fun load(): AppSettings {
         val raw = prefs.getString(KEY, null)
         if (raw == null) return migrateLegacy()
         return runCatching { AppSettings.fromJson(raw) }

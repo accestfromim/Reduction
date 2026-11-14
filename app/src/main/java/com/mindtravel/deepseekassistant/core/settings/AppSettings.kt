@@ -1,4 +1,4 @@
-package com.mindtravel.deepseekassistant.feature.settings.model
+package com.mindtravel.deepseekassistant.core.settings
 
 import com.mindtravel.deepseekassistant.core.stringOrEmpty
 import org.json.JSONObject

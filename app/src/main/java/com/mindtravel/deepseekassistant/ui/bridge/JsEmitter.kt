@@ -1,11 +1,12 @@
 package com.mindtravel.deepseekassistant.ui.bridge
 
 import android.webkit.WebView
+import com.mindtravel.deepseekassistant.core.events.EventSink
 import org.json.JSONObject
 
-class JsEmitter(private val webView: WebView) {
+class JsEmitter(private val webView: WebView) : EventSink {
 
-    fun emit(function: String, vararg args: Any?) {
+    override fun emit(function: String, vararg args: Any?) {
         val arguments = args.joinToString(",") { encode(it) }
         val script = "window.Native && window.Native.$function($arguments);"
         webView.post { webView.evaluateJavascript(script, null) }
