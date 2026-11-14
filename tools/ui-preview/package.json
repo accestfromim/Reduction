@@ -1,0 +1,11 @@
+{
+  "name": "dsassist-ui-preview",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "preview": "node run.js"
+  },
+  "devDependencies": {
+    "puppeteer-core": "^23.0.0"
+  }
+}

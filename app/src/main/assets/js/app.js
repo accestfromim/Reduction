@@ -1,0 +1,197 @@
+import { callBridge } from './bridge.js';
+import * as chat from './chat.js';
+import * as pc from './pc.js';
+import * as settings from './settings.js';
+import { state } from './state.js';
+import { loadHistory, loadSettings } from './storage.js';
+import * as ui from './ui.js';
+import * as voice from './voice.js';
+
+window.Native = {
+  onMicPermission(granted) {
+    voice.handleMicPermission(granted);
+  },
+
+  onRecordingStart(id) {
+    voice.handleRecordingStart(id);
+  },
+
+  onRecordingLimit(id) {
+    voice.handleRecordingLimit(id);
+  },
+
+  onAsrResult(id, ok, text) {
+    voice.handleAsrResult(id, ok, text);
+  },
+
+  onHandsFreeStart(id) {
+    voice.handleHandsFreeStart(id);
+  },
+
+  onHandsFreeTimeout(id) {
+    voice.handleHandsFreeTimeout(id);
+  },
+
+  onHandsFreeError(id, message) {
+    voice.handleHandsFreeError(id, message);
+  },
+
+  onWakeWord() {
+    voice.onWakeWord();
+  },
+
+  onStatus(id, status) {
+    if (status === '识别中') ui.setStatus('识别中…');
+    else if (status === '思考中') ui.setStatus('思考中…');
+    else ui.setStatus(status);
+  },
+
+  onChatToken(id, token) {
+    chat.handleToken(id, token);
+  },
+
+  onTool(id, name) {
+    chat.handleTool(id, name);
+  },
+
+  onChatDone(id, full) {
+    chat.handleDone(id, full);
+    voice.onChatFinished();
+  },
+
+  onChatError(id, message) {
+    chat.handleError(id, message);
+    voice.onChatFailed();
+  },
+
+  onTtsStart(id) {
+    chat.handleTtsStart(id);
+  },
+
+  onTtsDone(id) {
+    if (chat.handleTtsDone(id)) voice.onTtsFinished();
+  },
+
+  onTtsError(id, message) {
+    if (chat.handleTtsError(id, message)) voice.onTtsFinished();
+  },
+
+  onTtsStopped() {
+    if (chat.handleTtsStopped()) voice.onTtsFinished();
+  },
+
+  onPcInfo(id, json) {
+    pc.handlePcInfo(id, json);
+  },
+
+  onPcStatus(id, text) {
+    pc.handlePcStatus(id, text);
+  },
+
+  onPcExec(id, output) {
+    pc.handlePcExec(id, output);
+  },
+
+  onPcError(id, message) {
+    pc.handlePcError(id, message);
+  },
+
+  onUpdateStatus(id, text) {
+    pc.handleUpdateStatus(id, text);
+  },
+
+  onUpdateNone(id, version) {
+    pc.handleUpdateNone(id, version);
+  },
+
+  onUpdateReady(id, version) {
+    pc.handleUpdateReady(id, version);
+  },
+
+  onUpdateError(id, message) {
+    pc.handleUpdateError(id, message);
+  },
+
+  onError(id, message) {
+    if (state.recording) voice.cancelRecording();
+    ui.toast(message || '出错了');
+    ui.setStatus('轻点出键盘，长按说话');
+  }
+};
+
+window.onAndroidBack = function () {
+  if (!ui.els.pcSheet.classList.contains('hidden') ||
+      !ui.els.settingsSheet.classList.contains('hidden')) {
+    ui.closeSheets();
+    return true;
+  }
+  return false;
+};
+
+ui.els.sendBtn.addEventListener('click', () => {
+  const text = ui.els.textInput.value;
+  ui.els.textInput.value = '';
+  ui.updateControls();
+  chat.sendText(text);
+});
+
+ui.els.textInput.addEventListener('input', ui.updateControls);
+ui.els.textInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && !event.isComposing) {
+    event.preventDefault();
+    const text = ui.els.textInput.value;
+    ui.els.textInput.value = '';
+    ui.updateControls();
+    chat.sendText(text);
+  }
+});
+
+ui.els.micBtn.addEventListener('pointerdown', voice.onMicDown);
+window.addEventListener('pointerup', voice.onMicUp);
+window.addEventListener('pointercancel', voice.onMicCancel);
+ui.els.micBtn.addEventListener('click', (event) => event.preventDefault());
+ui.els.micBtn.addEventListener('contextmenu', (event) => event.preventDefault());
+ui.els.voiceBtn.addEventListener('click', ui.showVoiceMode);
+
+ui.els.cancelRecording.addEventListener('click', (event) => {
+  event.preventDefault();
+  voice.cancelRecording();
+});
+
+ui.els.settingsBtn.addEventListener('click', settings.openSettings);
+ui.els.closeSettings.addEventListener('click', ui.closeSheets);
+ui.els.settingsBackdrop.addEventListener('click', ui.closeSheets);
+ui.els.saveSettings.addEventListener('click', settings.saveSettings);
+ui.els.testTts.addEventListener('click', settings.testTts);
+ui.els.clearAudioCache.addEventListener('click', settings.clearAudioCache);
+ui.els.clearHistory.addEventListener('click', settings.clearHistory);
+ui.els.shareDiagnostics.addEventListener('click', settings.shareDiagnostics);
+
+ui.els.pcBtn.addEventListener('click', pc.openPc);
+ui.els.closePc.addEventListener('click', ui.closeSheets);
+ui.els.pcBackdrop.addEventListener('click', ui.closeSheets);
+ui.els.pcTest.addEventListener('click', pc.testPc);
+ui.els.pcCheckUpdate.addEventListener('click', pc.checkUpdate);
+ui.els.pcRunCommand.addEventListener('click', pc.runPcCommand);
+
+function init() {
+  state.settings = loadSettings();
+  state.messages = loadHistory();
+  ui.setReadHandler((text) => chat.speak(text, true));
+  ui.renderAll();
+  ui.updateHint();
+  ui.updateControls();
+  ui.setStatus('轻点出键盘，长按说话');
+
+  callBridge('requestMicPermission');
+
+  if (callBridge('consumeWakePending') === true) {
+    setTimeout(() => window.Native.onWakeWord(), 600);
+  }
+
+  if (!state.settings.apiKey) {
+    setTimeout(settings.openSettings, 350);
+  }
+}
+
+init();

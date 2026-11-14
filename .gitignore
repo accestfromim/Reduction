@@ -1,0 +1,15 @@
+.gradle/
+build/
+app/build/
+dist/
+backup/
+.kotlin/
+local.properties
+keystore.properties
+keystore/
+pc-agent/*.exe
+pc-agent/*.apk
+pc-agent/*.syso
+pc-agent/pc-agent-config.json
+tools/ui-preview/node_modules/
+*.log

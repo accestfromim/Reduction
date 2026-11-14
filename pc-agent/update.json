@@ -1,0 +1,7 @@
+{
+  "versionCode": 9,
+  "versionName": "0.7.0",
+  "apk": "DeepSeekAssistant-v0.7.0.apk",
+  "sha256": "a8282e8bab6f63570aea67a4cc3542de784bef2d08be8f6e17dc1a1b64c718af",
+  "notes": "v0.7.0: Markdown + KaTeX 渲染；TTS 自动排除数学块和代码块；完整代码重构。"
+}
