@@ -101,7 +101,8 @@ class WakeWordService : Service() {
         val current = detector ?: WakeWordDetector(
             context = this,
             onWake = {
-                updateNotification("已唤醒，等待回答")
+                updateNotification("已唤醒，正在打开 DSAssist…")
+                launchApp()
                 WakeWordBus.onWake()
             },
             onListening = { updateNotification("正在监听“你好助手”") },
@@ -111,6 +112,25 @@ class WakeWordService : Service() {
             }
         ).also { detector = it }
         current.start()
+    }
+
+    private fun launchApp() {
+        val intent = packageManager.getLaunchIntentForPackage(packageName)?.apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
+            )
+        } ?: return
+        runCatching { startActivity(intent) }
+            .onSuccess {
+                Logs.add("Wake launch requested")
+                updateNotification("已唤醒，等待回答")
+            }
+            .onFailure {
+                Logs.add("Wake launch blocked: ${it.message}")
+                updateNotification("已唤醒，点此打开 DSAssist")
+            }
     }
 
     private fun createChannel() {

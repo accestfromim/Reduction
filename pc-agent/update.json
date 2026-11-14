@@ -1,7 +1,7 @@
 {
-  "versionCode": 18,
-  "versionName": "0.9.6",
-  "apk": "DSAssist-v0.9.6.apk",
-  "sha256": "ab09bac76b8547e3066e9845297b68f8963fe5211065f6ba904a580c4e29d587",
-  "notes": "v0.9.6: 提取 EventSink/SettingsGateway/Host 共用接口；CI 与 Gradle wrapper。"
+  "versionCode": 19,
+  "versionName": "0.9.7",
+  "apk": "DSAssist-v0.9.7.apk",
+  "sha256": "ad0e995d8bc5174eb226cd988d5e8657d31fbca003508f8a460c894f208d89dc",
+  "notes": "v0.9.7: 你好助手唤醒时尝试把 App 带到前台；后台启动被拦截时保留通知入口。"
 }
