@@ -4,6 +4,7 @@ import com.mindtravel.deepseekassistant.core.Logs
 import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
 import com.mindtravel.deepseekassistant.core.audio.AudioGateway
 import com.mindtravel.deepseekassistant.platform.audio.HandsFreeRecorder
+import com.mindtravel.deepseekassistant.platform.audio.HeadsetMicController
 import com.mindtravel.deepseekassistant.platform.audio.WavRecorder
 import com.mindtravel.deepseekassistant.ui.activity.MainActivity
 import com.mindtravel.deepseekassistant.ui.bridge.JsEmitter
@@ -19,6 +20,7 @@ class RecordingController(
     private val audioGateway: AudioGateway,
     private val wavRecorder: WavRecorder,
     private val handsFreeRecorder: HandsFreeRecorder,
+    private val headsetMic: HeadsetMicController,
     private val emitter: JsEmitter,
     private val scope: CoroutineScope
 ) {
@@ -48,11 +50,13 @@ class RecordingController(
             return
         }
 
-        val started = wavRecorder.start {
+        val useHeadset = settingsRepository.load().headsetMicEnabled && headsetMic.start()
+        val started = wavRecorder.start(useCommunicationSource = useHeadset) {
             emitter.emit("onRecordingLimit", id)
             scope.launch { finishRecording(id) }
         }
         if (!started) {
+            headsetMic.stop()
             emitter.emit("onError", id, "无法启动录音")
             return
         }
@@ -65,11 +69,13 @@ class RecordingController(
 
     fun cancelRecording() {
         wavRecorder.cancel()
+        headsetMic.stop()
         finishingPushToTalk.set(false)
     }
 
     fun cancelActiveRecording() {
         wavRecorder.cancel()
+        headsetMic.stop()
     }
 
     fun startHandsFree(id: String, followup: Boolean) {
@@ -90,10 +96,13 @@ class RecordingController(
         }
 
         Logs.add("Hands-free requested followup=$followup")
+        val useHeadset = settings.headsetMicEnabled && headsetMic.start()
         handsFreeRecorder.start(
             followup = followup,
+            useCommunicationSource = useHeadset,
             onSpeechStart = { emitter.emit("onHandsFreeStart", id) },
             onSpeechEnd = { wav ->
+                headsetMic.stop()
                 scope.launch {
                     try {
                         transcribeWav(id, wav)
@@ -103,18 +112,26 @@ class RecordingController(
                     }
                 }
             },
-            onTimeout = { emitter.emit("onHandsFreeTimeout", id) },
-            onError = { message -> emitter.emit("onHandsFreeError", id, message) }
+            onTimeout = {
+                headsetMic.stop()
+                emitter.emit("onHandsFreeTimeout", id)
+            },
+            onError = { message ->
+                headsetMic.stop()
+                emitter.emit("onHandsFreeError", id, message)
+            }
         )
     }
 
     fun cancelHandsFree() {
         handsFreeRecorder.cancel()
+        headsetMic.stop()
     }
 
     fun dispose() {
         wavRecorder.cancel()
         handsFreeRecorder.cancel()
+        headsetMic.stop()
     }
 
     private suspend fun finishRecording(id: String) {
@@ -130,6 +147,7 @@ class RecordingController(
             Logs.add("ASR failed: ${t.message}")
             emitter.emit("onAsrResult", id, false, t.message ?: "识别失败")
         } finally {
+            headsetMic.stop()
             finishingPushToTalk.set(false)
         }
     }

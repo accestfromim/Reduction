@@ -1,11 +1,10 @@
 import { callBridge } from '../../core/bridge.js';
 import { saveHistory } from './history-store.js';
 import { state, uid } from '../../core/state.js';
-import { TtsTextExtractor, toSpeechText } from './tts-text.js';
+import { TtsSession } from './tts-session.js';
 import * as ui from '../../ui/ui.js';
-import { openSettings } from '../settings/settings.js';
 
-let ttsExtractor = new TtsTextExtractor();
+let ttsSession = null;
 let renderScheduled = false;
 let lastRenderAt = 0;
 
@@ -26,15 +25,17 @@ function resetTtsState() {
   state.ttsStarted = false;
   state.ttsFinished = false;
   state.ttsSuppressed = false;
-  state.ttsBuffer = '';
-  ttsExtractor = new TtsTextExtractor();
+  ttsSession = null;
 }
 
 export function interruptSpeech() {
   if (!state.speaking) return;
+  ttsSession?.stop();
+  ttsSession = null;
   state.ttsStopIgnore++;
   callBridge('stopSpeaking');
   state.speaking = false;
+  state.ttsStarted = false;
 }
 
 function buildMessages() {
@@ -68,7 +69,7 @@ export function sendText(raw) {
   if (!text || state.busy) return;
   if (!state.settings.apiKey) {
     ui.toast('请先填写 DeepSeek API Key');
-    openSettings();
+    window.dispatchEvent(new Event('open-settings'));
     return;
   }
 
@@ -111,8 +112,12 @@ export function handleToken(id, token) {
   ui.setStatus(state.speaking ? '播放中…' : '回复中…');
   ui.scrollToBottom();
   if (state.settings.autoSpeak && !state.ttsSuppressed) {
-    state.ttsBuffer += ttsExtractor ? ttsExtractor.push(text) : '';
-    flushTts(false);
+    if (!ttsSession) ttsSession = new TtsSession(state.chatId);
+    ttsSession.push(text);
+    if (ttsSession.started) {
+      state.ttsStarted = true;
+      state.ttsId = state.chatId;
+    }
   }
 }
 
@@ -124,8 +129,8 @@ export function handleTool(id, name) {
   state.ttsStarted = false;
   state.ttsFinished = false;
   state.ttsSuppressed = false;
-  state.ttsBuffer = '';
-  ttsExtractor = new TtsTextExtractor();
+  ttsSession?.stop();
+  ttsSession = null;
   if (state.assistantMsg) {
     state.assistantMsg.content = '';
     if (state.assistantBubble) state.assistantBubble.innerHTML = '';
@@ -152,7 +157,12 @@ export function handleDone(id, full) {
   ui.updateControls();
   if (!state.speaking) ui.setStatus('');
   saveHistory(state.messages);
-  if (text.trim()) finishTts();
+  if (text.trim() && state.settings.autoSpeak && !state.ttsSuppressed) {
+    if (!ttsSession) ttsSession = new TtsSession(state.chatId);
+    state.ttsStarted = ttsSession.finish();
+    ttsSession = null;
+    if (state.ttsStarted) state.ttsId = state.chatId;
+  }
 }
 
 export function handleError(id, message) {
@@ -161,8 +171,8 @@ export function handleError(id, message) {
   state.speaking = false;
   state.ttsSuppressed = true;
   state.ttsStarted = false;
-  state.ttsBuffer = '';
-  ttsExtractor = new TtsTextExtractor();
+  ttsSession?.stop();
+  ttsSession = null;
   if (state.assistantBubble) state.assistantBubble.classList.remove('streaming');
   if (state.assistantMsg && !state.assistantMsg.content.trim()) {
     ui.removeMessage(state.assistantMsg);
@@ -180,8 +190,8 @@ export function abandonResponseForBargeIn() {
   state.speaking = false;
   state.ttsSuppressed = true;
   state.ttsStarted = false;
-  state.ttsBuffer = '';
-  ttsExtractor = new TtsTextExtractor();
+  ttsSession?.stop();
+  ttsSession = null;
   if (state.busy) {
     if (state.assistantBubble) state.assistantBubble.classList.remove('streaming');
     if (state.assistantMsg && !state.assistantMsg.content.trim()) {
@@ -234,85 +244,32 @@ export function handleTtsStopped() {
   return true;
 }
 
-export function speak(text, force) {
-  if (!text.trim()) return;
-  if (!state.settings.autoSpeak && !force) return;
-  const speech = toSpeechText(text);
-  if (!speech) return;
-  if (state.speaking) state.ttsStopIgnore++;
-  state.ttsSuppressed = true;
+export function speakText(text, force) {
+  if (!text.trim()) return false;
+  if (!state.settings.autoSpeak && !force) return false;
+  interruptSpeech();
+  state.ttsSuppressed = force;
   state.ttsStarted = false;
-  state.ttsBuffer = '';
-  state.speaking = true;
+  state.ttsFinished = false;
   state.ttsId = uid();
+  const session = new TtsSession(state.ttsId);
+  session.push(text);
+  state.ttsStarted = session.finish();
+  if (!state.ttsStarted) {
+    state.speaking = false;
+    return false;
+  }
+  state.speaking = true;
   ui.setStatus('播放中…');
-  callBridge('speak', state.ttsId, speech);
+  return true;
 }
 
 export function stopSpeaking() {
+  ttsSession?.stop();
+  ttsSession = null;
   callBridge('stopSpeaking');
   state.speaking = false;
   state.ttsSuppressed = true;
   state.ttsStarted = false;
-  state.ttsBuffer = '';
   ui.setStatus('已停止朗读');
-}
-
-function emitTts(text) {
-  const chunk = String(text || '').trim();
-  if (!chunk) return;
-  if (!state.ttsStarted) {
-    state.ttsStarted = true;
-    state.speaking = true;
-    state.ttsId = state.chatId;
-    ui.setStatus('播放中…');
-    callBridge('ttsStart', state.chatId);
-    callBridge('ttsAppend', state.chatId, chunk);
-  } else {
-    callBridge('ttsAppend', state.chatId, chunk);
-  }
-}
-
-function flushTts(final) {
-  if (!state.settings.autoSpeak || state.ttsSuppressed) {
-    if (final) state.ttsBuffer = '';
-    return;
-  }
-  const buffer = state.ttsBuffer;
-  if (!buffer) return;
-
-  const re = /[。！？!?；;\n]/g;
-  let cut = -1;
-  let match;
-  while ((match = re.exec(buffer)) !== null) cut = match.index;
-
-  if (cut < 0) {
-    if (final) {
-      emitTts(buffer);
-      state.ttsBuffer = '';
-    }
-    return;
-  }
-
-  const chunk = buffer.slice(0, cut + 1);
-  state.ttsBuffer = buffer.slice(cut + 1);
-  emitTts(chunk);
-  if (final && state.ttsBuffer.trim()) {
-    emitTts(state.ttsBuffer);
-    state.ttsBuffer = '';
-  }
-}
-
-function finishTts() {
-  if (!state.settings.autoSpeak || state.ttsSuppressed || state.ttsFinished) return;
-  state.ttsFinished = true;
-
-  const tail = ttsExtractor ? ttsExtractor.finish() : '';
-  ttsExtractor = null;
-  state.ttsBuffer += tail;
-  flushTts(true);
-
-  if (state.ttsStarted) {
-    callBridge('ttsFinish', state.chatId, '');
-  }
 }

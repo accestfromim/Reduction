@@ -165,6 +165,7 @@ ui.els.cancelRecording.addEventListener('click', (event) => {
 });
 
 ui.els.settingsBtn.addEventListener('click', settings.openSettings);
+window.addEventListener('open-settings', settings.openSettings);
 ui.els.closeSettings.addEventListener('click', ui.closeSheets);
 ui.els.settingsBackdrop.addEventListener('click', ui.closeSheets);
 ui.els.saveSettings.addEventListener('click', settings.saveSettingsForm);
@@ -183,7 +184,7 @@ ui.els.pcRunCommand.addEventListener('click', pc.runPcCommand);
 function init() {
   state.settings = loadSettings();
   state.messages = loadHistory();
-  ui.setReadHandler((text) => chat.speak(text, true));
+  ui.setReadHandler((text) => chat.speakText(text, true));
   ui.renderAll();
   ui.updateHint();
   ui.updateControls();

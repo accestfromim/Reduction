@@ -35,6 +35,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var settingsRepository: SettingsRepository
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var micCallback: ((Boolean) -> Unit)? = null
+    private var bluetoothCallback: ((Boolean) -> Unit)? = null
 
     private val micPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -44,6 +45,12 @@ class MainActivity : AppCompatActivity() {
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+
+    private val bluetoothPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            bluetoothCallback?.invoke(granted)
+            bluetoothCallback = null
+        }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -116,6 +123,20 @@ class MainActivity : AppCompatActivity() {
             }
             micCallback = callback
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
+
+    fun requestBluetoothPermission(callback: (Boolean) -> Unit = {}) {
+        runOnUiThread {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) ==
+                PackageManager.PERMISSION_GRANTED
+            ) {
+                callback(true)
+                return@runOnUiThread
+            }
+            bluetoothCallback = callback
+            bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
         }
     }
 

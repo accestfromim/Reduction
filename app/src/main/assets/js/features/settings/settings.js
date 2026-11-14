@@ -1,7 +1,8 @@
 import { callBridge } from '../../core/bridge.js';
 import { clearHistory as clearStoredHistory } from '../chat/history-store.js';
 import { saveSettings as persistSettings } from './settings-store.js';
-import { state, uid } from '../../core/state.js';
+import { state } from '../../core/state.js';
+import { speakText } from '../chat/chat.js';
 import * as ui from '../../ui/ui.js';
 
 let clearArmed = false;
@@ -16,6 +17,7 @@ export function openSettings() {
   ui.els.calculatorInput.checked = !!state.settings.calculatorEnabled;
   ui.els.wakeWordInput.checked = !!state.settings.wakeWordEnabled;
   ui.els.bargeInInput.checked = state.settings.bargeInEnabled !== false;
+  ui.els.headsetMicInput.checked = state.settings.headsetMicEnabled === true;
 
   const raw = callBridge('getAppInfo');
   if (typeof raw === 'string' && raw) {
@@ -45,6 +47,7 @@ function currentSettingsFromForm() {
     calculatorEnabled: ui.els.calculatorInput.checked,
     wakeWordEnabled: ui.els.wakeWordInput.checked,
     bargeInEnabled: ui.els.bargeInInput.checked,
+    headsetMicEnabled: ui.els.headsetMicInput.checked,
     pcUrl: state.settings.pcUrl || '',
     pcToken: state.settings.pcToken || ''
   };
@@ -60,6 +63,7 @@ export function saveSettingsForm() {
   state.settings = result.settings;
   ui.updateHint();
   callBridge('setWakeWordEnabled', next.wakeWordEnabled);
+  if (next.headsetMicEnabled) callBridge('requestBluetoothPermission');
   ui.closeSheets();
   ui.toast(next.wakeWordEnabled ? '免按住模式已开启，正在加载唤醒词' : '设置已保存');
 }
@@ -73,15 +77,7 @@ export function testTts() {
   }
   state.settings = result.settings;
   ui.updateHint();
-  if (state.speaking) state.ttsStopIgnore++;
-  state.ttsSuppressed = true;
-  state.ttsStarted = false;
-  state.ttsBuffer = '';
-  const id = uid();
-  state.ttsId = id;
-  state.speaking = true;
-  ui.setStatus('播放中…');
-  callBridge('speak', id, '你好，我是 DeepSeek 助手，现在正在测试朗读。');
+  speakText('你好，我是 DSAssist，现在正在测试朗读。', true);
   ui.toast('正在测试朗读，请确认媒体音量已打开');
 }
 

@@ -108,7 +108,7 @@ func loadOrCreateToken() string {
 
 func printBanner(port int) {
 	fmt.Println("")
-	fmt.Println("DeepSeek PC Agent", agentVersion)
+	fmt.Println("DSAssist PC Agent", agentVersion)
 	fmt.Println("Token:", authToken)
 	fmt.Println("Update dir:", updateDir)
 	for _, ip := range localIPv4() {
@@ -319,10 +319,10 @@ func handleIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprintf(w, `<!doctype html><html><head><meta charset="utf-8"><title>DeepSeek PC Agent</title>
+	fmt.Fprintf(w, `<!doctype html><html><head><meta charset="utf-8"><title>DSAssist PC Agent</title>
 <style>body{font-family:system-ui,sans-serif;background:#0B0F14;color:#E8EEF7;padding:40px;line-height:1.7}
 code{background:#1A2230;padding:2px 6px;border-radius:6px}a{color:#4F8CFF}</style></head><body>
-<h1>DeepSeek PC Agent</h1>
+<h1>DSAssist PC Agent</h1>
 <p>主机：%s</p><p>Agent 版本：%s</p><p>更新版本：%s</p>
 <p>健康检查：<a href="/health">/health</a></p>
 <p>手机端填写地址和 Token。Token 在启动窗口里。</p>

@@ -24,7 +24,6 @@ export const state = {
   ttsFinished: false,
   ttsSuppressed: false,
   ttsStopIgnore: 0,
-  ttsBuffer: '',
   wakeActive: false,
   followupActive: false
 };

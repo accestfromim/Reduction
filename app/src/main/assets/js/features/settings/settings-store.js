@@ -10,7 +10,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   webSearchEnabled: true,
   calculatorEnabled: true,
   wakeWordEnabled: false,
-  bargeInEnabled: true
+  bargeInEnabled: true,
+  headsetMicEnabled: false
 });
 
 function string(value, fallback = '') {
@@ -28,7 +29,8 @@ export function normalizeSettings(raw) {
     webSearchEnabled: raw?.webSearchEnabled !== false,
     calculatorEnabled: raw?.calculatorEnabled !== false,
     wakeWordEnabled: raw?.wakeWordEnabled === true,
-    bargeInEnabled: raw?.bargeInEnabled !== false
+    bargeInEnabled: raw?.bargeInEnabled !== false,
+    headsetMicEnabled: raw?.headsetMicEnabled === true
   };
 }
 

@@ -12,8 +12,8 @@ val keystoreProps = Properties().apply {
     }
 }
 
-val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 15
-val appVersionName = (project.findProperty("appVersionName") as String?) ?: "0.9.3"
+val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 17
+val appVersionName = (project.findProperty("appVersionName") as String?) ?: "0.9.5"
 
 android {
     namespace = "com.mindtravel.deepseekassistant"

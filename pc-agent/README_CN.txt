@@ -1,4 +1,4 @@
-DeepSeek PC Agent（Windows）
+DSAssist PC Agent（Windows）
 
 用途
 - 让手机 App 连接 Windows 电脑。

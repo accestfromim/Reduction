@@ -16,6 +16,7 @@ import com.mindtravel.deepseekassistant.feature.voice.ui.RecordingController
 import com.mindtravel.deepseekassistant.feature.voice.ui.TtsController
 import com.mindtravel.deepseekassistant.network.DeepSeekHttp
 import com.mindtravel.deepseekassistant.platform.audio.HandsFreeRecorder
+import com.mindtravel.deepseekassistant.platform.audio.HeadsetMicController
 import com.mindtravel.deepseekassistant.platform.audio.TtsPlayer
 import com.mindtravel.deepseekassistant.platform.audio.WavRecorder
 import com.mindtravel.deepseekassistant.ui.activity.MainActivity
@@ -40,6 +41,7 @@ class AppGraph(
     private val ttsPlayer = TtsPlayer(activity, audioApi, ttsCache, scope)
     private val wavRecorder = WavRecorder()
     private val handsFreeRecorder = HandsFreeRecorder()
+    private val headsetMic = HeadsetMicController(activity)
     private val emitter = JsEmitter(webView)
     private val pcClient = PcClient()
 
@@ -56,6 +58,7 @@ class AppGraph(
         audioGateway = audioApi,
         wavRecorder = wavRecorder,
         handsFreeRecorder = handsFreeRecorder,
+        headsetMic = headsetMic,
         emitter = emitter,
         scope = scope
     )

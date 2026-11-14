@@ -62,35 +62,6 @@ class TtsController(
         activeTtsId = null
     }
 
-    fun speak(id: String, text: String) {
-        val settings = settingsRepository.load()
-        if (settings.apiKey.isBlank()) {
-            emitter.emit("onError", id, "请先在设置里填写 API Key")
-            return
-        }
-        if (text.isBlank()) return
-        Logs.add("speak requested chars=${text.length} voice=${settings.voice}")
-        stopBargeIn()
-        activeTtsId = id
-        ttsPlayer.speak(
-            apiKey = settings.apiKey,
-            text = text,
-            voice = settings.voice,
-            onStart = {
-                emitter.emit("onTtsStart", id)
-                maybeStartBargeIn(id)
-            },
-            onDone = {
-                stopBargeIn()
-                emitter.emit("onTtsDone", id)
-            },
-            onError = { message ->
-                stopBargeIn()
-                emitter.emit("onTtsError", id, message)
-            }
-        )
-    }
-
     fun stopSpeaking() {
         stopBargeIn()
         activeTtsId = null

@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DeepSeekAssistant"
+rootProject.name = "DSAssist"
 include(":app")

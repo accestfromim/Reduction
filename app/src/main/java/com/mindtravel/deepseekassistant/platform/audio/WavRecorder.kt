@@ -25,7 +25,7 @@ class WavRecorder {
     private var startedAt = 0L
 
     @SuppressLint("MissingPermission")
-    fun start(onLimit: () -> Unit): Boolean {
+    fun start(useCommunicationSource: Boolean = false, onLimit: () -> Unit): Boolean {
         if (recording) return true
 
         val minBuffer = AudioRecord.getMinBufferSize(
@@ -38,7 +38,8 @@ class WavRecorder {
         val bufferSize = maxOf(minBuffer, SAMPLE_RATE / 5 * 2)
         val record = try {
             AudioRecord(
-                MediaRecorder.AudioSource.MIC,
+                if (useCommunicationSource) MediaRecorder.AudioSource.VOICE_COMMUNICATION
+                else MediaRecorder.AudioSource.MIC,
                 SAMPLE_RATE,
                 AudioFormat.CHANNEL_IN_MONO,
                 AudioFormat.ENCODING_PCM_16BIT,

@@ -151,7 +151,6 @@ export function onWakeWord() {
   state.ttsStarted = false;
   state.ttsFinished = false;
   state.ttsSuppressed = false;
-  state.ttsBuffer = '';
   state.wakeActive = true;
   state.followupActive = false;
   state.textMode = false;

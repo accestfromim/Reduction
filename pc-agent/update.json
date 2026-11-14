@@ -1,7 +1,7 @@
 {
-  "versionCode": 15,
-  "versionName": "0.9.3",
-  "apk": "DeepSeekAssistant-v0.9.3.apk",
-  "sha256": "b657819434aa20b1b364ffb319feadc3c62aee6ea4ec9d4e353dc805a95217c0",
-  "notes": "v0.9.3: 架构自检修正，TtsCache 下沉到 platform/audio。"
+  "versionCode": 17,
+  "versionName": "0.9.5",
+  "apk": "DSAssist-v0.9.5.apk",
+  "sha256": "1bb68df56a42f4f0f97eb3098bf88bfc85eb08e3bc94c714afa806785ee85f11",
+  "notes": "v0.9.5: 统一流式 TTS；长按消息复制/朗读；蓝牙耳机麦克风路由；项目更名 DSAssist。"
 }

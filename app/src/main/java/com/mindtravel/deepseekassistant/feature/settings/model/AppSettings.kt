@@ -13,7 +13,8 @@ data class AppSettings(
     val webSearchEnabled: Boolean = true,
     val calculatorEnabled: Boolean = true,
     val wakeWordEnabled: Boolean = false,
-    val bargeInEnabled: Boolean = true
+    val bargeInEnabled: Boolean = true,
+    val headsetMicEnabled: Boolean = false
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("apiKey", apiKey)
@@ -26,6 +27,7 @@ data class AppSettings(
         put("calculatorEnabled", calculatorEnabled)
         put("wakeWordEnabled", wakeWordEnabled)
         put("bargeInEnabled", bargeInEnabled)
+        put("headsetMicEnabled", headsetMicEnabled)
     }
 
     companion object {
@@ -41,7 +43,8 @@ data class AppSettings(
                 webSearchEnabled = json.optBoolean("webSearchEnabled", true),
                 calculatorEnabled = json.optBoolean("calculatorEnabled", true),
                 wakeWordEnabled = json.optBoolean("wakeWordEnabled", false),
-                bargeInEnabled = json.optBoolean("bargeInEnabled", true)
+                bargeInEnabled = json.optBoolean("bargeInEnabled", true),
+                headsetMicEnabled = json.optBoolean("headsetMicEnabled", false)
             )
         }
     }

@@ -1,5 +1,7 @@
 package com.mindtravel.deepseekassistant.ui.bridge
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Build
@@ -89,9 +91,6 @@ class AndroidBridge(
     fun ttsFinish(id: String, text: String) = ttsController.ttsFinish(id, text)
 
     @JavascriptInterface
-    fun speak(id: String, text: String) = ttsController.speak(id, text)
-
-    @JavascriptInterface
     fun stopSpeaking() = ttsController.stopSpeaking()
 
     @JavascriptInterface
@@ -127,6 +126,20 @@ class AndroidBridge(
     }
 
     @JavascriptInterface
+    fun requestBluetoothPermission() {
+        activity.requestBluetoothPermission()
+    }
+
+    @JavascriptInterface
+    fun copyText(text: String) {
+        activity.runOnUiThread {
+            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            clipboard.setPrimaryClip(ClipData.newPlainText("DSAssist", text))
+            android.widget.Toast.makeText(activity, "已复制", android.widget.Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    @JavascriptInterface
     fun getAppInfo(): String {
         val settings = settingsRepository.load()
         return JSONObject().apply {
@@ -147,7 +160,7 @@ class AndroidBridge(
     fun shareDiagnostics() {
         val settings = settingsRepository.load()
         val info = buildString {
-            appendLine("DeepSeek 助手 v${BuildConfig.VERSION_NAME}")
+            appendLine("DSAssist v${BuildConfig.VERSION_NAME}")
             appendLine("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
             appendLine("Model: ${settings.model}")

@@ -19,14 +19,14 @@
     "FileSubType": "00"
   },
   "StringFileInfo": {
-    "Comments": "DeepSeek Assistant PC Agent",
+    "Comments": "DSAssist PC Agent",
     "CompanyName": "Mindtravel",
-    "FileDescription": "DeepSeek Assistant PC Agent",
+    "FileDescription": "DSAssist PC Agent",
     "FileVersion": "0.6.0",
     "InternalName": "DSAssistAgent",
     "LegalCopyright": "Personal use only",
     "OriginalFilename": "DSAssistAgent.exe",
-    "ProductName": "DeepSeek Assistant PC Agent",
+    "ProductName": "DSAssist PC Agent",
     "ProductVersion": "0.6.0"
   },
   "VarFileInfo": {

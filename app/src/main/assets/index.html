@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0B0F14" />
-<title>DeepSeek 助手</title>
+<title>DSAssist</title>
 <link rel="icon" href="data:," />
 <link rel="stylesheet" href="./css/app.css" />
 <link rel="stylesheet" href="./vendor/katex/katex.min.css" />
@@ -15,7 +15,7 @@
       <div class="brand">
         <img class="logo" src="./img/app-logo.png" alt="" />
         <div class="brand-text">
-          <div class="app-title">DeepSeek 助手</div>
+          <div class="app-title">DSAssist</div>
           <div class="status" id="status"></div>
         </div>
       </div>
@@ -135,6 +135,11 @@
         <input id="bargeInInput" type="checkbox" />
       </label>
 
+      <label class="switch-row">
+        <span>耳机麦克风（实验）</span>
+        <input id="headsetMicInput" type="checkbox" />
+      </label>
+
       <div class="actions">
         <button class="primary-btn" id="saveSettings">保存</button>
         <button class="secondary-btn" id="testTts">测试朗读</button>
@@ -180,6 +185,12 @@
 
       <div class="pc-output" id="pcOutput"></div>
     </div>
+  </div>
+
+  <div class="backdrop hidden" id="messageBackdrop"></div>
+  <div class="message-menu hidden" id="messageMenu">
+    <button class="message-action" id="messageCopy">复制</button>
+    <button class="message-action" id="messageRead">朗读</button>
   </div>
 
   <div class="toast hidden" id="toast"></div>

@@ -110,7 +110,7 @@ await page.evaluateOnNewDocument(() => {
     clearAudioCache: () => '已清理 1.2 MB 音频缓存',
     vibrate: () => {},
     getAppInfo: () => JSON.stringify({
-      version: '0.8.0',
+      version: '0.9.4',
       android: '15',
       sdk: 35,
       device: 'HONOR 500 Pro',

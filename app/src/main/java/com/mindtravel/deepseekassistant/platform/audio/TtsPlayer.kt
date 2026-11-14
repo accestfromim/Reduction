@@ -116,23 +116,6 @@ class TtsPlayer(
         textChannel?.trySend(END)
     }
 
-    fun speak(
-        apiKey: String,
-        text: String,
-        voice: String,
-        onStart: () -> Unit,
-        onDone: () -> Unit,
-        onError: (String) -> Unit
-    ) {
-        if (text.isBlank()) {
-            onError("没有可朗读的文本")
-            return
-        }
-        startSession(apiKey, voice, onStart, onDone, onError)
-        append(text)
-        finish()
-    }
-
     private suspend fun synthLoop(
         currentSession: Int,
         texts: Channel<String>,

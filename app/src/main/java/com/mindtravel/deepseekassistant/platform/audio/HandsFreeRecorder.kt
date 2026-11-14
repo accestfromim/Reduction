@@ -26,6 +26,7 @@ class HandsFreeRecorder {
 
     fun start(
         followup: Boolean,
+        useCommunicationSource: Boolean = false,
         onSpeechStart: () -> Unit,
         onSpeechEnd: (ByteArray) -> Unit,
         onTimeout: () -> Unit,
@@ -52,7 +53,7 @@ class HandsFreeRecorder {
                     AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT
                 )
-                recorder = createRecorder(minBuffer)
+                recorder = createRecorder(minBuffer, useCommunicationSource)
                 if (recorder.state != AudioRecord.STATE_INITIALIZED) {
                     errorMessage = "无法初始化麦克风"
                 } else {
@@ -122,8 +123,9 @@ class HandsFreeRecorder {
     }
 
     @SuppressLint("MissingPermission")
-    private fun createRecorder(minBuffer: Int): AudioRecord = AudioRecord(
-        MediaRecorder.AudioSource.VOICE_RECOGNITION,
+    private fun createRecorder(minBuffer: Int, useCommunicationSource: Boolean): AudioRecord = AudioRecord(
+        if (useCommunicationSource) MediaRecorder.AudioSource.VOICE_COMMUNICATION
+        else MediaRecorder.AudioSource.VOICE_RECOGNITION,
         SAMPLE_RATE,
         AudioFormat.CHANNEL_IN_MONO,
         AudioFormat.ENCODING_PCM_16BIT,

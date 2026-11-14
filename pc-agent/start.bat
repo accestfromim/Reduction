@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-echo Starting DeepSeek PC Agent...
+echo Starting DSAssist PC Agent...
 echo Keep this window open while using the phone.
 echo.
 echo Command execution is disabled by default.

@@ -47,7 +47,8 @@ class SettingsRepository(context: Context) {
             webSearchEnabled = prefs.getBoolean("webSearchEnabled", true),
             calculatorEnabled = prefs.getBoolean("calculatorEnabled", true),
             wakeWordEnabled = prefs.getBoolean("wakeWordEnabled", false),
-            bargeInEnabled = prefs.getBoolean("bargeInEnabled", true)
+            bargeInEnabled = prefs.getBoolean("bargeInEnabled", true),
+            headsetMicEnabled = prefs.getBoolean("headsetMicEnabled", false)
         )
         save(legacy)
         Logs.add("Settings migrated to v2")

@@ -1,6 +1,6 @@
-# DeepSeek 助手（Android）
+# DSAssist（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v0.9.3。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v0.9.5。
 
 ## 交互
 
@@ -28,7 +28,7 @@
 
 ## 安装
 
-1. 把 `DeepSeekAssistant-v0.9.3.apk` 传到手机。
+1. 把 `DeepSeekAssistant-v0.9.5.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -46,7 +46,7 @@ APK 约 39MB，只包含 `arm64-v8a`，适用于荣耀 500 Pro 等现代安卓�
 
 荣耀 500 Pro / MagicOS 需要设置：
 
-- 设置 → 应用 → 应用启动管理 → DeepSeek 助手 → 关闭自动管理 → 允许自启动、关联启动、后台活动
+- 设置 → 应用 → 应用启动管理 → DSAssist → 关闭自动管理 → 允许自启动、关联启动、后台活动
 - 设置 → 电池 → 耗电管理 → 允许后台高耗电/不限制
 - 最近任务里锁定 App，关闭省电模式
 
@@ -54,14 +54,14 @@ APK 约 39MB，只包含 `arm64-v8a`，适用于荣耀 500 Pro 等现代安卓�
 
 ## TTS 连续播放
 
-v0.9.3 使用单个 AudioTrack 连续播放整段回复，并提前合成后面的句子；播放缓冲约 0.3 秒。短句之间不再每句新建播放器，停顿会明显减少。日志里有 `TTS track done ... underruns=`，如果还断，可以据此判断是不是播放缓冲被掏空。
+v0.9.5 使用单个 AudioTrack 连续播放整段回复，并提前合成后面的句子；播放缓冲约 0.3 秒。短句之间不再每句新建播放器，停顿会明显减少。日志里有 `TTS track done ... underruns=`，如果还断，可以据此判断是不是播放缓冲被掏空。
 
 ## Markdown 与数学
 
 - 助手回复按 Markdown 渲染，支持标题、列表、代码块、表格、链接。
 - 数学公式使用 KaTeX 渲染，支持 `$...$`、`$$...$$`、`\(...\)`、`\[...\]`。
 - TTS 会先剥离 Markdown 标记、代码块、数学块和网址，再朗读纯文本。
-- v0.9.3 增加服务端/历史记录双重 null 清洗：回复开头不再出现 null，旧聊天记录里的重复 null 前缀也会自动清理。
+- v0.9.5 增加服务端/历史记录双重 null 清洗：回复开头不再出现 null，旧聊天记录里的重复 null 前缀也会自动清理。
 - UI 预览和模拟测试：`tools/ui-preview/README.md`。
 
 ## 已知限制
@@ -89,7 +89,7 @@ v0.9.3 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 
 ## 代码结构
 
-v0.9.3 采用功能优先（feature-first）结构：
+v0.9.5 采用功能优先（feature-first）结构：
 
 ```text
 core/                  纯 Kotlin：JSON、文本、日志、错误
@@ -167,7 +167,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/DeepSeekAssistant-v0.9.3.apk`
+产物：`dist/DeepSeekAssistant-v0.9.5.apk`
 
 免按住模式依赖：
 

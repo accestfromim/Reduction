@@ -1,3 +1,4 @@
+import { callBridge } from '../core/bridge.js';
 import { renderMarkdown } from './markdown.js';
 import { state } from '../core/state.js';
 
@@ -30,6 +31,7 @@ export const els = {
   calculatorInput: byId('calculatorInput'),
   wakeWordInput: byId('wakeWordInput'),
   bargeInInput: byId('bargeInInput'),
+  headsetMicInput: byId('headsetMicInput'),
   saveSettings: byId('saveSettings'),
   testTts: byId('testTts'),
   clearAudioCache: byId('clearAudioCache'),
@@ -48,7 +50,11 @@ export const els = {
   pcRunCommand: byId('pcRunCommand'),
   pcStatus: byId('pcStatus'),
   pcOutput: byId('pcOutput'),
-  toast: byId('toast')
+  toast: byId('toast'),
+  messageBackdrop: byId('messageBackdrop'),
+  messageMenu: byId('messageMenu'),
+  messageCopy: byId('messageCopy'),
+  messageRead: byId('messageRead')
 };
 
 let toastTimer = null;
@@ -157,6 +163,71 @@ export function setAppInfo(text) {
   els.appInfo.textContent = text || '';
 }
 
+let pressedBubble = null;
+let pressedTimer = null;
+let pressedX = 0;
+let pressedY = 0;
+let menuContent = '';
+let menuCanRead = false;
+
+function openMessageMenu(message) {
+  menuContent = message.content;
+  menuCanRead = message.role === 'assistant';
+  els.messageRead.classList.toggle('hidden', !menuCanRead);
+  els.messageBackdrop.classList.remove('hidden');
+  els.messageMenu.classList.remove('hidden');
+  callBridge('vibrate', 15);
+}
+
+function closeMessageMenu() {
+  els.messageBackdrop.classList.add('hidden');
+  els.messageMenu.classList.add('hidden');
+}
+
+function bindLongPress(bubble, message) {
+  bubble.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    pressedBubble = bubble;
+    pressedX = event.clientX;
+    pressedY = event.clientY;
+    clearTimeout(pressedTimer);
+    pressedTimer = setTimeout(() => {
+      if (pressedBubble === bubble) openMessageMenu(message);
+    }, 420);
+  });
+  bubble.addEventListener('pointermove', (event) => {
+    if (!pressedBubble) return;
+    if (Math.abs(event.clientX - pressedX) > 10 || Math.abs(event.clientY - pressedY) > 10) {
+      clearTimeout(pressedTimer);
+      pressedBubble = null;
+    }
+  });
+  const release = () => {
+    clearTimeout(pressedTimer);
+    pressedBubble = null;
+  };
+  bubble.addEventListener('pointerup', release);
+  bubble.addEventListener('pointercancel', release);
+  bubble.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    openMessageMenu(message);
+  });
+}
+
+els.messageBackdrop.addEventListener('click', closeMessageMenu);
+els.messageCopy.addEventListener('click', () => {
+  if (menuContent) {
+    callBridge('copyText', menuContent);
+    toast('已复制');
+  }
+  closeMessageMenu();
+});
+els.messageRead.addEventListener('click', () => {
+  const content = menuContent;
+  closeMessageMenu();
+  if (content && menuCanRead) readHandler(content);
+});
+
 function createMessageNode(message) {
   const row = document.createElement('div');
   row.className = `msg-row ${message.role}`;
@@ -173,16 +244,7 @@ function createMessageNode(message) {
   meta.className = 'meta';
   meta.textContent = message.role === 'user' ? '你' : '助手';
 
-  if (message.role === 'assistant') {
-    const read = document.createElement('button');
-    read.className = 'mini-btn';
-    read.textContent = '朗读';
-    read.addEventListener('click', () => {
-      if (message.content.trim()) readHandler(message.content);
-    });
-    meta.appendChild(read);
-  }
-
+  bindLongPress(bubble, message);
   row.appendChild(bubble);
   row.appendChild(meta);
   return { row, bubble };
