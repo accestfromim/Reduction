@@ -1,7 +1,7 @@
 {
-  "versionCode": 21,
-  "versionName": "0.9.9",
-  "apk": "DSAssist-v0.9.9.apk",
-  "sha256": "f58ad9bc6e92647ee2b9c6780bc23cc09360d3aca4708919349a12d543692aee",
-  "notes": "v0.9.9: 正圆+半圆黑白图标；UI 全局黑白；链接短标题；唤醒打开 App。"
+  "versionCode": 22,
+  "versionName": "0.9.10",
+  "apk": "DSAssist-v0.9.10.apk",
+  "sha256": "6df3b75cc6446fa694d8f239e977639f93ca301152800106bd9745bbc02517be",
+  "notes": "v0.9.10: 新黑白圆弧图标；UI 全黑白。"
 }
