@@ -201,6 +201,7 @@ export function handleHandsFreeError(id, message) {
 
 export function startFollowup() {
   if (!state.wakeActive || state.followupActive) return;
+  if (state.recording || state.busy || state.speaking) return;
   if (!state.settings.wakeWordEnabled) {
     endWakeConversation();
     return;
