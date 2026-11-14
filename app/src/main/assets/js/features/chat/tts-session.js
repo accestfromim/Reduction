@@ -1,7 +1,10 @@
 import { callBridge } from '../../core/bridge.js';
 import { TtsTextExtractor } from './tts-text.js';
 
-const SENTENCE_END = /[。！？!?；;\n]/g;
+const SENTENCE_END = /[。！？!?；;\n]/;
+const CLAUSE_END = /[，,、：:]/;
+const FIRST_CHUNK_MIN = 12;
+const FIRST_CHUNK_MAX = 32;
 
 export class TtsSession {
   constructor(id) {
@@ -43,10 +46,25 @@ export class TtsSession {
 
   flush(final) {
     if (!this.buffer) return;
-    SENTENCE_END.lastIndex = 0;
-    let cut = -1;
-    let match;
-    while ((match = SENTENCE_END.exec(this.buffer)) !== null) cut = match.index;
+    let cut = this.buffer.search(SENTENCE_END);
+
+    if (cut < 0 && !this.started) {
+      const clause = this.buffer.search(CLAUSE_END);
+      if (clause >= FIRST_CHUNK_MIN) {
+        cut = clause;
+      } else if (this.buffer.length >= FIRST_CHUNK_MAX) {
+        const head = this.buffer.slice(0, FIRST_CHUNK_MAX);
+        const at = Math.max(
+          head.lastIndexOf(' '),
+          head.lastIndexOf('，'),
+          head.lastIndexOf(','),
+          head.lastIndexOf('、'),
+          head.lastIndexOf('：'),
+          head.lastIndexOf(':')
+        );
+        cut = at >= FIRST_CHUNK_MIN ? at : FIRST_CHUNK_MAX - 1;
+      }
+    }
 
     if (cut < 0) {
       if (final) {

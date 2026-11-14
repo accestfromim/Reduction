@@ -106,6 +106,7 @@ await page.evaluateOnNewDocument(() => {
     ttsAppend: (id, text) => window.__ttsChunks.push(text),
     ttsFinish: (id) => setTimeout(() => window.Native.onTtsDone(id), 30),
     speak: (id) => setTimeout(() => window.Native.onTtsDone(id), 30),
+    copyText: (text) => { window.__copied = text; },
     stopSpeaking: () => {},
     clearAudioCache: () => '已清理 1.2 MB 音频缓存',
     vibrate: () => {},
@@ -150,6 +151,39 @@ await page.click('#sendBtn');
 await new Promise((resolve) => setTimeout(resolve, 500));
 await shot('02-markdown-math.png');
 
+const bubbleCenter = await page.evaluate(() => {
+  const bubble = document.querySelector('.msg-row.assistant .bubble');
+  const rect = bubble.getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+});
+await page.evaluate(({ x, y }) => {
+  const bubble = document.querySelector('.msg-row.assistant .bubble');
+  bubble.dispatchEvent(new PointerEvent('pointerdown', {
+    bubbles: true, pointerId: 7, pointerType: 'touch', clientX: x, clientY: y
+  }));
+}, bubbleCenter);
+await new Promise((resolve) => setTimeout(resolve, 380));
+await shot('06-message-menu.png');
+
+const copyCenter = await page.evaluate(() => {
+  const rect = document.getElementById('messageCopy').getBoundingClientRect();
+  return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+});
+await page.evaluate(({ x, y }) => {
+  window.dispatchEvent(new PointerEvent('pointermove', {
+    bubbles: true, pointerId: 7, pointerType: 'touch', clientX: x, clientY: y
+  }));
+}, copyCenter);
+await new Promise((resolve) => setTimeout(resolve, 60));
+await shot('07-message-menu-active.png');
+await page.evaluate(({ x, y }) => {
+  window.dispatchEvent(new PointerEvent('pointerup', {
+    bubbles: true, pointerId: 7, pointerType: 'touch', clientX: x, clientY: y
+  }));
+}, copyCenter);
+await new Promise((resolve) => setTimeout(resolve, 80));
+const copiedLength = await page.evaluate(() => (window.__copied || '').length);
+if (!copiedLength) throw new Error('message copy action did not run');
 await page.click('#settingsBtn');
 await new Promise((resolve) => setTimeout(resolve, 150));
 await shot('03-settings.png');

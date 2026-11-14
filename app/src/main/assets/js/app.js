@@ -56,13 +56,11 @@ window.Native = {
   },
 
   onChatDone(id, full) {
-    chat.handleDone(id, full);
-    voice.onChatFinished();
+    if (chat.handleDone(id, full)) voice.onChatFinished();
   },
 
   onChatError(id, message) {
-    chat.handleError(id, message);
-    voice.onChatFailed();
+    if (chat.handleError(id, message)) voice.onChatFailed();
   },
 
   onTtsStart(id) {
@@ -193,7 +191,7 @@ function init() {
   callBridge('requestMicPermission');
 
   if (callBridge('consumeWakePending') === true) {
-    setTimeout(() => window.Native.onWakeWord(), 600);
+    setTimeout(() => window.Native.onWakeWord(), 0);
   }
 
   if (!state.settings.apiKey) {

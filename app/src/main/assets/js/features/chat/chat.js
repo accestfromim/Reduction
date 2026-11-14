@@ -29,7 +29,7 @@ function resetTtsState() {
 }
 
 export function interruptSpeech() {
-  if (!state.speaking) return;
+  if (!state.speaking && !state.ttsStarted) return;
   ttsSession?.stop();
   ttsSession = null;
   state.ttsStopIgnore++;
@@ -140,7 +140,7 @@ export function handleTool(id, name) {
 }
 
 export function handleDone(id, full) {
-  if (id !== state.chatId) return;
+  if (id !== state.chatId) return false;
   const text = cleanLeadingNullToken(String(full || ''), false);
   if (state.assistantMsg && text) {
     state.assistantMsg.content = text;
@@ -163,10 +163,11 @@ export function handleDone(id, full) {
     ttsSession = null;
     if (state.ttsStarted) state.ttsId = state.chatId;
   }
+  return true;
 }
 
 export function handleError(id, message) {
-  if (id !== state.chatId) return;
+  if (id !== state.chatId) return false;
   callBridge('stopSpeaking');
   state.speaking = false;
   state.ttsSuppressed = true;
@@ -184,12 +185,15 @@ export function handleError(id, message) {
   ui.setStatus('');
   ui.toast(message || '请求失败');
   saveHistory(state.messages);
+  return true;
 }
 
 export function abandonResponseForBargeIn() {
+  interruptSpeech();
   state.speaking = false;
   state.ttsSuppressed = true;
   state.ttsStarted = false;
+  state.ttsId = null;
   ttsSession?.stop();
   ttsSession = null;
   if (state.busy) {

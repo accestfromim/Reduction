@@ -75,9 +75,12 @@ export function setStatus(text) {
   els.status.textContent = text;
 }
 
-export function scrollToBottom() {
+export function scrollToBottom(force = false) {
+  const box = els.messages;
+  const nearBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 120;
+  if (!force && !nearBottom) return;
   requestAnimationFrame(() => {
-    els.messages.scrollTop = els.messages.scrollHeight;
+    box.scrollTop = box.scrollHeight;
   });
 }
 
@@ -167,21 +170,126 @@ let pressedBubble = null;
 let pressedTimer = null;
 let pressedX = 0;
 let pressedY = 0;
+let pressedPointerId = null;
+let menuOpen = false;
+let menuPointerId = null;
+let menuActiveAction = null;
 let menuContent = '';
 let menuCanRead = false;
 
-function openMessageMenu(message) {
+function setMenuActive(action) {
+  if (menuActiveAction === action) return;
+  menuActiveAction = action;
+  els.messageCopy.classList.toggle('active', action === 'copy');
+  els.messageRead.classList.toggle('active', action === 'read');
+}
+
+function actionAtPoint(x, y) {
+  const target = document.elementFromPoint(x, y);
+  const button = target && target.closest ? target.closest('.message-action') : null;
+  if (button === els.messageCopy) return 'copy';
+  if (button === els.messageRead) return 'read';
+  return null;
+}
+
+function onMenuPointerMove(event) {
+  if (!menuOpen) return;
+  if (menuPointerId != null && event.pointerId !== menuPointerId) return;
+  event.preventDefault();
+  setMenuActive(actionAtPoint(event.clientX, event.clientY));
+}
+
+function onMenuPointerUp(event) {
+  if (!menuOpen) return;
+  if (menuPointerId != null && event.pointerId !== menuPointerId) return;
+  const action = menuActiveAction;
+  detachMenuGesture();
+  if (action) {
+    runMessageAction(action);
+  } else {
+    setMenuActive(null);
+  }
+}
+
+function onMenuPointerCancel(event) {
+  if (!menuOpen) return;
+  if (menuPointerId != null && event.pointerId !== menuPointerId) return;
+  detachMenuGesture();
+  setMenuActive(null);
+}
+
+function preventMenuTouch(event) {
+  if (menuOpen) event.preventDefault();
+}
+
+function detachMenuGesture() {
+  window.removeEventListener('pointermove', onMenuPointerMove);
+  window.removeEventListener('pointerup', onMenuPointerUp);
+  window.removeEventListener('pointercancel', onMenuPointerCancel);
+  document.removeEventListener('touchmove', preventMenuTouch);
+  menuPointerId = null;
+}
+
+function runMessageAction(action) {
+  const content = menuContent;
+  const canRead = menuCanRead;
+  closeMessageMenu();
+  if (!content) return;
+  if (action === 'copy') {
+    callBridge('copyText', content);
+    toast('已复制');
+  } else if (action === 'read' && canRead) {
+    readHandler(content);
+  }
+}
+
+function openMessageMenu(message, x, y, pointerId) {
+  closeMessageMenu();
   menuContent = message.content;
   menuCanRead = message.role === 'assistant';
   els.messageRead.classList.toggle('hidden', !menuCanRead);
   els.messageBackdrop.classList.remove('hidden');
-  els.messageMenu.classList.remove('hidden');
+
+  const menu = els.messageMenu;
+  menu.classList.remove('hidden');
+  menu.style.visibility = 'hidden';
+  menu.style.left = '0px';
+  menu.style.top = '0px';
+
+  const rect = menu.getBoundingClientRect();
+  const margin = 10;
+  const gap = 14;
+  let left = x - rect.width / 2;
+  left = Math.max(margin, Math.min(left, window.innerWidth - rect.width - margin));
+  let top = y - rect.height - gap;
+  if (top < margin) top = y + gap;
+  top = Math.max(margin, Math.min(top, window.innerHeight - rect.height - margin));
+
+  menu.style.left = Math.round(left) + 'px';
+  menu.style.top = Math.round(top) + 'px';
+  menu.style.visibility = 'visible';
+
+  menuOpen = true;
+  menuPointerId = pointerId;
+  setMenuActive(null);
+  window.addEventListener('pointermove', onMenuPointerMove, { passive: false });
+  window.addEventListener('pointerup', onMenuPointerUp);
+  window.addEventListener('pointercancel', onMenuPointerCancel);
+  document.addEventListener('touchmove', preventMenuTouch, { passive: false });
   callBridge('vibrate', 15);
 }
 
 function closeMessageMenu() {
+  detachMenuGesture();
+  menuOpen = false;
+  menuActiveAction = null;
+  menuContent = '';
+  menuCanRead = false;
   els.messageBackdrop.classList.add('hidden');
   els.messageMenu.classList.add('hidden');
+  els.messageMenu.style.visibility = '';
+  els.messageCopy.classList.remove('active');
+  els.messageRead.classList.remove('active');
 }
 
 function bindLongPress(bubble, message) {
@@ -190,10 +298,13 @@ function bindLongPress(bubble, message) {
     pressedBubble = bubble;
     pressedX = event.clientX;
     pressedY = event.clientY;
+    pressedPointerId = event.pointerId;
     clearTimeout(pressedTimer);
     pressedTimer = setTimeout(() => {
-      if (pressedBubble === bubble) openMessageMenu(message);
-    }, 420);
+      if (pressedBubble === bubble) {
+        openMessageMenu(message, pressedX, pressedY, pressedPointerId);
+      }
+    }, 320);
   });
   bubble.addEventListener('pointermove', (event) => {
     if (!pressedBubble) return;
@@ -210,22 +321,16 @@ function bindLongPress(bubble, message) {
   bubble.addEventListener('pointercancel', release);
   bubble.addEventListener('contextmenu', (event) => {
     event.preventDefault();
-    openMessageMenu(message);
+    openMessageMenu(message, event.clientX, event.clientY, null);
   });
 }
 
 els.messageBackdrop.addEventListener('click', closeMessageMenu);
 els.messageCopy.addEventListener('click', () => {
-  if (menuContent) {
-    callBridge('copyText', menuContent);
-    toast('已复制');
-  }
-  closeMessageMenu();
+  if (menuOpen) runMessageAction('copy');
 });
 els.messageRead.addEventListener('click', () => {
-  const content = menuContent;
-  closeMessageMenu();
-  if (content && menuCanRead) readHandler(content);
+  if (menuOpen) runMessageAction('read');
 });
 
 function createMessageNode(message) {
@@ -261,7 +366,7 @@ export function appendMessage(role, content) {
   const node = createMessageNode(message);
   els.messages.appendChild(node.row);
   updateEmptyState();
-  scrollToBottom();
+  scrollToBottom(true);
   return { message, bubble: node.bubble };
 }
 
@@ -278,5 +383,5 @@ export function renderAll() {
     els.messages.appendChild(node.row);
   }
   updateEmptyState();
-  scrollToBottom();
+  scrollToBottom(true);
 }

@@ -1,7 +1,7 @@
 {
-  "versionCode": 22,
-  "versionName": "0.9.10",
-  "apk": "DSAssist-v0.9.10.apk",
-  "sha256": "6df3b75cc6446fa694d8f239e977639f93ca301152800106bd9745bbc02517be",
-  "notes": "v0.9.10: 新黑白圆弧图标；UI 全黑白。"
+  "versionCode": 23,
+  "versionName": "0.9.11",
+  "apk": "DSAssist-v0.9.11.apk",
+  "sha256": "dc755998d7f68fe9ca4f03aef587364c8987730edecbfd7dc98d3b5aa04b9d66",
+  "notes": "v0.9.11: 你好助手可打断；长按菜单跟手并可上滑选择；响应速度优化。"
 }

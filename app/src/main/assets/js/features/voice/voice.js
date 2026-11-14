@@ -142,12 +142,17 @@ export function handleAsrResult(id, ok, text) {
 export function onWakeWord() {
   callBridge('consumeWakePending');
   if (!state.settings.wakeWordEnabled) return;
-  if (state.busy || state.recording) {
+  if (state.recording) {
     callBridge('resumeWakeWord');
     return;
   }
 
-  chat.interruptSpeech();
+  if (state.busy || state.speaking) {
+    chat.abandonResponseForBargeIn();
+  } else {
+    chat.interruptSpeech();
+  }
+  callBridge('pauseWakeWord');
   state.ttsStarted = false;
   state.ttsFinished = false;
   state.ttsSuppressed = false;
@@ -200,6 +205,7 @@ export function startFollowup() {
     endWakeConversation();
     return;
   }
+  callBridge('pauseWakeWord');
   state.followupActive = true;
   state.recId = uid();
   ui.showRecordingBar('继续说话');
@@ -218,7 +224,9 @@ export function endWakeConversation() {
 }
 
 export function onChatFinished() {
-  if (state.wakeActive && (!state.settings.autoSpeak || state.ttsSuppressed || !state.ttsStarted)) {
+  if (!state.wakeActive) return;
+  if (state.settings.wakeWordEnabled) callBridge('resumeWakeWord');
+  if (!state.settings.autoSpeak || state.ttsSuppressed || !state.ttsStarted) {
     setTimeout(startFollowup, 400);
   }
 }

@@ -64,7 +64,7 @@ class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, Updat
         super.onCreate(savedInstanceState)
 
         webView = WebView(this).apply {
-            setBackgroundColor(Color.parseColor("#0B0F14"))
+            setBackgroundColor(Color.parseColor("#000000"))
             overScrollMode = View.OVER_SCROLL_NEVER
             settings.apply {
                 javaScriptEnabled = true
