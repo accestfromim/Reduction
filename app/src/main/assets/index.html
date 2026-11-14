@@ -13,10 +13,10 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <div class="logo">D</div>
+        <img class="logo" src="./img/app-logo.png" alt="" />
         <div class="brand-text">
           <div class="app-title">DeepSeek 助手</div>
-          <div class="status" id="status">轻点出键盘，长按说话</div>
+          <div class="status" id="status"></div>
         </div>
       </div>
       <div class="header-actions">
@@ -39,12 +39,9 @@
 
     <section class="empty-state" id="emptyState">
       <div class="empty-icon">
-        <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M21 11.5a8.4 8.4 0 0 1-8.5 8.5 8.6 8.6 0 0 1-3.8-.9L3 21l1.9-5.7a8.4 8.4 0 0 1-.9-3.8A8.5 8.5 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z"></path>
-        </svg>
+        <img src="./img/app-logo.png" width="52" height="52" alt="" />
       </div>
       <div class="empty-title">你的随身语音助手</div>
-      <div class="empty-copy">先点右上角设置，填入 DeepSeek API Key。然后轻点麦克风出键盘，长按麦克风说话，松开就会识别、回答并朗读。</div>
     </section>
 
     <footer class="composer">
@@ -63,7 +60,7 @@
             <path d="M12 18v3"></path>
           </svg>
         </button>
-        <div class="composer-hint" id="composerHint">轻点出键盘，长按说话</div>
+        <div class="composer-hint" id="composerHint"></div>
       </div>
 
       <div class="text-mode hidden" id="textMode">
@@ -95,7 +92,6 @@
       <label class="field">
         <span>DeepSeek API Key</span>
         <input id="apiKeyInput" type="password" placeholder="sk-..." autocomplete="off" />
-        <small>Key 只保存在本机，使用 Android Keystore 加密。建议单独创建一个低额度 Key。</small>
       </label>
 
       <label class="field">
@@ -133,17 +129,11 @@
         <span>免按住模式（实验）</span>
         <input id="wakeWordInput" type="checkbox" />
       </label>
-      <small style="display:block;margin:-10px 0 16px;color:#657386;font-size:11px;line-height:1.5;">
-        唤醒词“你好助手”。开启后会有常驻通知，需要把 App 加入电池白名单。
-      </small>
 
       <label class="switch-row">
         <span>播放中打断（实验）</span>
         <input id="bargeInInput" type="checkbox" />
       </label>
-      <small style="display:block;margin:-10px 0 16px;color:#657386;font-size:11px;line-height:1.5;">
-        仅在连接耳机/蓝牙耳机时尝试；手机扬声器播放容易自触发。
-      </small>
 
       <div class="actions">
         <button class="primary-btn" id="saveSettings">保存</button>
@@ -169,7 +159,6 @@
       <label class="field">
         <span>电脑地址</span>
         <input id="pcUrlInput" placeholder="http://192.168.1.10:8765" autocomplete="off" />
-        <small>电脑端运行 pc-agent.exe 后，窗口里会显示地址，例如 http://192.168.1.10:8765。</small>
       </label>
 
       <label class="field">
@@ -185,16 +174,11 @@
       <label class="field" style="margin-top:16px;">
         <span>执行命令</span>
         <input id="pcCommandInput" placeholder="例如 notepad" autocomplete="off" />
-        <small>命令执行默认关闭；电脑端用 <code>-allow-exec</code> 启动后才可用。请只在自己的可信网络使用。</small>
       </label>
 
       <button class="primary-btn" id="pcRunCommand">执行命令</button>
 
       <div class="pc-output" id="pcOutput"></div>
-
-      <div class="app-info">
-        电脑端只监听局域网，不要直接把端口暴露到公网。更新包会下载到手机，校验 SHA256 后交给系统安装器，你还需要在系统弹窗里点一次“安装”。
-      </div>
     </div>
   </div>
 

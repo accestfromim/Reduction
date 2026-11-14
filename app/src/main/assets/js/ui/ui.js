@@ -82,9 +82,9 @@ function updateEmptyState() {
 }
 
 export function updateHint() {
-  let hint = '轻点出键盘，长按说话';
-  if (!state.settings.apiKey) hint = '先在设置里填写 DeepSeek API Key';
-  else if (!state.micGranted) hint = '需要麦克风权限才能语音输入';
+  let hint = '';
+  if (!state.settings.apiKey) hint = '请填写 API Key';
+  else if (!state.micGranted) hint = '需要麦克风权限';
   els.composerHint.textContent = hint;
 }
 

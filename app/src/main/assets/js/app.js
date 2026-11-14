@@ -121,7 +121,7 @@ window.Native = {
   onError(id, message) {
     if (state.recording) voice.cancelRecording();
     ui.toast(message || '出错了');
-    ui.setStatus('轻点出键盘，长按说话');
+    ui.setStatus('');
   }
 };
 
@@ -187,7 +187,7 @@ function init() {
   ui.renderAll();
   ui.updateHint();
   ui.updateControls();
-  ui.setStatus('轻点出键盘，长按说话');
+  ui.setStatus('');
 
   callBridge('requestMicPermission');
 

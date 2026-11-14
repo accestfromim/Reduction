@@ -150,7 +150,7 @@ export function handleDone(id, full) {
   state.assistantBubble = null;
   state.busy = false;
   ui.updateControls();
-  if (!state.speaking) ui.setStatus('轻点出键盘，长按说话');
+  if (!state.speaking) ui.setStatus('');
   saveHistory(state.messages);
   if (text.trim()) finishTts();
 }
@@ -171,7 +171,7 @@ export function handleError(id, message) {
   state.assistantBubble = null;
   state.busy = false;
   ui.updateControls();
-  ui.setStatus('轻点出键盘，长按说话');
+  ui.setStatus('');
   ui.toast(message || '请求失败');
   saveHistory(state.messages);
 }
@@ -208,7 +208,7 @@ export function handleTtsDone(id) {
   state.speaking = false;
   state.ttsStarted = false;
   state.ttsFinished = true;
-  ui.setStatus('轻点出键盘，长按说话');
+  ui.setStatus('');
   return true;
 }
 
@@ -217,7 +217,7 @@ export function handleTtsError(id, message) {
   state.speaking = false;
   state.ttsStarted = false;
   state.ttsSuppressed = true;
-  ui.setStatus('轻点出键盘，长按说话');
+  ui.setStatus('');
   ui.toast(message || '朗读失败');
   return true;
 }

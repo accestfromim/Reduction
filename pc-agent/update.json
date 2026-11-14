@@ -1,7 +1,7 @@
 {
-  "versionCode": 12,
-  "versionName": "0.9.0",
-  "apk": "DeepSeekAssistant-v0.9.0.apk",
-  "sha256": "81cf91f67f79759f3ae30249e3fdd3a12fa5ba27612a6663ef68c4d0f3cd4377",
-  "notes": "v0.9.0: feature-first 结构重构；录音/ASR/LLM 顺序收紧；播放中打断与常驻唤醒保留。"
+  "versionCode": 13,
+  "versionName": "0.9.1",
+  "apk": "DeepSeekAssistant-v0.9.1.apk",
+  "sha256": "240f27c205db221908b36474abb5be42cf1435f3b9a089024806d2ac5a7c4e58",
+  "notes": "v0.9.1: 精简 UI 文案；统一应用内 logo；保留 Markdown/打断/常驻唤醒。"
 }

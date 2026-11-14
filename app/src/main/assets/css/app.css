@@ -45,19 +45,15 @@
   .logo {
     width: 38px;
     height: 38px;
-    border-radius: 13px;
-    background: linear-gradient(145deg, #5B9AFF, #2D63E8);
-    display: grid;
-    place-items: center;
-    font-weight: 800;
-    font-size: 20px;
-    color: #fff;
-    box-shadow: 0 8px 22px rgba(79, 140, 255, 0.28);
+    object-fit: contain;
+    filter: drop-shadow(0 6px 16px rgba(79, 140, 255, 0.28));
   }
 
   .brand-text { min-width: 0; }
 
   .app-title { font-size: 16px; font-weight: 700; letter-spacing: 0.2px; }
+
+  .status:empty { display: none; }
 
   .status {
     margin-top: 3px;
@@ -110,18 +106,11 @@
     background: var(--accent-soft);
     display: grid;
     place-items: center;
-    color: var(--accent);
     margin-bottom: 4px;
   }
 
   .empty-title { font-size: 18px; font-weight: 700; }
 
-  .empty-copy {
-    font-size: 13px;
-    line-height: 1.6;
-    color: var(--muted);
-    max-width: 280px;
-  }
 
   .msg-row {
     display: flex;
@@ -311,6 +300,8 @@
     padding: 4px 2px;
   }
 
+  .composer-hint:empty { display: none; }
+
   .composer-hint {
     margin-top: 0;
     text-align: center;
@@ -373,13 +364,6 @@
     outline: none;
   }
 
-  .field small {
-    display: block;
-    margin-top: 7px;
-    color: #657386;
-    font-size: 11px;
-    line-height: 1.5;
-  }
 
   .switch-row {
     display: flex;
