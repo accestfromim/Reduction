@@ -8,13 +8,13 @@ let clearTimer = null;
 
 export function openSettings() {
   ui.els.apiKeyInput.value = state.settings.apiKey || '';
-  ui.els.userNameInput.value = state.settings.userName || 'user';
   ui.els.modelSelect.value = state.settings.model;
   ui.els.voiceSelect.value = state.settings.voice;
   ui.els.autoSpeakInput.checked = !!state.settings.autoSpeak;
   ui.els.webSearchInput.checked = !!state.settings.webSearchEnabled;
   ui.els.calculatorInput.checked = !!state.settings.calculatorEnabled;
   ui.els.wakeWordInput.checked = !!state.settings.wakeWordEnabled;
+  ui.els.bargeInInput.checked = state.settings.bargeInEnabled !== false;
 
   const raw = callBridge('getAppInfo');
   if (typeof raw === 'string' && raw) {
@@ -37,13 +37,13 @@ export function openSettings() {
 function currentSettingsFromForm() {
   return {
     apiKey: ui.els.apiKeyInput.value.trim(),
-    userName: ui.els.userNameInput.value.trim() || 'user',
     model: ui.els.modelSelect.value,
     voice: ui.els.voiceSelect.value,
     autoSpeak: ui.els.autoSpeakInput.checked,
     webSearchEnabled: ui.els.webSearchInput.checked,
     calculatorEnabled: ui.els.calculatorInput.checked,
     wakeWordEnabled: ui.els.wakeWordInput.checked,
+    bargeInEnabled: ui.els.bargeInInput.checked,
     pcUrl: state.settings.pcUrl || '',
     pcToken: state.settings.pcToken || ''
   };

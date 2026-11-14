@@ -165,6 +165,11 @@ class AndroidBridge(
     }
 
     @JavascriptInterface
+    fun pauseWakeWord() {
+        activity.runOnUiThread { WakeWordService.pause(activity) }
+    }
+
+    @JavascriptInterface
     fun resumeWakeWord() {
         activity.runOnUiThread { WakeWordService.resume(activity) }
     }

@@ -164,6 +164,19 @@ export function onWakeWord() {
   callBridge('startHandsFree', state.recId, false);
 }
 
+export function handleBargeIn() {
+  state.wakeActive = state.settings.wakeWordEnabled;
+  state.followupActive = false;
+  callBridge('pauseWakeWord');
+  state.recId = uid();
+  ui.showVoiceMode();
+  ui.showRecordingBar('我在听，说完停顿自动发送');
+  ui.setRecordingTime('听');
+  ui.setStatus('我在听…');
+  callBridge('vibrate', 20);
+  callBridge('startHandsFree', state.recId, false);
+}
+
 export function handleHandsFreeStart(id) {
   if (id !== state.recId) return;
   ui.showRecordingBar('说完停顿自动发送');

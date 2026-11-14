@@ -33,6 +33,14 @@ class ChatMessageTest {
     }
 
     @Test
+    fun `history strips repeated null prefix`() {
+        val messages = ChatMessage.fromJsonArray(
+            """[{"role":"assistant","content":"nullnull你好"}]"""
+        )
+        assertEquals("你好", messages.single().content)
+    }
+
+    @Test
     fun `client history rejects tool messages`() {
         val raw = """[{"role":"tool","content":"x","tool_call_id":"call_1"}]"""
         try {

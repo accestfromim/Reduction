@@ -9,7 +9,8 @@ const MODE = Object.freeze({
   LINK_LABEL: 'linkLabel',
   LINK_URL: 'linkUrl',
   IMAGE: 'image',
-  HTML: 'html'
+  HTML: 'html',
+  URL: 'url'
 });
 
 export class TtsTextExtractor {
@@ -67,6 +68,13 @@ export class TtsTextExtractor {
         if (rest.startsWith('![')) {
           this.mode = MODE.IMAGE;
           this.pos += 2;
+          continue;
+        }
+
+        const lower = rest.toLowerCase();
+        if (lower.startsWith('http://') || lower.startsWith('https://') || lower.startsWith('www.')) {
+          this.mode = MODE.URL;
+          this.pos += lower.startsWith('www.') ? 4 : (lower.startsWith('https://') ? 8 : 7);
           continue;
         }
 
@@ -278,6 +286,24 @@ export class TtsTextExtractor {
         continue;
       }
 
+      if (this.mode === MODE.URL) {
+        const stop = rest.search(/[\s。！？!?；;，,、()（）\[\]【】<>]/);
+        if (stop < 0) {
+          this.pos = this.buffer.length;
+          if (!final) break;
+          this.mode = MODE.NORMAL;
+          continue;
+        }
+        this.pos += stop;
+        if (/\s/.test(rest[stop])) {
+          this.pos += 1;
+          output += ' ';
+        }
+        this.mode = MODE.NORMAL;
+        this.lineStart = false;
+        continue;
+      }
+
       if (this.mode === MODE.HTML) {
         const end = rest.indexOf('>');
         if (end < 0) {
@@ -303,11 +329,18 @@ export class TtsTextExtractor {
   needsMore(rest) {
     if (rest === '$' || rest === '!' || rest === '\\' || rest === '<') return true;
     if (rest === '`' || rest === '``') return true;
+    const lower = rest.toLowerCase();
+    if (['http://', 'https://', 'www.'].some((prefix) => prefix.startsWith(lower) && lower.length < prefix.length)) {
+      return true;
+    }
     return false;
   }
 }
 
 export function toSpeechText(raw) {
   const extractor = new TtsTextExtractor();
-  return (extractor.push(raw) + extractor.finish()).replace(/\s+/g, ' ').trim();
+  return (extractor.push(raw) + extractor.finish())
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([。！？!?；;，,])/g, '$1')
+    .trim();
 }

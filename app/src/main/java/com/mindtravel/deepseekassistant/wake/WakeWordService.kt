@@ -22,6 +22,7 @@ class WakeWordService : Service() {
         private const val CHANNEL_ID = "wake_word"
         private const val NOTIFICATION_ID = 4101
         private const val ACTION_START = "com.mindtravel.deepseekassistant.START_WAKE"
+        private const val ACTION_PAUSE = "com.mindtravel.deepseekassistant.PAUSE_WAKE"
         private const val ACTION_RESUME = "com.mindtravel.deepseekassistant.RESUME_WAKE"
         private const val ACTION_STOP = "com.mindtravel.deepseekassistant.STOP_WAKE"
 
@@ -38,6 +39,15 @@ class WakeWordService : Service() {
 
         fun stop(context: Context) {
             context.stopService(Intent(context, WakeWordService::class.java))
+        }
+
+        fun pause(context: Context) {
+            if (!isRunning) return
+            runCatching {
+                context.startService(
+                    Intent(context, WakeWordService::class.java).setAction(ACTION_PAUSE)
+                )
+            }
         }
 
         fun resume(context: Context) {
@@ -71,6 +81,10 @@ class WakeWordService : Service() {
         }
 
         when (intent?.action) {
+            ACTION_PAUSE -> {
+                detector?.stop()
+                updateNotification("已唤醒，等待回答")
+            }
             ACTION_RESUME -> {
                 startForegroundCompat(buildNotification("正在监听“你好助手”"))
                 startDetector()

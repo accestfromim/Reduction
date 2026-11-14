@@ -14,6 +14,9 @@ assert.equal(toSpeechText('前文 \\[a+b\\] 后文'), '前文 后文');
 assert.equal(toSpeechText('```js\nconsole.log(1)\n```\n正文'), '正文');
 assert.equal(toSpeechText('这是 `code` 文本'), '这是 文本');
 assert.equal(toSpeechText('$5 美元'), '$5 美元');
+assert.equal(toSpeechText('看这个 https://example.com 很好'), '看这个 很好');
+assert.equal(toSpeechText('访问 https://example.com。很好'), '访问。很好');
+assert.equal(toSpeechText('www.example.com 结束'), '结束');
 assert.equal(toSpeechText('未闭合 $x+1'), '未闭合');
 
 const streaming = new TtsTextExtractor();

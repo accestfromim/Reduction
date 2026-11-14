@@ -64,7 +64,6 @@ await page.evaluateOnNewDocument(() => {
       autoSpeak: true,
       pcUrl: 'http://192.168.1.10:8765',
       pcToken: 'preview-token',
-      userName: 'user',
       webSearchEnabled: true,
       calculatorEnabled: true,
       wakeWordEnabled: true
@@ -111,7 +110,7 @@ await page.evaluateOnNewDocument(() => {
     clearAudioCache: () => '已清理 1.2 MB 音频缓存',
     vibrate: () => {},
     getAppInfo: () => JSON.stringify({
-      version: '0.6.0',
+      version: '0.8.0',
       android: '15',
       sdk: 35,
       device: 'HONOR 500 Pro',

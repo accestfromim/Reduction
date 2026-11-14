@@ -99,12 +99,6 @@
       </label>
 
       <label class="field">
-        <span>你的名字</span>
-        <input id="userNameInput" type="text" placeholder='user' autocomplete="off" />
-        <small>助手会用这个名字称呼你。</small>
-      </label>
-
-      <label class="field">
         <span>模型</span>
         <select id="modelSelect">
           <option value="deepseek-flash">DeepSeek Flash（快，推荐）</option>
@@ -141,6 +135,14 @@
       </label>
       <small style="display:block;margin:-10px 0 16px;color:#657386;font-size:11px;line-height:1.5;">
         唤醒词“你好助手”。开启后会有常驻通知，需要把 App 加入电池白名单。
+      </small>
+
+      <label class="switch-row">
+        <span>播放中打断（实验）</span>
+        <input id="bargeInInput" type="checkbox" />
+      </label>
+      <small style="display:block;margin:-10px 0 16px;color:#657386;font-size:11px;line-height:1.5;">
+        仅在连接耳机/蓝牙耳机时尝试；手机扬声器播放容易自触发。
       </small>
 
       <div class="actions">

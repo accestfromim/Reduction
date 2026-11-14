@@ -1,7 +1,7 @@
 {
-  "versionCode": 9,
-  "versionName": "0.7.0",
-  "apk": "DeepSeekAssistant-v0.7.0.apk",
-  "sha256": "3dfdd5418ea161956adab28373ba0c49bd507e37cb8ffcf74888c5fd458c435e",
-  "notes": "v0.7.0: Markdown + KaTeX 渲染；TTS 自动排除数学块和代码块；完整代码重构。"
+  "versionCode": 11,
+  "versionName": "0.8.0",
+  "apk": "DeepSeekAssistant-v0.8.0.apk",
+  "sha256": "d9fc88f499ea6a6017bd4cbe46cdbd487c80f21cc2a38b3c9c4dc7a73753b817",
+  "notes": "v0.8.0: 去掉名字提示词；TTS 排除网址；新增耳机下的播放中打断；保留常驻你好助手唤醒。"
 }

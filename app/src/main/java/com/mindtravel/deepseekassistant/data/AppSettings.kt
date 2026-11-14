@@ -10,10 +10,10 @@ data class AppSettings(
     val autoSpeak: Boolean = true,
     val pcUrl: String = "",
     val pcToken: String = "",
-    val userName: String = 'user',
     val webSearchEnabled: Boolean = true,
     val calculatorEnabled: Boolean = true,
-    val wakeWordEnabled: Boolean = false
+    val wakeWordEnabled: Boolean = false,
+    val bargeInEnabled: Boolean = true
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("apiKey", apiKey)
@@ -22,10 +22,10 @@ data class AppSettings(
         put("autoSpeak", autoSpeak)
         put("pcUrl", pcUrl)
         put("pcToken", pcToken)
-        put("userName", userName)
         put("webSearchEnabled", webSearchEnabled)
         put("calculatorEnabled", calculatorEnabled)
         put("wakeWordEnabled", wakeWordEnabled)
+        put("bargeInEnabled", bargeInEnabled)
     }
 
     companion object {
@@ -38,10 +38,10 @@ data class AppSettings(
                 autoSpeak = json.optBoolean("autoSpeak", true),
                 pcUrl = json.stringOrEmpty("pcUrl").trim(),
                 pcToken = json.stringOrEmpty("pcToken").trim(),
-                userName = json.stringOrEmpty("userName").trim().ifBlank { 'user' },
                 webSearchEnabled = json.optBoolean("webSearchEnabled", true),
                 calculatorEnabled = json.optBoolean("calculatorEnabled", true),
-                wakeWordEnabled = json.optBoolean("wakeWordEnabled", false)
+                wakeWordEnabled = json.optBoolean("wakeWordEnabled", false),
+                bargeInEnabled = json.optBoolean("bargeInEnabled", true)
             )
         }
     }

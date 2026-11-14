@@ -2,6 +2,7 @@ package com.mindtravel.deepseekassistant.network.chat
 
 import com.mindtravel.deepseekassistant.core.ApiException
 import com.mindtravel.deepseekassistant.core.Logs
+import com.mindtravel.deepseekassistant.core.TextSanitizer
 
 class ChatSession(
     private val api: ChatApi,
@@ -24,18 +25,32 @@ class ChatSession(
             val toolCalls = ToolCallAccumulator()
             var failure: String? = null
             var finishReason: String? = null
+            var sawContent = false
+            var droppedNulls = 0
 
             api.stream(request.copy(messages = messages.toList(), tools = tools.specs())) { event ->
                 when (event) {
                     is ChatStreamEvent.Content -> {
-                        content.append(event.text)
-                        callbacks.onToken(event.text)
+                        val text = if (sawContent) {
+                            event.text
+                        } else {
+                            TextSanitizer.stripLeadingNullChunks(event.text)
+                        }
+                        if (!sawContent && text != event.text) droppedNulls++
+                        if (text.isBlank()) return@stream
+                        sawContent = true
+                        content.append(text)
+                        callbacks.onToken(text)
                     }
                     is ChatStreamEvent.ToolCallDelta -> toolCalls.apply(event)
                     is ChatStreamEvent.Failure -> failure = event.message
                     is ChatStreamEvent.Finished -> finishReason = event.reason
                     ChatStreamEvent.Done -> Unit
                 }
+            }
+
+            if (droppedNulls > 0) {
+                Logs.add("chat dropped null tokens=$droppedNulls")
             }
 
             failure?.let {

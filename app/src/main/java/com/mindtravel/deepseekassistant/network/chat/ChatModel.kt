@@ -2,6 +2,7 @@ package com.mindtravel.deepseekassistant.network.chat
 
 import com.mindtravel.deepseekassistant.core.ApiException
 import com.mindtravel.deepseekassistant.core.objects
+import com.mindtravel.deepseekassistant.core.TextSanitizer
 import com.mindtravel.deepseekassistant.core.stringOrNull
 import org.json.JSONArray
 import org.json.JSONObject
@@ -97,10 +98,10 @@ data class ChatMessage(
                         ChatMessage(role = role, content = content)
                     }
                     Role.ASSISTANT -> {
-                        ChatMessage(
-                            role = role,
-                            content = item.stringOrNull("content")?.takeIf { it.isNotBlank() }
-                        )
+                        val content = item.stringOrNull("content")
+                            ?.let(TextSanitizer::stripRepeatedNullPrefix)
+                            ?.takeIf { it.isNotBlank() }
+                        ChatMessage(role = role, content = content)
                     }
                     Role.TOOL -> throw ApiException("客户端不能提交 tool 消息")
                 }

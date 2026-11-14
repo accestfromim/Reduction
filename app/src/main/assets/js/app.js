@@ -80,6 +80,11 @@ window.Native = {
     if (chat.handleTtsStopped()) voice.onTtsFinished();
   },
 
+  onBargeIn() {
+    chat.handleBargeIn();
+    voice.handleBargeIn();
+  },
+
   onPcInfo(id, json) {
     pc.handlePcInfo(id, json);
   },

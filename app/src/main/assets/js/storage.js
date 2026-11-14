@@ -7,10 +7,10 @@ export const DEFAULT_SETTINGS = Object.freeze({
   autoSpeak: true,
   pcUrl: '',
   pcToken: '',
-  userName: 'user',
   webSearchEnabled: true,
   calculatorEnabled: true,
-  wakeWordEnabled: false
+  wakeWordEnabled: false,
+  bargeInEnabled: true
 });
 
 function string(value, fallback = '') {
@@ -25,10 +25,10 @@ function normalizeSettings(raw) {
     autoSpeak: raw?.autoSpeak !== false,
     pcUrl: string(raw?.pcUrl).trim(),
     pcToken: string(raw?.pcToken).trim(),
-    userName: string(raw?.userName, 'user').trim() || 'user',
     webSearchEnabled: raw?.webSearchEnabled !== false,
     calculatorEnabled: raw?.calculatorEnabled !== false,
-    wakeWordEnabled: raw?.wakeWordEnabled === true
+    wakeWordEnabled: raw?.wakeWordEnabled === true,
+    bargeInEnabled: raw?.bargeInEnabled !== false
   };
 }
 
@@ -58,6 +58,9 @@ export function loadHistory() {
     return parsed
       .filter((item) => item && (item.role === 'user' || item.role === 'assistant'))
       .filter((item) => typeof item.content === 'string')
+      .map((item) => item.role === 'assistant'
+        ? { ...item, content: item.content.replace(/^(?:null){2,}(?=\S)/i, '') }
+        : item)
       .slice(-100);
   } catch (error) {
     console.warn('load history failed', error);

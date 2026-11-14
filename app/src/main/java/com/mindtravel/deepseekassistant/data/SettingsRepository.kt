@@ -43,10 +43,10 @@ class SettingsRepository(context: Context) {
             autoSpeak = prefs.getBoolean("autoSpeak", true),
             pcUrl = prefs.getString("pcUrl", "") ?: "",
             pcToken = prefs.getString("pcToken", "") ?: "",
-            userName = prefs.getString("userName", 'user') ?: 'user',
             webSearchEnabled = prefs.getBoolean("webSearchEnabled", true),
             calculatorEnabled = prefs.getBoolean("calculatorEnabled", true),
-            wakeWordEnabled = prefs.getBoolean("wakeWordEnabled", false)
+            wakeWordEnabled = prefs.getBoolean("wakeWordEnabled", false),
+            bargeInEnabled = prefs.getBoolean("bargeInEnabled", true)
         )
         save(legacy)
         Logs.add("Settings migrated to v2")

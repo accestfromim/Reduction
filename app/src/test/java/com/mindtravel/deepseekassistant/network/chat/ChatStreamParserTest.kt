@@ -144,6 +144,33 @@ class ChatSessionTest {
     }
 
     @Test
+    fun `leading literal null tokens are dropped`() {
+        val api = FakeChatApi(
+            listOf(
+                listOf(
+                    ChatStreamEvent.Content("null"),
+                    ChatStreamEvent.Content("nullnull"),
+                    ChatStreamEvent.Content("你好"),
+                    ChatStreamEvent.Finished("stop")
+                )
+            )
+        )
+        val callbacks = RecordingCallbacks()
+        ChatSession(api).run(
+            ChatRequest(
+                apiKey = "test",
+                model = "deepseek-flash",
+                messages = listOf(ChatMessage(Role.USER, "你好")),
+                tools = emptyList()
+            ),
+            ToolRegistry(emptyList()),
+            callbacks
+        )
+        assertEquals("你好", callbacks.completed)
+        assertEquals(listOf("你好"), callbacks.tokens)
+    }
+
+    @Test
     fun `tool round appends assistant and tool messages`() {
         val api = FakeChatApi(
             listOf(

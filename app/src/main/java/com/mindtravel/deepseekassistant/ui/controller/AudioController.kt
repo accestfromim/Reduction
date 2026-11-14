@@ -1,5 +1,8 @@
 package com.mindtravel.deepseekassistant.ui.controller
 
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import com.mindtravel.deepseekassistant.audio.BargeInDetector
 import com.mindtravel.deepseekassistant.audio.HandsFreeRecorder
 import com.mindtravel.deepseekassistant.audio.TtsCache
 import com.mindtravel.deepseekassistant.audio.TtsPlayer
@@ -31,6 +34,8 @@ class AudioController(
 
     @Volatile
     private var activeTtsId: String? = null
+
+    private var bargeInDetector: BargeInDetector? = null
 
     fun requestMicPermission() {
         activity.requestMicPermission { granted ->
@@ -126,13 +131,23 @@ class AudioController(
             return
         }
         Logs.add("TTS stream start voice=${settings.voice}")
+        stopBargeIn()
         activeTtsId = id
         ttsPlayer.startSession(
             apiKey = settings.apiKey,
             voice = settings.voice,
-            onStart = { emitter.emit("onTtsStart", id) },
-            onDone = { emitter.emit("onTtsDone", id) },
-            onError = { message -> emitter.emit("onTtsError", id, message) }
+            onStart = {
+                emitter.emit("onTtsStart", id)
+                maybeStartBargeIn(id)
+            },
+            onDone = {
+                stopBargeIn()
+                emitter.emit("onTtsDone", id)
+            },
+            onError = { message ->
+                stopBargeIn()
+                emitter.emit("onTtsError", id, message)
+            }
         )
     }
 
@@ -156,18 +171,29 @@ class AudioController(
         }
         if (text.isBlank()) return
         Logs.add("speak requested chars=${text.length} voice=${settings.voice}")
+        stopBargeIn()
         activeTtsId = id
         ttsPlayer.speak(
             apiKey = settings.apiKey,
             text = text,
             voice = settings.voice,
-            onStart = { emitter.emit("onTtsStart", id) },
-            onDone = { emitter.emit("onTtsDone", id) },
-            onError = { message -> emitter.emit("onTtsError", id, message) }
+            onStart = {
+                emitter.emit("onTtsStart", id)
+                maybeStartBargeIn(id)
+            },
+            onDone = {
+                stopBargeIn()
+                emitter.emit("onTtsDone", id)
+            },
+            onError = { message ->
+                stopBargeIn()
+                emitter.emit("onTtsError", id, message)
+            }
         )
     }
 
     fun stopSpeaking() {
+        stopBargeIn()
         activeTtsId = null
         ttsPlayer.stop()
         emitter.emit("onTtsStopped", "")
@@ -183,9 +209,52 @@ class AudioController(
     fun cacheSizeMb(): Double = ttsCache.size() / 1024.0 / 1024.0
 
     fun dispose() {
+        stopBargeIn()
         ttsPlayer.stop()
         wavRecorder.cancel()
         handsFreeRecorder.cancel()
+    }
+
+    private fun maybeStartBargeIn(id: String) {
+        val settings = settingsRepository.load()
+        if (!settings.bargeInEnabled || !activity.hasMicPermission()) return
+        if (!hasHeadsetOutput()) {
+            Logs.add("Barge-in skipped: no headset output")
+            return
+        }
+        if (bargeInDetector?.isRunning() == true) return
+
+        val detector = BargeInDetector(
+            onBargeIn = {
+                bargeInDetector = null
+                activeTtsId = null
+                ttsPlayer.stop()
+                emitter.emit("onBargeIn", id)
+            },
+            onError = { message -> Logs.add("Barge-in error: $message") }
+        )
+        bargeInDetector = detector
+        detector.start()
+    }
+
+    private fun stopBargeIn() {
+        bargeInDetector?.stop()
+        bargeInDetector = null
+    }
+
+    private fun hasHeadsetOutput(): Boolean {
+        val manager = activity.getSystemService(AudioManager::class.java) ?: return false
+        return manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { device ->
+            when (device.type) {
+                AudioDeviceInfo.TYPE_WIRED_HEADSET,
+                AudioDeviceInfo.TYPE_WIRED_HEADPHONES,
+                AudioDeviceInfo.TYPE_BLUETOOTH_A2DP,
+                AudioDeviceInfo.TYPE_BLUETOOTH_SCO,
+                AudioDeviceInfo.TYPE_USB_HEADSET,
+                AudioDeviceInfo.TYPE_USB_DEVICE -> true
+                else -> false
+            }
+        }
     }
 
     private suspend fun finishRecording(id: String) {
