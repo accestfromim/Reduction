@@ -45,6 +45,9 @@ class BargeInDetector(
     @SuppressLint("MissingPermission")
     private fun loop() {
         var recorder: AudioRecord? = null
+        var detected = false
+        var errorMessage: String? = null
+
         try {
             val minBuffer = AudioRecord.getMinBufferSize(
                 SAMPLE_RATE,
@@ -59,29 +62,29 @@ class BargeInDetector(
                 maxOf(minBuffer * 2, FRAME_SAMPLES * 4)
             )
             if (recorder.state != AudioRecord.STATE_INITIALIZED) {
-                onError("打断检测麦克风初始化失败")
-                return
-            }
-            audioRecord = recorder
-            recorder.startRecording()
-            val vad = SpeechVad(waitTimeoutMs = 10 * 60_000L).apply { reset() }
-            val buffer = ShortArray(FRAME_SAMPLES)
-            Logs.add("Barge-in listening threshold=${vad.threshold().toInt()}")
+                errorMessage = "打断检测麦克风初始化失败"
+            } else {
+                audioRecord = recorder
+                recorder.startRecording()
+                val vad = SpeechVad(waitTimeoutMs = 10 * 60_000L).apply { reset() }
+                val buffer = ShortArray(FRAME_SAMPLES)
+                Logs.add("Barge-in listening threshold=${vad.threshold().toInt()}")
 
-            while (running) {
-                val read = recorder.read(buffer, 0, buffer.size)
-                if (read <= 0) continue
-                val event = vad.process(buffer.copyOf(read))
-                if (event == SpeechVad.Event.SPEECH_START) {
-                    Logs.add("Barge-in detected threshold=${vad.threshold().toInt()}")
-                    running = false
-                    onBargeIn()
-                    return
+                while (running) {
+                    val read = recorder.read(buffer, 0, buffer.size)
+                    if (read <= 0) continue
+                    val event = vad.process(buffer.copyOf(read))
+                    if (event == SpeechVad.Event.SPEECH_START) {
+                        Logs.add("Barge-in detected threshold=${vad.threshold().toInt()}")
+                        detected = true
+                        running = false
+                        break
+                    }
                 }
             }
         } catch (t: Throwable) {
             Logs.add("Barge-in error: ${t.message}")
-            onError(t.message ?: "打断检测失败")
+            errorMessage = t.message ?: "打断检测失败"
         } finally {
             recorder?.let {
                 runCatching { it.stop() }
@@ -89,6 +92,12 @@ class BargeInDetector(
             }
             if (audioRecord === recorder) audioRecord = null
             running = false
+            Logs.add("Barge-in recording released")
+        }
+
+        when {
+            detected -> onBargeIn()
+            errorMessage != null -> onError(errorMessage)
         }
     }
 }

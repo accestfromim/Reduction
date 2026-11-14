@@ -2,6 +2,6 @@
   "versionCode": 11,
   "versionName": "0.8.0",
   "apk": "DeepSeekAssistant-v0.8.0.apk",
-  "sha256": "d9fc88f499ea6a6017bd4cbe46cdbd487c80f21cc2a38b3c9c4dc7a73753b817",
-  "notes": "v0.8.0: 去掉名字提示词；TTS 排除网址；新增耳机下的播放中打断；保留常驻你好助手唤醒。"
+  "sha256": "f412f64dfdf7730561e5ac3ad87c73820e8dad8867128292c06a331d62d31148",
+  "notes": "v0.8.0: 去掉名字提示词；TTS 排除网址；耳机下的播放中打断；录音释放后才发 ASR/LLM。"
 }

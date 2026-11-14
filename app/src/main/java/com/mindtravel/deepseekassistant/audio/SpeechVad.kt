@@ -7,7 +7,7 @@ class SpeechVad(
     private val minThreshold: Double = 450.0,
     private val noiseMultiplier: Double = 2.2,
     private val speechFramesToStart: Int = 2,
-    private val silenceFramesToEnd: Int = 7,
+    private val silenceFramesToEnd: Int = 15,
     private val maxSpeechMs: Long = 30_000L,
     private val waitTimeoutMs: Long = 12_000L
 ) {

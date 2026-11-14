@@ -21,7 +21,9 @@ class HandsFreeRecorder {
     @Volatile
     private var running = false
 
-    @SuppressLint("MissingPermission")
+    @Volatile
+    private var canceled = false
+
     fun start(
         followup: Boolean,
         onSpeechStart: () -> Unit,
@@ -31,6 +33,7 @@ class HandsFreeRecorder {
     ) {
         if (running) return
         running = true
+        canceled = false
         Logs.add("Hands-free start followup=$followup")
 
         worker = Thread {
@@ -39,7 +42,9 @@ class HandsFreeRecorder {
             val vad = SpeechVad().apply { reset() }
             var recorder: AudioRecord? = null
             var speechStarted = false
-            var shouldNotifyTimeout = false
+            var timedOut = false
+            var errorMessage: String? = null
+            var resultWav: ByteArray? = null
 
             try {
                 val minBuffer = AudioRecord.getMinBufferSize(
@@ -47,61 +52,54 @@ class HandsFreeRecorder {
                     AudioFormat.CHANNEL_IN_MONO,
                     AudioFormat.ENCODING_PCM_16BIT
                 )
-                recorder = AudioRecord(
-                    MediaRecorder.AudioSource.VOICE_RECOGNITION,
-                    SAMPLE_RATE,
-                    AudioFormat.CHANNEL_IN_MONO,
-                    AudioFormat.ENCODING_PCM_16BIT,
-                    maxOf(minBuffer * 2, FRAME_SAMPLES * 4)
-                )
+                recorder = createRecorder(minBuffer)
                 if (recorder.state != AudioRecord.STATE_INITIALIZED) {
-                    onError("无法初始化麦克风")
-                    return@Thread
-                }
-                audioRecord = recorder
-                recorder.startRecording()
+                    errorMessage = "无法初始化麦克风"
+                } else {
+                    audioRecord = recorder
+                    recorder.startRecording()
 
-                val buffer = ShortArray(FRAME_SAMPLES)
-                while (running) {
-                    val read = recorder.read(buffer, 0, buffer.size)
-                    if (read <= 0) continue
-                    val frame = buffer.copyOf(read)
+                    val buffer = ShortArray(FRAME_SAMPLES)
+                    while (running) {
+                        val read = recorder.read(buffer, 0, buffer.size)
+                        if (read <= 0) continue
+                        val frame = buffer.copyOf(read)
 
-                    if (!speechStarted) {
-                        preRoll.addLast(frame)
-                        while (preRoll.size > 3) preRoll.removeFirst()
+                        if (!speechStarted) {
+                            preRoll.addLast(frame)
+                            while (preRoll.size > 3) preRoll.removeFirst()
+                        }
+
+                        when (vad.process(frame)) {
+                            SpeechVad.Event.WAITING -> Unit
+                            SpeechVad.Event.SPEECH_START -> {
+                                speechStarted = true
+                                Logs.add("VAD speech start threshold=${vad.threshold().toInt()}")
+                                onSpeechStart()
+                                for (item in preRoll) writeShortArray(pcm, item)
+                                preRoll.clear()
+                            }
+                            SpeechVad.Event.SPEECH_CONTINUE -> writeShortArray(pcm, frame)
+                            SpeechVad.Event.SPEECH_END -> {
+                                Logs.add("VAD speech end")
+                                break
+                            }
+                            SpeechVad.Event.TIMEOUT -> {
+                                Logs.add("VAD timeout")
+                                timedOut = true
+                                break
+                            }
+                        }
                     }
 
-                    when (vad.process(frame)) {
-                        SpeechVad.Event.WAITING -> Unit
-                        SpeechVad.Event.SPEECH_START -> {
-                            speechStarted = true
-                            Logs.add("VAD speech start threshold=${vad.threshold().toInt()}")
-                            onSpeechStart()
-                            for (item in preRoll) writeShortArray(pcm, item)
-                            preRoll.clear()
-                        }
-                        SpeechVad.Event.SPEECH_CONTINUE -> writeShortArray(pcm, frame)
-                        SpeechVad.Event.SPEECH_END -> {
-                            Logs.add("VAD speech end")
-                            break
-                        }
-                        SpeechVad.Event.TIMEOUT -> {
-                            Logs.add("VAD timeout")
-                            shouldNotifyTimeout = true
-                            break
-                        }
+                    val data = pcm.toByteArray()
+                    if (speechStarted && data.isNotEmpty()) {
+                        resultWav = WavEncoder.pcm16ToWav(data)
                     }
-                }
-
-                val data = pcm.toByteArray()
-                when {
-                    speechStarted && data.isNotEmpty() -> onSpeechEnd(WavEncoder.pcm16ToWav(data))
-                    shouldNotifyTimeout -> onTimeout()
                 }
             } catch (t: Throwable) {
                 Logs.add("Hands-free error: ${t.message}")
-                onError(t.message ?: "录音失败")
+                errorMessage = t.message ?: "录音失败"
             } finally {
                 recorder?.let {
                     runCatching { it.stop() }
@@ -109,12 +107,31 @@ class HandsFreeRecorder {
                 }
                 if (audioRecord === recorder) audioRecord = null
                 running = false
-                Logs.add("Hands-free stopped")
+                Logs.add("Hands-free recording released")
             }
+
+            if (canceled) return@Thread
+
+            when {
+                resultWav != null -> onSpeechEnd(resultWav)
+                errorMessage != null -> onError(errorMessage)
+                timedOut -> onTimeout()
+            }
+            Logs.add("Hands-free stopped")
         }.also { it.start() }
     }
 
+    @SuppressLint("MissingPermission")
+    private fun createRecorder(minBuffer: Int): AudioRecord = AudioRecord(
+        MediaRecorder.AudioSource.VOICE_RECOGNITION,
+        SAMPLE_RATE,
+        AudioFormat.CHANNEL_IN_MONO,
+        AudioFormat.ENCODING_PCM_16BIT,
+        maxOf(minBuffer * 2, FRAME_SAMPLES * 4)
+    )
+
     fun cancel() {
+        canceled = true
         running = false
         worker?.let { runCatching { it.join(1_000) } }
         worker = null
