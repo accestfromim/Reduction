@@ -287,7 +287,7 @@ export class TtsTextExtractor {
       }
 
       if (this.mode === MODE.URL) {
-        const stop = rest.search(/[\s。！？!?；;，,、()（）\[\]【】<>]/);
+        const stop = rest.search(/[\s。！？；，、()（）\[\]【】<>]/);
         if (stop < 0) {
           this.pos = this.buffer.length;
           if (!final) break;

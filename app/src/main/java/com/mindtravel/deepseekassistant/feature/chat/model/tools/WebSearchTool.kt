@@ -22,7 +22,7 @@ class WebSearchTool(
         val results = searchApi.search(apiKey, query)
         if (results.isEmpty()) return "没有找到相关结果"
         return buildString {
-            appendLine("搜索结果（回答时请保留来源网址）：")
+            appendLine("搜索结果（引用时使用 [简短标题](URL)）：")
             results.forEachIndexed { index, item ->
                 appendLine("${index + 1}. ${item.title}")
                 appendLine(item.url)

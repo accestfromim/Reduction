@@ -1,7 +1,7 @@
 {
-  "versionCode": 19,
-  "versionName": "0.9.7",
-  "apk": "DSAssist-v0.9.7.apk",
-  "sha256": "ad0e995d8bc5174eb226cd988d5e8657d31fbca003508f8a460c894f208d89dc",
-  "notes": "v0.9.7: 你好助手唤醒时尝试把 App 带到前台；后台启动被拦截时保留通知入口。"
+  "versionCode": 20,
+  "versionName": "0.9.8",
+  "apk": "DSAssist-v0.9.8.apk",
+  "sha256": "1160a0f1aa0ebf529150f70119c97989da1207c6e864ad80465403619ef84c6d",
+  "notes": "v0.9.8: 链接显示短标题；新反光科技球图标；唤醒打开 App。"
 }

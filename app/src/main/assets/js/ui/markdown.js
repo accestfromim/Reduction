@@ -105,6 +105,38 @@ function renderMathToken(entry) {
   }
 }
 
+function compactUrl(href) {
+  try {
+    const url = new URL(href);
+    const host = url.hostname.replace(/^www\./i, '');
+    const first = url.pathname.split('/').filter(Boolean)[0];
+    const label = first ? `${host}/${first}` : host;
+    return label.length > 34 ? `${label.slice(0, 33)}…` : label;
+  } catch (error) {
+    return href;
+  }
+}
+
+function compactLinks(html) {
+  if (!html.includes('<a ')) return html;
+  try {
+    const doc = new DOMParser().parseFromString(html, 'text/html');
+    doc.querySelectorAll('a[href]').forEach((anchor) => {
+      const href = anchor.getAttribute('href') || '';
+      const text = (anchor.textContent || '').trim();
+      if (/^https?:\/\//i.test(text) || text === href) {
+        anchor.textContent = compactUrl(href);
+      }
+      anchor.setAttribute('target', '_blank');
+      anchor.setAttribute('rel', 'noopener noreferrer');
+      anchor.setAttribute('title', href);
+    });
+    return doc.body.innerHTML;
+  } catch (error) {
+    return html;
+  }
+}
+
 export function renderMarkdown(text) {
   const source = String(text || '');
   if (!source) return '';
@@ -117,7 +149,7 @@ export function renderMarkdown(text) {
     const html = window.marked.parse(protectedMath.text, { gfm: true, breaks: true });
     const clean = window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
     const pattern = new RegExp(protectedMath.prefix + '(\\d+)', 'g');
-    return clean.replace(pattern, (_, index) => renderMathToken(protectedMath.entries[Number(index)]));
+    return compactLinks(clean.replace(pattern, (_, index) => renderMathToken(protectedMath.entries[Number(index)])));
   } catch (error) {
     console.warn('markdown render failed', error);
     return escapeHtml(source).replace(/\n/g, '<br>');

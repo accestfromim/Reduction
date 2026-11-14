@@ -15,5 +15,5 @@ cd "$ROOT_DIR"
 "$GRADLE_BIN" --no-daemon assembleRelease
 
 mkdir -p dist
-cp app/build/outputs/apk/release/app-release.apk "dist/DSAssist-v0.9.7.apk"
-echo "APK: $ROOT_DIR/dist/DSAssist-v0.9.7.apk"
+cp app/build/outputs/apk/release/app-release.apk "dist/DSAssist-v0.9.8.apk"
+echo "APK: $ROOT_DIR/dist/DSAssist-v0.9.8.apk"

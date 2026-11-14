@@ -17,6 +17,7 @@ assert.equal(toSpeechText('$5 美元'), '$5 美元');
 assert.equal(toSpeechText('看这个 https://example.com 很好'), '看这个 很好');
 assert.equal(toSpeechText('访问 https://example.com。很好'), '访问。很好');
 assert.equal(toSpeechText('www.example.com 结束'), '结束');
+assert.equal(toSpeechText('看 https://example.com/a?x=1&y=2 结束'), '看 结束');
 assert.equal(toSpeechText('未闭合 $x+1'), '未闭合');
 
 const streaming = new TtsTextExtractor();
