@@ -1,6 +1,6 @@
 # DeepSeek 助手（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v0.8.0。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v0.9.0。
 
 ## 交互
 
@@ -28,7 +28,7 @@
 
 ## 安装
 
-1. 把 `DeepSeekAssistant-v0.8.0.apk` 传到手机。
+1. 把 `DeepSeekAssistant-v0.9.0.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -54,14 +54,14 @@ APK 约 39MB，只包含 `arm64-v8a`，适用于荣耀 500 Pro 等现代安卓�
 
 ## TTS 连续播放
 
-v0.8.0 使用单个 AudioTrack 连续播放整段回复，并提前合成后面的句子；播放缓冲约 0.3 秒。短句之间不再每句新建播放器，停顿会明显减少。日志里有 `TTS track done ... underruns=`，如果还断，可以据此判断是不是播放缓冲被掏空。
+v0.9.0 使用单个 AudioTrack 连续播放整段回复，并提前合成后面的句子；播放缓冲约 0.3 秒。短句之间不再每句新建播放器，停顿会明显减少。日志里有 `TTS track done ... underruns=`，如果还断，可以据此判断是不是播放缓冲被掏空。
 
 ## Markdown 与数学
 
 - 助手回复按 Markdown 渲染，支持标题、列表、代码块、表格、链接。
 - 数学公式使用 KaTeX 渲染，支持 `$...$`、`$$...$$`、`\(...\)`、`\[...\]`。
 - TTS 会先剥离 Markdown 标记、代码块、数学块和网址，再朗读纯文本。
-- v0.8.0 增加服务端/历史记录双重 null 清洗：回复开头不再出现 null，旧聊天记录里的重复 null 前缀也会自动清理。
+- v0.9.0 增加服务端/历史记录双重 null 清洗：回复开头不再出现 null，旧聊天记录里的重复 null 前缀也会自动清理。
 - UI 预览和模拟测试：`tools/ui-preview/README.md`。
 
 ## 已知限制
@@ -89,28 +89,55 @@ v0.8.0 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 
 ## 代码结构
 
-v0.8.0 做了完整重构，重点是把“协议解析”和“业务/UI”拆开：
+v0.9.0 采用功能优先（feature-first）结构：
 
 ```text
-network/chat
-  ChatModel         强类型消息、工具、流式事件
-  ChatStreamParser  SSE -> 强类型事件，严格处理 null
-  ToolCallAccumulator
-  ChatSession       工具循环
-network
-  DeepSeekHttp      HTTP/SSE 传输与错误映射
-  audio/AudioApi    ASR/TTS
-  search/SearchApi  搜索
-  pc/PcClient       电脑端
-audio
-  WavEncoder / WavRecorder / SpeechVad / HandsFreeRecorder
-  TtsCache / TtsPlayer
-ui
-  MainActivity / AndroidBridge / JsEmitter
-  controller/ChatController / AudioController / PcController / UpdateController
-wake
-  WakeWordBus / WakeWordDetector / WakeWordService
+core/                  纯 Kotlin：JSON、文本、日志、错误
+network/DeepSeekHttp   HTTP/SSE 传输与错误映射
+feature/chat/
+  model/               消息、工具、ChatSession、ChatGateway
+  data/                DeepSeekChatGateway、SSE 解析、搜索、历史
+  ui/                  ChatController
+feature/voice/
+  model/               AudioGateway
+  data/                DeepSeekAudioApi、TtsCache
+  ui/                  RecordingController、TtsController
+feature/pc/
+  data/                PcClient
+  ui/                  PcController、UpdateController
+feature/settings/
+  model/               AppSettings
+  data/                SettingsRepository
+platform/
+  audio/               WavEncoder、WavRecorder、SpeechVad、HandsFreeRecorder、BargeInDetector、TtsPlayer
+  wake/                WakeWordBus、WakeWordDetector、WakeWordService
+  update/              UpdateInstaller
+ui/
+  activity/            MainActivity
+  bridge/              AndroidBridge、JsEmitter
+  di/                  AppGraph
 ```
+
+前端按功能拆分：
+
+```text
+assets/js/app.js
+assets/js/core/bridge.js, state.js
+assets/js/features/chat/chat.js, history-store.js, tts-text.js
+assets/js/features/voice/voice.js
+assets/js/features/settings/settings.js, settings-store.js
+assets/js/features/pc/pc.js
+assets/js/ui/ui.js, markdown.js
+```
+
+关键约束：
+
+- SSE 中 `content: null` 不会变成字符串 `"null"`。
+- 工具参数只接受字符串片段，缺 id/name 会直接失败。
+- 协议层不把 `JSONObject` 传给业务层。
+- 聊天、录音、TTS、电脑、更新各自独立 Controller。
+- 录音释放后才发 ASR，ASR 返回后才发 LLM。
+- 设置升级会自动从旧版本迁移，不会丢 API Key。
 
 前端也拆成了 `assets/js` 下的模块，`index.html` 只保留 DOM，CSS 在 `assets/css`。
 
@@ -140,7 +167,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/DeepSeekAssistant-v0.8.0.apk`
+产物：`dist/DeepSeekAssistant-v0.9.0.apk`
 
 免按住模式依赖：
 

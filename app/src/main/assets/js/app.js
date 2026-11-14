@@ -1,11 +1,12 @@
-import { callBridge } from './bridge.js';
-import * as chat from './chat.js';
-import * as pc from './pc.js';
-import * as settings from './settings.js';
-import { state } from './state.js';
-import { loadHistory, loadSettings } from './storage.js';
-import * as ui from './ui.js';
-import * as voice from './voice.js';
+import { callBridge } from './core/bridge.js';
+import * as chat from './features/chat/chat.js';
+import * as pc from './features/pc/pc.js';
+import * as settings from './features/settings/settings.js';
+import { state } from './core/state.js';
+import { loadHistory } from './features/chat/history-store.js';
+import { loadSettings } from './features/settings/settings-store.js';
+import * as ui from './ui/ui.js';
+import * as voice from './features/voice/voice.js';
 
 window.Native = {
   onMicPermission(granted) {
@@ -81,8 +82,8 @@ window.Native = {
   },
 
   onBargeIn() {
-    chat.handleBargeIn();
-    voice.handleBargeIn();
+    chat.abandonResponseForBargeIn();
+    voice.startListeningAfterBargeIn();
   },
 
   onPcInfo(id, json) {
@@ -166,10 +167,10 @@ ui.els.cancelRecording.addEventListener('click', (event) => {
 ui.els.settingsBtn.addEventListener('click', settings.openSettings);
 ui.els.closeSettings.addEventListener('click', ui.closeSheets);
 ui.els.settingsBackdrop.addEventListener('click', ui.closeSheets);
-ui.els.saveSettings.addEventListener('click', settings.saveSettings);
+ui.els.saveSettings.addEventListener('click', settings.saveSettingsForm);
 ui.els.testTts.addEventListener('click', settings.testTts);
 ui.els.clearAudioCache.addEventListener('click', settings.clearAudioCache);
-ui.els.clearHistory.addEventListener('click', settings.clearHistory);
+ui.els.clearHistory.addEventListener('click', settings.clearChatHistory);
 ui.els.shareDiagnostics.addEventListener('click', settings.shareDiagnostics);
 
 ui.els.pcBtn.addEventListener('click', pc.openPc);

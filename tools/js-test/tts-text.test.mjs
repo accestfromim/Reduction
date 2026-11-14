@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { TtsTextExtractor, toSpeechText } from '../../app/src/main/assets/js/tts-text.js';
+import { TtsTextExtractor, toSpeechText } from '../../app/src/main/assets/js/features/chat/tts-text.js';
 
 assert.equal(
   toSpeechText('# 标题\n\n你好 **世界**，这是 [链接](https://example.com)。'),

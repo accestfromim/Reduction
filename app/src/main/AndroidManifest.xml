@@ -36,13 +36,13 @@
         </provider>
 
         <service
-            android:name=".wake.WakeWordService"
+            android:name=".platform.wake.WakeWordService"
             android:exported="false"
             android:foregroundServiceType="microphone"
             android:stopWithTask="false" />
 
         <activity
-            android:name=".ui.MainActivity"
+            android:name=".ui.activity.MainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|keyboardHidden"
             android:windowSoftInputMode="adjustResize">
