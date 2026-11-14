@@ -2,6 +2,7 @@ package com.mindtravel.deepseekassistant.ui
 
 import android.annotation.SuppressLint
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.os.Build
@@ -149,6 +150,21 @@ class MainActivity : AppCompatActivity() {
                 view: WebView,
                 request: WebResourceRequest
             ): WebResourceResponse? = assetLoader.shouldInterceptRequest(request.url)
+
+            override fun shouldOverrideUrlLoading(
+                view: WebView,
+                request: WebResourceRequest
+            ): Boolean {
+                val url = request.url
+                if (url.host == "appassets.androidplatform.net") return false
+                if (url.scheme == "http" || url.scheme == "https") {
+                    runCatching {
+                        startActivity(Intent(Intent.ACTION_VIEW, url))
+                    }
+                    return true
+                }
+                return true
+            }
         }
         webView.loadUrl("https://appassets.androidplatform.net/assets/index.html")
     }
