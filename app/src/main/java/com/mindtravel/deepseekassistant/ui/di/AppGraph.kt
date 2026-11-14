@@ -11,7 +11,7 @@ import com.mindtravel.deepseekassistant.feature.pc.ui.PcController
 import com.mindtravel.deepseekassistant.feature.pc.ui.UpdateController
 import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
 import com.mindtravel.deepseekassistant.feature.voice.data.DeepSeekAudioApi
-import com.mindtravel.deepseekassistant.feature.voice.data.TtsCache
+import com.mindtravel.deepseekassistant.platform.audio.TtsCache
 import com.mindtravel.deepseekassistant.feature.voice.ui.RecordingController
 import com.mindtravel.deepseekassistant.feature.voice.ui.TtsController
 import com.mindtravel.deepseekassistant.network.DeepSeekHttp

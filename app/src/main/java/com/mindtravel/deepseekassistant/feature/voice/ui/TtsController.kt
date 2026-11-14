@@ -4,7 +4,7 @@ import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import com.mindtravel.deepseekassistant.core.Logs
 import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
-import com.mindtravel.deepseekassistant.feature.voice.data.TtsCache
+import com.mindtravel.deepseekassistant.platform.audio.TtsCache
 import com.mindtravel.deepseekassistant.platform.audio.BargeInDetector
 import com.mindtravel.deepseekassistant.platform.audio.TtsPlayer
 import com.mindtravel.deepseekassistant.ui.activity.MainActivity

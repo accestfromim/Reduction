@@ -1,7 +1,7 @@
 {
-  "versionCode": 14,
-  "versionName": "0.9.2",
-  "apk": "DeepSeekAssistant-v0.9.2.apk",
-  "sha256": "566fc62e0625502b2fcc275d4126b2aad70c8b1139840a077b6fb4a2a2ab76e4",
-  "notes": "v0.9.2: 架构自检修正；AudioGateway 移到 core；wake 服务去掉 UI 依赖。"
+  "versionCode": 15,
+  "versionName": "0.9.3",
+  "apk": "DeepSeekAssistant-v0.9.3.apk",
+  "sha256": "b657819434aa20b1b364ffb319feadc3c62aee6ea4ec9d4e353dc805a95217c0",
+  "notes": "v0.9.3: 架构自检修正，TtsCache 下沉到 platform/audio。"
 }
