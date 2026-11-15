@@ -65,6 +65,12 @@ class AndroidBridge(
     fun sendChat(id: String, messagesJson: String): Boolean = chat.send(id, messagesJson)
 
     @JavascriptInterface
+    fun pcConnect() = pc.connect()
+
+    @JavascriptInterface
+    fun pcConnected(): Boolean = pc.isConnected()
+
+    @JavascriptInterface
     fun pcInfo(id: String) = pc.info(id)
 
     @JavascriptInterface

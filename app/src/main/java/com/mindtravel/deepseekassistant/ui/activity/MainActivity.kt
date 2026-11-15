@@ -38,6 +38,7 @@ import java.io.File
 class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, UpdateHost {
 
     private lateinit var webView: WebView
+    private lateinit var graph: AppGraph
     private lateinit var bridge: AndroidBridge
     private lateinit var settingsRepository: SettingsRepository
     private val uiScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -81,7 +82,7 @@ class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, Updat
         setContentView(webView)
         WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
 
-        val graph = AppGraph(this, webView, uiScope)
+        graph = AppGraph(this, webView, uiScope)
         settingsRepository = graph.settingsRepository
         bridge = graph.bridge
         webView.addJavascriptInterface(bridge, "Android")
@@ -183,6 +184,11 @@ class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, Updat
             WakeWordService.stop(this)
             WakeWordBus.reset()
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::graph.isInitialized) graph.onResume()
     }
 
     override fun onPause() {

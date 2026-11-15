@@ -132,4 +132,8 @@ class AppGraph(
         pcController.connect()
         updateController.check()
     }
+
+    fun onResume() {
+        pcController.connect()
+    }
 }

@@ -7,11 +7,24 @@ let pcRequestId = null;
 let commandArmed = false;
 let commandTimer = null;
 
+let pcStatusTimer = null;
+
+function refreshPcConnection() {
+  const connected = callBridge('pcConnected') === true;
+  ui.setPcStatus(connected ? '已连接' : '自动连接中…', connected ? 'ok' : undefined);
+}
+
 export function openPc() {
   ui.els.pcHostInput.value = state.settings.pcHost || '';
   ui.els.pcPortInput.value = state.settings.pcPort || 22;
   ui.els.pcUserInput.value = state.settings.pcUser || '';
   ui.openSheet(ui.els.pcSheet, ui.els.pcBackdrop);
+  callBridge('pcConnect');
+  refreshPcConnection();
+  clearTimeout(pcStatusTimer);
+  for (const delay of [1500, 4000, 8000]) {
+    setTimeout(refreshPcConnection, delay);
+  }
 }
 
 function savePcFields() {

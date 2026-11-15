@@ -132,7 +132,9 @@ await page.evaluateOnNewDocument(() => {
       time: '2026-11-15T00:00:00+08:00'
     })), 10),
     pcExec: (id, command) => setTimeout(() => window.Native.onPcExec(id, `ok: ${command}`), 10),
-    pcPublicKey: () => 'ssh-rsa AAAAB3NzaC1yc2E preview dsassist@android'
+    pcPublicKey: () => 'ssh-rsa AAAAB3NzaC1yc2E preview dsassist@android',
+    pcConnect: () => {},
+    pcConnected: () => true
   };
 });
 

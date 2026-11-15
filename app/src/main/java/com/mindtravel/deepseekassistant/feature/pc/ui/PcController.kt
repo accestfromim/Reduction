@@ -16,15 +16,35 @@ class PcController(
     private val scope: CoroutineScope
 ) {
 
+    @Volatile
+    private var connecting = false
+
     fun connect() {
         val profile = profile()
         if (profile.host.isBlank() || profile.user.isBlank()) return
+        if (pcGateway.isConnected()) return
+        if (connecting) return
+        connecting = true
         scope.launch(Dispatchers.IO) {
-            runCatching { pcGateway.connect(profile) }
-                .onSuccess { Logs.add("PC SSH auto-connected") }
-                .onFailure { Logs.add("PC SSH auto-connect failed: ${it.message}") }
+            try {
+                var last: Throwable? = null
+                repeat(3) { attempt ->
+                    val result = runCatching { pcGateway.connect(profile) }
+                    if (result.isSuccess) {
+                        Logs.add("PC SSH auto-connected")
+                        return@launch
+                    }
+                    last = result.exceptionOrNull()
+                    if (attempt < 2) kotlinx.coroutines.delay(2_000L)
+                }
+                Logs.add("PC SSH auto-connect failed: ${last?.message}")
+            } finally {
+                connecting = false
+            }
         }
     }
+
+    fun isConnected(): Boolean = pcGateway.isConnected()
 
     fun info(requestId: String) {
         val profile = profile()
