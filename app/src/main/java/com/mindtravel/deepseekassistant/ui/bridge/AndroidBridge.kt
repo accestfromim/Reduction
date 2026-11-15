@@ -1,219 +1,107 @@
 package com.mindtravel.deepseekassistant.ui.bridge
 
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import android.content.Intent
-import android.os.Build
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
 import android.webkit.JavascriptInterface
-import com.mindtravel.deepseekassistant.BuildConfig
-import com.mindtravel.deepseekassistant.core.Logs
-import com.mindtravel.deepseekassistant.core.events.EventSink
-import com.mindtravel.deepseekassistant.core.settings.AppSettings
-import com.mindtravel.deepseekassistant.feature.chat.data.HistoryRepository
-import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
-import com.mindtravel.deepseekassistant.ui.activity.MainActivity
-import com.mindtravel.deepseekassistant.feature.voice.ui.RecordingController
-import com.mindtravel.deepseekassistant.feature.voice.ui.TtsController
-import com.mindtravel.deepseekassistant.feature.chat.ui.ChatController
-import com.mindtravel.deepseekassistant.feature.pc.ui.PcController
-import com.mindtravel.deepseekassistant.feature.pc.ui.UpdateController
-import com.mindtravel.deepseekassistant.platform.wake.WakeWordBus
-import com.mindtravel.deepseekassistant.platform.wake.WakeWordService
-import org.json.JSONArray
-import org.json.JSONObject
 
 class AndroidBridge(
-    private val activity: MainActivity,
-    private val settingsRepository: SettingsRepository,
-    private val historyRepository: HistoryRepository,
-    private val chatController: ChatController,
-    private val recordingController: RecordingController,
-    private val ttsController: TtsController,
-    private val pcController: PcController,
-    private val updateController: UpdateController,
-    private val emitter: EventSink
+    private val settings: SettingsBridge,
+    private val voice: VoiceBridge,
+    private val chat: ChatBridge,
+    private val pc: PcBridge,
+    private val system: SystemBridge
 ) {
+    @JavascriptInterface
+    fun loadSettings(): String = settings.loadSettings()
 
     @JavascriptInterface
-    fun loadSettings(): String = settingsRepository.load().toJson().toString()
+    fun saveSettings(json: String): Boolean = settings.saveSettings(json)
 
     @JavascriptInterface
-    fun saveSettings(json: String): Boolean = runCatching {
-        settingsRepository.save(AppSettings.fromJson(json))
-        true
-    }.getOrElse {
-        Logs.add("saveSettings failed: ${it.message}")
-        false
-    }
+    fun loadHistory(): String = settings.loadHistory()
 
     @JavascriptInterface
-    fun loadHistory(): String = historyRepository.load()
+    fun saveHistory(json: String): Boolean = settings.saveHistory(json)
 
     @JavascriptInterface
-    fun saveHistory(json: String): Boolean = runCatching {
-        JSONArray(json)
-        historyRepository.save(json)
-    }.getOrDefault(false)
+    fun clearHistory() = settings.clearHistory()
 
     @JavascriptInterface
-    fun clearHistory() {
-        historyRepository.clear()
-    }
+    fun requestMicPermission() = voice.requestMicPermission()
 
     @JavascriptInterface
-    fun requestMicPermission() = recordingController.requestMicPermission()
+    fun startRecording(id: String) = voice.startRecording(id)
 
     @JavascriptInterface
-    fun startRecording(id: String) = recordingController.startRecording(id)
+    fun stopAndTranscribe(id: String) = voice.stopAndTranscribe(id)
 
     @JavascriptInterface
-    fun stopAndTranscribe(id: String) = recordingController.stopAndTranscribe(id)
+    fun cancelRecording() = voice.cancelRecording()
 
     @JavascriptInterface
-    fun cancelRecording() = recordingController.cancelRecording()
+    fun startHandsFree(id: String, followup: Boolean) = voice.startHandsFree(id, followup)
 
     @JavascriptInterface
-    fun startHandsFree(id: String, followup: Boolean) = recordingController.startHandsFree(id, followup)
+    fun finishHandsFree() = voice.finishHandsFree()
 
     @JavascriptInterface
-    fun finishHandsFree() = recordingController.finishHandsFreeNow()
+    fun cancelHandsFree() = voice.cancelHandsFree()
 
     @JavascriptInterface
-    fun cancelHandsFree() = recordingController.cancelHandsFree()
+    fun ttsStart(id: String) = voice.ttsStart(id)
 
     @JavascriptInterface
-    fun ttsStart(id: String) = ttsController.ttsStart(id)
+    fun ttsAppend(id: String, text: String) = voice.ttsAppend(id, text)
 
     @JavascriptInterface
-    fun ttsAppend(id: String, text: String) = ttsController.ttsAppend(id, text)
+    fun ttsFinish(id: String, text: String) = voice.ttsFinish(id, text)
 
     @JavascriptInterface
-    fun ttsFinish(id: String, text: String) = ttsController.ttsFinish(id, text)
+    fun stopSpeaking() = voice.stopSpeaking()
 
     @JavascriptInterface
-    fun stopSpeaking() = ttsController.stopSpeaking()
+    fun clearAudioCache(): String = voice.clearAudioCache()
 
     @JavascriptInterface
-    fun clearAudioCache(): String = ttsController.clearAudioCache()
+    fun sendChat(id: String, messagesJson: String): Boolean = chat.send(id, messagesJson)
 
     @JavascriptInterface
-    fun sendChat(id: String, messagesJson: String): Boolean = chatController.send(id, messagesJson)
+    fun pcInfo(id: String) = pc.info(id)
 
     @JavascriptInterface
-    fun pcInfo(id: String) = pcController.info(id)
+    fun pcExec(id: String, command: String) = pc.exec(id, command)
 
     @JavascriptInterface
-    fun pcExec(id: String, command: String) = pcController.exec(id, command)
+    fun pcCheckUpdate(id: String) = pc.checkUpdate(id)
 
     @JavascriptInterface
-    fun pcCheckUpdate(id: String) = updateController.check(id)
+    fun vibrate(ms: Int) = system.vibrate(ms)
 
     @JavascriptInterface
-    fun vibrate(ms: Int) {
-        activity.runOnUiThread {
-            val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                (activity.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager)
-                    ?.defaultVibrator
-            } else {
-                @Suppress("DEPRECATION")
-                activity.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
-            } ?: return@runOnUiThread
-            val duration = ms.coerceIn(5, 100).toLong()
-            vibrator.vibrate(
-                VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE)
-            )
-        }
-    }
+    fun requestBluetoothPermission() = system.requestBluetoothPermission()
 
     @JavascriptInterface
-    fun requestBluetoothPermission() {
-        activity.requestBluetoothPermission()
-    }
+    fun copyText(text: String) = system.copyText(text)
 
     @JavascriptInterface
-    fun copyText(text: String) {
-        activity.runOnUiThread {
-            val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            clipboard.setPrimaryClip(ClipData.newPlainText("DSAssist", text))
-            android.widget.Toast.makeText(activity, "已复制", android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
+    fun getAppInfo(): String = system.appInfo()
 
     @JavascriptInterface
-    fun getAppInfo(): String {
-        val settings = settingsRepository.load()
-        return JSONObject().apply {
-            put("version", BuildConfig.VERSION_NAME)
-            put("android", Build.VERSION.RELEASE)
-            put("sdk", Build.VERSION.SDK_INT)
-            put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
-            put("model", settings.model)
-            put("voice", settings.voice)
-            put("hasKey", settings.apiKey.isNotBlank())
-            put("pcUrl", settings.pcUrl)
-            put("hasPcToken", settings.pcToken.isNotBlank())
-            put("cacheMb", ttsController.cacheSizeMb())
-        }.toString()
-    }
+    fun shareDiagnostics() = system.shareDiagnostics()
 
     @JavascriptInterface
-    fun shareDiagnostics() {
-        val settings = settingsRepository.load()
-        val info = buildString {
-            appendLine("DSAssist v${BuildConfig.VERSION_NAME}")
-            appendLine("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
-            appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
-            appendLine("Model: ${settings.model}")
-            appendLine("Voice: ${settings.voice}")
-            appendLine("Key set: ${settings.apiKey.isNotBlank()}")
-            appendLine("PC: ${settings.pcUrl} (token ${if (settings.pcToken.isNotBlank()) "set" else "empty"})")
-            appendLine("TTS cache: %.1f MB".format(ttsController.cacheSizeMb()))
-            appendLine("--- logs ---")
-            append(Logs.dump())
-        }
-        activity.runOnUiThread {
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "text/plain"
-                putExtra(Intent.EXTRA_TEXT, info)
-            }
-            activity.startActivity(Intent.createChooser(intent, "分享诊断信息"))
-        }
-    }
+    fun pauseWakeWord() = system.pauseWakeWord()
 
     @JavascriptInterface
-    fun pauseWakeWord() {
-        activity.runOnUiThread { WakeWordService.pause(activity) }
-    }
+    fun resumeWakeWord() = system.resumeWakeWord()
 
     @JavascriptInterface
-    fun resumeWakeWord() {
-        activity.runOnUiThread { WakeWordService.resume(activity) }
-    }
+    fun consumeWakePending(): Boolean = system.consumeWakePending()
 
     @JavascriptInterface
-    fun consumeWakePending(): Boolean = WakeWordBus.consumePending()
+    fun setWakeWordEnabled(enabled: Boolean): Boolean = system.setWakeWordEnabled(enabled)
 
-    @JavascriptInterface
-    fun setWakeWordEnabled(enabled: Boolean): Boolean {
-        settingsRepository.update { it.copy(wakeWordEnabled = enabled) }
-        activity.runOnUiThread { activity.setWakeWordEnabled(enabled) }
-        return true
-    }
+    fun onWakeWord() = system.onWakeWord()
 
-    fun onWakeWord() {
-        emitter.emit("onWakeWord", "")
-    }
+    fun onPause() = system.onPause()
 
-    fun onPause() {
-        recordingController.cancelActiveRecording()
-    }
-
-    fun dispose() {
-        recordingController.dispose()
-        ttsController.dispose()
-    }
+    fun dispose() = system.dispose()
 }

@@ -1,6 +1,6 @@
 # DSAssist（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v0.9.15。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v0.9.16。
 
 ## 交互
 
@@ -33,7 +33,7 @@
 
 ## 安装
 
-1. 把 `DSAssist-v0.9.15.apk` 传到手机。
+1. 把 `DSAssist-v0.9.16.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -97,7 +97,7 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 
 ## 代码结构
 
-v0.9.15 采用功能优先（feature-first）+ API 层分离结构：
+v0.9.16 采用功能优先（feature-first）+ API 层分离结构：
 
 ```text
 api/                   外部 API 实现层，顶层 Controller 不直接依赖
@@ -121,25 +121,28 @@ feature/chat/
 
 feature/voice/
   model/               TtsEngine、RollingAsr、TranscriptEndDetector
-  data/                AndroidTtsEngine（适配 TtsPlayer + TtsCache）
-  ui/                  RecordingController、TtsController
+  data/                AndroidTtsEngine（适配 TtsPipeline + TtsCache）
+  ui/                  PushToTalkSession、HandsFreeSession、RecordingController、TtsController
 
 feature/pc/
-  model/               PcGateway
+  model/               PcGateway、PcInfo、UpdateManifest
   ui/                  PcController、UpdateController
 
 feature/settings/
   data/                SettingsRepository
 
 platform/
-  audio/               WavEncoder、WavRecorder、SpeechVad、HandsFreeRecorder
-                       BargeInDetector、HeadsetMicController、TtsCache、TtsPlayer
+  audio/               PcmCapture、WavEncoder、WavRecorder、SpeechVad
+                       HandsFreeRecorder、BargeInDetector、HeadsetMicController
+                       TtsCache、TtsSynthesizer、TtsPlayback、TtsPipeline
   wake/                WakeWordBus、WakeWordDetector、WakeWordService
   update/              UpdateInstaller
 
 ui/
   activity/            MainActivity
-  bridge/              AndroidBridge、JsEmitter
+  bridge/              AndroidBridge（JS facade）
+                       SettingsBridge、VoiceBridge、ChatBridge、PcBridge、SystemBridge
+                       JsEmitter
   di/                  AppGraph（唯一对象组装点）
 ```
 
@@ -184,7 +187,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/DSAssist-v0.9.15.apk`
+产物：`dist/DSAssist-v0.9.16.apk`
 
 免按住模式依赖：
 

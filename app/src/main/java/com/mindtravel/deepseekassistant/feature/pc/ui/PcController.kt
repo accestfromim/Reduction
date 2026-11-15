@@ -21,7 +21,7 @@ class PcController(
             runCatching { pcGateway.info(settings.pcUrl, settings.pcToken) }
                 .onSuccess {
                     Logs.add("PC info ok")
-                    emitter.emit("onPcInfo", requestId, it.toString())
+                    emitter.emit("onPcInfo", requestId, it.toJson().toString())
                 }
                 .onFailure {
                     Logs.add("PC info failed: ${it.message}")

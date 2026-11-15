@@ -2,7 +2,10 @@ package com.mindtravel.deepseekassistant.api.pc
 
 import com.mindtravel.deepseekassistant.core.ApiException
 import com.mindtravel.deepseekassistant.feature.pc.model.PcGateway
+import com.mindtravel.deepseekassistant.feature.pc.model.PcInfo
+import com.mindtravel.deepseekassistant.feature.pc.model.UpdateManifest
 import com.mindtravel.deepseekassistant.core.Logs
+import com.mindtravel.deepseekassistant.core.arrayOrEmpty
 import com.mindtravel.deepseekassistant.core.stringOrNull
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -22,9 +25,20 @@ class PcClient : PcGateway {
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
-    override fun info(base: String, token: String): JSONObject {
+    override fun info(base: String, token: String): PcInfo {
         val request = request("${normalize(base)}/api/info", token).get().build()
-        return executeJson(request)
+        val json = executeJson(request)
+        return PcInfo(
+            hostname = json.stringOrNull("hostname").orEmpty(),
+            os = json.stringOrNull("os").orEmpty(),
+            user = json.stringOrNull("user").orEmpty(),
+            ips = json.arrayOrEmpty("ips").let { array ->
+                (0 until array.length()).mapNotNull { index ->
+                    array.optString(index).takeIf { it.isNotBlank() }
+                }
+            },
+            time = json.stringOrNull("time").orEmpty()
+        )
     }
 
     override fun exec(base: String, token: String, command: String): String {
@@ -43,9 +57,14 @@ class PcClient : PcGateway {
         }
     }
 
-    override fun updateManifest(base: String, token: String): JSONObject {
+    override fun updateManifest(base: String, token: String): UpdateManifest {
         val request = request("${normalize(base)}/api/update/manifest", token).get().build()
-        return executeJson(request)
+        val json = executeJson(request)
+        return UpdateManifest(
+            versionCode = json.optInt("versionCode", 0),
+            versionName = json.stringOrNull("versionName").orEmpty(),
+            sha256 = json.stringOrNull("sha256").orEmpty()
+        )
     }
 
     override fun downloadApk(base: String, token: String, destination: File): File {

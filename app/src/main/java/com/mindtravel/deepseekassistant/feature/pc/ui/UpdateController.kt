@@ -3,10 +3,8 @@ package com.mindtravel.deepseekassistant.feature.pc.ui
 import com.mindtravel.deepseekassistant.BuildConfig
 import com.mindtravel.deepseekassistant.core.ApiException
 import com.mindtravel.deepseekassistant.core.Logs
-import com.mindtravel.deepseekassistant.core.intOrNull
 import com.mindtravel.deepseekassistant.core.host.UpdateHost
 import com.mindtravel.deepseekassistant.platform.update.UpdateInstaller
-import com.mindtravel.deepseekassistant.core.stringOrNull
 import com.mindtravel.deepseekassistant.core.settings.SettingsGateway
 import com.mindtravel.deepseekassistant.feature.pc.model.PcGateway
 import com.mindtravel.deepseekassistant.core.events.EventSink
@@ -29,9 +27,7 @@ class UpdateController(
         scope.launch(Dispatchers.IO) {
             try {
                 val manifest = pcGateway.updateManifest(settings.pcUrl, settings.pcToken)
-                val remoteCode = manifest.intOrNull("versionCode") ?: 0
-                val remoteName = manifest.stringOrNull("versionName") ?: "?"
-                if (remoteCode <= BuildConfig.VERSION_CODE) {
+                if (manifest.versionCode <= BuildConfig.VERSION_CODE) {
                     emitter.emit("onUpdateNone", requestId, BuildConfig.VERSION_NAME)
                     return@launch
                 }
@@ -41,7 +37,7 @@ class UpdateController(
                 val apk = File(directory, "DeepSeekAssistant-update.apk")
                 pcGateway.downloadApk(settings.pcUrl, settings.pcToken, apk)
 
-                val expected = manifest.stringOrNull("sha256").orEmpty()
+                val expected = manifest.sha256
                 if (expected.isNotBlank() && !UpdateInstaller.sha256(apk).equals(expected, ignoreCase = true)) {
                     apk.delete()
                     throw ApiException("更新包校验失败，请重新下载")
@@ -49,7 +45,7 @@ class UpdateController(
 
                 emitter.emit("onUpdateStatus", requestId, "准备安装…")
                 host.installApk(apk)
-                emitter.emit("onUpdateReady", requestId, remoteName)
+                emitter.emit("onUpdateReady", requestId, manifest.versionName.ifBlank { "?" })
             } catch (t: Throwable) {
                 Logs.add("Update failed: ${t.message}")
                 emitter.emit("onUpdateError", requestId, t.message ?: "更新失败")

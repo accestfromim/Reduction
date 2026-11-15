@@ -7,28 +7,20 @@ class SpeechVad(
     private val minThreshold: Double = 450.0,
     private val noiseMultiplier: Double = 2.2,
     private val speechFramesToStart: Int = 2,
-    private val silenceFramesToPause: Int = 5,
-    private val silenceFramesToEnd: Int = 10,
-    private val maxSpeechMs: Long = 30_000L,
     private val waitTimeoutMs: Long = 12_000L
 ) {
 
     enum class Event {
         WAITING,
         SPEECH_START,
-        SPEECH_PAUSE,
         SPEECH_CONTINUE,
-        SPEECH_END,
         TIMEOUT
     }
 
     private var noise = 300.0
     private var speechStarted = false
     private var speechFrames = 0
-    private var silenceFrames = 0
-    private var pauseReported = false
     private var waitStartedAt = 0L
-    private var speechStartedAt = 0L
 
     @Volatile
     var lastFrameWasSpeech: Boolean = false
@@ -38,10 +30,8 @@ class SpeechVad(
         noise = 300.0
         speechStarted = false
         speechFrames = 0
-        silenceFrames = 0
-        pauseReported = false
         waitStartedAt = nowMs
-        speechStartedAt = 0L
+        lastFrameWasSpeech = false
     }
 
     fun threshold(): Double = max(minThreshold, noise * noiseMultiplier)
@@ -51,38 +41,21 @@ class SpeechVad(
         val threshold = threshold()
         lastFrameWasSpeech = rms > threshold
 
-        if (!speechStarted) {
-            if (nowMs - waitStartedAt >= waitTimeoutMs) return Event.TIMEOUT
+        if (speechStarted) return Event.SPEECH_CONTINUE
+        if (nowMs - waitStartedAt >= waitTimeoutMs) return Event.TIMEOUT
 
-            if (rms > threshold) {
-                speechFrames++
-            } else {
-                speechFrames = 0
-                noise = noise * 0.85 + rms * 0.15
-            }
-
-            if (speechFrames >= speechFramesToStart) {
-                speechStarted = true
-                speechStartedAt = nowMs
-                return Event.SPEECH_START
-            }
-            return Event.WAITING
-        }
-
-        if (rms < threshold) {
-            silenceFrames++
+        if (lastFrameWasSpeech) {
+            speechFrames++
         } else {
-            silenceFrames = 0
-            pauseReported = false
+            speechFrames = 0
+            noise = noise * 0.85 + rms * 0.15
         }
 
-        if (silenceFrames >= silenceFramesToEnd) return Event.SPEECH_END
-        if (!pauseReported && silenceFrames >= silenceFramesToPause) {
-            pauseReported = true
-            return Event.SPEECH_PAUSE
+        if (speechFrames >= speechFramesToStart) {
+            speechStarted = true
+            return Event.SPEECH_START
         }
-        if (nowMs - speechStartedAt > maxSpeechMs) return Event.SPEECH_END
-        return Event.SPEECH_CONTINUE
+        return Event.WAITING
     }
 
     private fun rms(frame: ShortArray): Double {

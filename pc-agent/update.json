@@ -1,7 +1,7 @@
 {
-  "versionCode": 27,
-  "versionName": "0.9.15",
-  "apk": "DSAssist-v0.9.15.apk",
-  "sha256": "c01f2613a2b50b8b79a1754ac357d9d7c5472d21b91d8fbababb9870761bfb2b",
-  "notes": "v0.9.15: 滚动 ASR；说完说 over（兼容完毕）结束；去掉无新增字符规则。"
+  "versionCode": 28,
+  "versionName": "0.9.16",
+  "apk": "DSAssist-v0.9.16.apk",
+  "sha256": "04c8604e8278b023243edd9f912826406ee62b2d41987f7befafb23397610a98",
+  "notes": "v0.9.16: 全组件化：PcmCapture、语音会话拆分、TTS 合成/播放拆分、PC DTO、Bridge facade、MessageMenu。"
 }

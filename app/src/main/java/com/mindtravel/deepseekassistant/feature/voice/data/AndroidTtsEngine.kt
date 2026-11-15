@@ -3,10 +3,10 @@ package com.mindtravel.deepseekassistant.feature.voice.data
 import com.mindtravel.deepseekassistant.core.Logs
 import com.mindtravel.deepseekassistant.feature.voice.model.TtsEngine
 import com.mindtravel.deepseekassistant.platform.audio.TtsCache
-import com.mindtravel.deepseekassistant.platform.audio.TtsPlayer
+import com.mindtravel.deepseekassistant.platform.audio.TtsPipeline
 
 class AndroidTtsEngine(
-    private val player: TtsPlayer,
+    private val pipeline: TtsPipeline,
     private val cache: TtsCache
 ) : TtsEngine {
 
@@ -17,14 +17,14 @@ class AndroidTtsEngine(
         onDone: () -> Unit,
         onError: (String) -> Unit
     ) {
-        player.startSession(apiKey, voice, onStart, onDone, onError)
+        pipeline.startSession(apiKey, voice, onStart, onDone, onError)
     }
 
-    override fun append(text: String) = player.append(text)
+    override fun append(text: String) = pipeline.append(text)
 
-    override fun finish() = player.finish()
+    override fun finish() = pipeline.finish()
 
-    override fun stop() = player.stop()
+    override fun stop() = pipeline.stop()
 
     override fun clearCache(): String {
         val bytes = cache.clear()
