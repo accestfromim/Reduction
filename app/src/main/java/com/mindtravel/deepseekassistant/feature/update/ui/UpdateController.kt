@@ -5,6 +5,8 @@ import com.mindtravel.deepseekassistant.api.update.UpdateClient
 import com.mindtravel.deepseekassistant.core.Logs
 import com.mindtravel.deepseekassistant.core.events.EventSink
 import com.mindtravel.deepseekassistant.core.host.UpdateHost
+import com.mindtravel.deepseekassistant.platform.update.AssetUpdater
+import com.mindtravel.deepseekassistant.platform.update.BsPatch
 import com.mindtravel.deepseekassistant.platform.update.UpdateInstaller
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -16,6 +18,7 @@ import java.io.File
 class UpdateController(
     private val host: UpdateHost,
     private val client: UpdateClient,
+    private val assetUpdater: AssetUpdater,
     private val emitter: EventSink,
     private val scope: CoroutineScope
 ) {
@@ -47,23 +50,73 @@ class UpdateController(
                 val manifest = client.fetch(MANIFEST_URL)
                 if (manifest.versionCode <= BuildConfig.VERSION_CODE) {
                     Logs.add("Update check: current ${BuildConfig.VERSION_NAME}")
+                    val assetsUpdated = assetUpdater.updateIfNeeded(MANIFEST_URL, manifest)
                     setStatus("idle", "")
+                    if (assetsUpdated) {
+                        withContext(Dispatchers.Main) {
+                            host.showAssetsReady(manifest.assetsVersion)
+                        }
+                    }
                     return@launch
                 }
                 Logs.add("Update available ${manifest.versionName} (${manifest.versionCode})")
                 setStatus("available", manifest.versionName)
                 delay(700L)
-                setStatus("downloading", manifest.versionName, 0)
                 val dir = File(host.cacheDirectory(), "updates").apply { mkdirs() }
                 val apk = File(dir, "DSAssist-${manifest.versionName}.apk")
-                client.download(MANIFEST_URL, manifest, apk) { progress ->
-                    setStatus("downloading", manifest.versionName, progress)
-                }
-                if (manifest.sha256.isNotBlank() &&
-                    !UpdateInstaller.sha256(apk).equals(manifest.sha256, ignoreCase = true)
+                var prepared = false
+                val patch = manifest.patch
+                if (patch != null &&
+                    patch.fromVersionCode == BuildConfig.VERSION_CODE &&
+                    patch.apk.isNotBlank()
                 ) {
-                    apk.delete()
-                    throw IllegalStateException("更新包校验失败")
+                    prepared = runCatching {
+                        setStatus("downloading", manifest.versionName, 0)
+                        val patchFile = File(dir, "patch-${manifest.versionCode}.bin")
+                        client.downloadFile(
+                            manifestUrl = MANIFEST_URL,
+                            relativePath = patch.apk,
+                            destination = patchFile,
+                            onProgress = { progress ->
+                                setStatus("downloading", manifest.versionName, progress)
+                            },
+                            minBytes = 1_000
+                        )
+                        if (patch.sha256.isNotBlank() &&
+                            !UpdateInstaller.sha256(patchFile)
+                                .equals(patch.sha256, ignoreCase = true)
+                        ) {
+                            throw IllegalStateException("补丁校验失败")
+                        }
+                        Logs.add("Applying APK patch ${patch.fromVersionCode}->${manifest.versionCode}")
+                        apk.delete()
+                        BsPatch.apply(host.installedApk(), patchFile, apk)
+                        patchFile.delete()
+                        if (manifest.sha256.isNotBlank() &&
+                            !UpdateInstaller.sha256(apk)
+                                .equals(manifest.sha256, ignoreCase = true)
+                        ) {
+                            apk.delete()
+                            throw IllegalStateException("补丁结果校验失败")
+                        }
+                        true
+                    }.getOrElse { error ->
+                        Logs.add("APK patch failed, falling back to full: ${error.message}")
+                        apk.delete()
+                        false
+                    }
+                }
+                if (!prepared) {
+                    setStatus("downloading", manifest.versionName, 0)
+                    client.download(MANIFEST_URL, manifest, apk) { progress ->
+                        setStatus("downloading", manifest.versionName, progress)
+                    }
+                    if (manifest.sha256.isNotBlank() &&
+                        !UpdateInstaller.sha256(apk).equals(manifest.sha256, ignoreCase = true)
+                    ) {
+                        apk.delete()
+                        throw IllegalStateException("更新包校验失败")
+                    }
                 }
                 readyApk = apk
                 readyVersion = manifest.versionName

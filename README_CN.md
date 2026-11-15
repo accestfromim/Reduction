@@ -1,6 +1,6 @@
 # DSAssist（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.21。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.22。
 
 ## 交互
 
@@ -24,7 +24,8 @@
 - 联网搜索：DeepSeek Search API
 - 计算器：本地精确计算
 - 电脑连接：example-host 反向 SSH + WSL OpenSSH，RSA 密钥登录，host key 固定，持久 SSH 会话
-- 自动更新：连接电脑时检查一次；连接期间电脑侧监听 manifest，版本变化后推送；APK SHA256 校验后在手机上弹安装确认
+- 自动更新：连接电脑时检查一次；连接期间电脑侧监听 manifest，版本变化后推送；优先应用 APK 补丁，失败回退完整 APK
+- 资源热更新：JS/CSS/HTML 可下载小资源包更新，不重装 APK
 - 更新推送依赖 App 与电脑 SSH 连接存活；App 被杀或断线时，下次连接补查
 - 播放中打断只认唤醒词“你好助手”，不再被任意语音触发；需要耳机输出
 - opencode 工具：只读分析；开启高风险写权限后可在 worktree 修改代码，每次修改前手机弹窗确认；可填写已有 opencode 会话 ID 复用上下文
@@ -40,7 +41,7 @@
 
 ## 安装
 
-1. 把 `DSAssist-v1.0.21.apk` 传到手机。
+1. 把 `DSAssist-v1.0.22.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -110,7 +111,7 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 
 ## 代码结构
 
-v1.0.21 采用功能优先（feature-first）+ API 层分离结构：
+v1.0.22 采用功能优先（feature-first）+ API 层分离结构：
 
 ```text
 api/                   外部 API 实现层，顶层 Controller 不直接依赖
@@ -200,7 +201,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/DSAssist-v1.0.21.apk`
+产物：`dist/DSAssist-v1.0.22.apk`
 
 免按住模式依赖：
 

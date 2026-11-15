@@ -100,6 +100,10 @@ window.Native = {
     brief.updateFromTool(text);
   },
 
+  onAssetsUpdated(version) {
+    ui.toast('界面资源已更新，重启 App 生效');
+  },
+
   onPcConnection(state) {
     ui.setPcConnection(state);
   },

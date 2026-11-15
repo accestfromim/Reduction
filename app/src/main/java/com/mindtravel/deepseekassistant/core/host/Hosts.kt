@@ -14,8 +14,10 @@ interface AudioOutputHost {
 
 interface UpdateHost {
     fun cacheDirectory(): File
+    fun installedApk(): File
     fun installApk(file: File)
     fun showUpdateReady(version: String, apk: File)
+    fun showAssetsReady(version: String)
 }
 
 interface ToolApprovalHost {

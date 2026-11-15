@@ -26,6 +26,7 @@ import com.mindtravel.deepseekassistant.platform.audio.TtsPlayback
 import com.mindtravel.deepseekassistant.platform.audio.TtsSynthesizer
 import com.mindtravel.deepseekassistant.platform.audio.WavRecorder
 import com.mindtravel.deepseekassistant.platform.audio.QuickAckPlayer
+import com.mindtravel.deepseekassistant.platform.update.AssetUpdater
 import com.mindtravel.deepseekassistant.ui.activity.MainActivity
 import com.mindtravel.deepseekassistant.ui.bridge.AndroidBridge
 import com.mindtravel.deepseekassistant.ui.bridge.ChatBridge
@@ -98,9 +99,12 @@ class AppGraph(
         ttsEngine = ttsEngine,
         emitter = emitter
     )
+    private val updateClient = UpdateClient()
+    private val assetUpdater = AssetUpdater(activity, updateClient, emitter)
     private val updateController = UpdateController(
         host = activity,
-        client = UpdateClient(),
+        client = updateClient,
+        assetUpdater = assetUpdater,
         emitter = emitter,
         scope = scope
     )

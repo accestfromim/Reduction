@@ -25,6 +25,7 @@ import com.mindtravel.deepseekassistant.core.host.PermissionHost
 import com.mindtravel.deepseekassistant.core.host.ToolApprovalHost
 import com.mindtravel.deepseekassistant.core.host.UpdateHost
 import com.mindtravel.deepseekassistant.platform.update.UpdateInstaller
+import com.mindtravel.deepseekassistant.platform.web.HotAssetPathHandler
 import com.mindtravel.deepseekassistant.ui.di.AppGraph
 import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
 import com.mindtravel.deepseekassistant.ui.bridge.AndroidBridge
@@ -96,7 +97,13 @@ class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, Updat
         }
 
         val assetLoader = WebViewAssetLoader.Builder()
-            .addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(this))
+            .addPathHandler(
+                "/assets/",
+                HotAssetPathHandler(
+                    this,
+                    WebViewAssetLoader.AssetsPathHandler(this)
+                )
+            )
             .build()
         webView.webViewClient = object : WebViewClientCompat() {
             override fun shouldInterceptRequest(
@@ -168,6 +175,10 @@ class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, Updat
 
     override fun cacheDirectory(): File = cacheDir
 
+    override fun installedApk(): File = File(
+        packageManager.getApplicationInfo(packageName, 0).sourceDir
+    )
+
     override fun installApk(file: File) {
         UpdateInstaller.installApk(this, file)
     }
@@ -186,6 +197,20 @@ class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, Updat
                                 android.widget.Toast.LENGTH_LONG
                             ).show()
                         }
+                }
+                .setNegativeButton("稍后", null)
+                .show()
+        }
+    }
+
+    override fun showAssetsReady(version: String) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("界面资源已更新")
+                .setMessage("资源版本 $version 已安装，是否立即重新加载界面？")
+                .setPositiveButton("立即重载") { _, _ ->
+                    webView.reload()
                 }
                 .setNegativeButton("稍后", null)
                 .show()
