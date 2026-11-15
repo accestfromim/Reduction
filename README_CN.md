@@ -1,6 +1,6 @@
 # DSAssist（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.13。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.14。
 
 ## 交互
 
@@ -36,7 +36,7 @@
 
 ## 安装
 
-1. 把 `DSAssist-v1.0.13.apk` 传到手机。
+1. 把 `DSAssist-v1.0.14.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -107,7 +107,7 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 
 ## 代码结构
 
-v1.0.13 采用功能优先（feature-first）+ API 层分离结构：
+v1.0.14 采用功能优先（feature-first）+ API 层分离结构：
 
 ```text
 api/                   外部 API 实现层，顶层 Controller 不直接依赖
@@ -197,7 +197,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/DSAssist-v1.0.13.apk`
+产物：`dist/DSAssist-v1.0.14.apk`
 
 免按住模式依赖：
 
