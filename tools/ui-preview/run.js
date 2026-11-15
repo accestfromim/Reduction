@@ -155,6 +155,14 @@ async function shot(name) {
 
 await shot('01-empty.png');
 
+await page.evaluate(() => window.Native.onUpdateState('available', '1.0.13', 0));
+await shot('09-update-available.png');
+await page.evaluate(() => window.Native.onUpdateState('downloading', '1.0.13', 42));
+await shot('10-update-downloading.png');
+await page.evaluate(() => window.Native.onUpdateState('ready', '1.0.13', 100));
+await shot('11-update-ready.png');
+await page.evaluate(() => window.Native.onUpdateState('idle', '', 0));
+
 await page.evaluate(() => {
   document.getElementById('micBtn').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerId: 1 }));
   window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, pointerId: 1 }));

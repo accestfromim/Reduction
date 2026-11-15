@@ -88,8 +88,8 @@ window.Native = {
     voice.startListeningAfterBargeIn();
   },
 
-  onUpdateState(state, version) {
-    ui.setUpdateState(state, version);
+  onUpdateState(state, version, progress) {
+    ui.setUpdateState(state, version, progress);
   },
 
   onPcConnection(state) {
@@ -211,7 +211,7 @@ function init() {
   }
 
   ui.setPcConnection(callBridge('pcState'));
-  ui.setUpdateState(callBridge('updateState'), callBridge('updateVersion'));
+  ui.setUpdateState(callBridge('updateState'), callBridge('updateVersion'), 0);
 }
 
 init();

@@ -30,7 +30,12 @@ class UpdateClient(
         }
     }
 
-    fun download(manifestUrl: String, manifest: UpdateManifest, destination: File): File {
+    fun download(
+        manifestUrl: String,
+        manifest: UpdateManifest,
+        destination: File,
+        onProgress: (Int) -> Unit = {}
+    ): File {
         val base = manifestUrl.toHttpUrl()
         val apkUrl = base.resolve(manifest.apk) ?: throw ApiException("更新包地址无效")
         val request = Request.Builder().url(apkUrl).get().build()
@@ -38,9 +43,21 @@ class UpdateClient(
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) throw ApiException("下载更新失败（HTTP ${response.code}）")
             val body = response.body ?: throw ApiException("更新包为空")
+            val total = body.contentLength()
+            var copied = 0L
             body.byteStream().use { input ->
-                destination.outputStream().use { output -> input.copyTo(output) }
+                destination.outputStream().use { output ->
+                    val buffer = ByteArray(32 * 1024)
+                    while (true) {
+                        val read = input.read(buffer)
+                        if (read <= 0) break
+                        output.write(buffer, 0, read)
+                        copied += read
+                        if (total > 0) onProgress(((copied * 100) / total).toInt().coerceIn(0, 100))
+                    }
+                }
             }
+            onProgress(100)
         }
         if (destination.length() < 100_000) {
             destination.delete()

@@ -8,6 +8,7 @@ import com.mindtravel.deepseekassistant.core.host.UpdateHost
 import com.mindtravel.deepseekassistant.platform.update.UpdateInstaller
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -50,10 +51,14 @@ class UpdateController(
                     return@launch
                 }
                 Logs.add("Update available ${manifest.versionName} (${manifest.versionCode})")
-                setStatus("downloading", manifest.versionName)
+                setStatus("available", manifest.versionName)
+                delay(700L)
+                setStatus("downloading", manifest.versionName, 0)
                 val dir = File(host.cacheDirectory(), "updates").apply { mkdirs() }
                 val apk = File(dir, "DSAssist-${manifest.versionName}.apk")
-                client.download(MANIFEST_URL, manifest, apk)
+                client.download(MANIFEST_URL, manifest, apk) { progress ->
+                    setStatus("downloading", manifest.versionName, progress)
+                }
                 if (manifest.sha256.isNotBlank() &&
                     !UpdateInstaller.sha256(apk).equals(manifest.sha256, ignoreCase = true)
                 ) {
@@ -92,9 +97,9 @@ class UpdateController(
         }
     }
 
-    private fun setStatus(next: String, version: String) {
+    private fun setStatus(next: String, version: String, progress: Int = 0) {
         status = next
         if (version.isNotBlank()) readyVersion = version
-        emitter.emit("onUpdateState", next, readyVersion)
+        emitter.emit("onUpdateState", next, readyVersion, progress)
     }
 }

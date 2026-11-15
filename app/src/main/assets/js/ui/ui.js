@@ -47,7 +47,7 @@ export const els = {
   pcPill: byId('pcPill'),
   pcPillText: byId('pcPillText'),
   updatePill: byId('updatePill'),
-  updateVersion: byId('updateVersion'),
+  updatePillText: byId('updatePillText'),
   pcBackdrop: byId('pcBackdrop'),
   pcSheet: byId('pcSheet'),
   closePc: byId('closePc'),
@@ -105,17 +105,19 @@ export function setPcConnection(state) {
   els.pcPillText.textContent = next === 'online' ? '已连接' : next === 'connecting' ? '连接中' : '未连接';
 }
 
-export function setUpdateState(state, version) {
-  const known = state === 'ready' || state === 'downloading' || state === 'checking';
-  els.updatePill.classList.toggle('hidden', !known);
-  if (!known) return;
-  els.updateVersion.textContent = version || '';
+export function setUpdateState(state, version, progress) {
+  const visible = state === 'available' || state === 'downloading' || state === 'ready';
+  els.updatePill.classList.toggle('hidden', !visible);
+  els.updatePill.classList.remove('available', 'downloading', 'ready');
+  if (!visible) return;
+  els.updatePill.classList.add(state);
   els.updatePill.disabled = state !== 'ready';
-  els.updatePill.textContent = state === 'checking'
-    ? '检查更新…'
+  els.updatePill.title = version ? `DSAssist ${version}` : '软件更新';
+  els.updatePillText.textContent = state === 'available'
+    ? '有新版本'
     : state === 'downloading'
-      ? `新版本 ${version || ''} 下载中…`
-      : `新版本 ${version || ''} · 点击安装`;
+      ? (progress ? `下载中 ${progress}%` : '下载中')
+      : '可更新';
 }
 
 export function scrollToBottom(force = false) {

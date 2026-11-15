@@ -105,19 +105,32 @@
   .pc-pill.connecting { color: #B07A4A; }
   .pc-pill.online { color: #4CAF50; }
 
-  .update-banner {
-    margin: 0 16px 8px;
-    height: 40px;
-    border-radius: 12px;
-    border: 0;
-    background: var(--text);
-    color: var(--bg);
-    font-size: 13px;
-    font-weight: 700;
+  .update-pill {
+    height: 32px;
+    padding: 0 9px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+    color: #B07A4A;
   }
 
-  .update-banner.hidden { display: none; }
-  .update-banner:disabled { opacity: 0.65; }
+  .update-pill .update-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .update-pill.available,
+  .update-pill.downloading { color: #B07A4A; }
+  .update-pill.ready { color: #4CAF50; }
+  .update-pill.hidden { display: none; }
+  .update-pill:disabled { opacity: 0.85; }
 
   .messages {
     flex: 1;
