@@ -64,9 +64,14 @@ class ChatController(
                             emitter.emit("onChatToken", requestId, text)
                         }
 
-                        override fun onToolStarted(name: String) {
+                        override fun onToolStarted(name: String, arguments: String) {
                             Logs.add("chat tool started=$name")
-                            emitter.emit("onTool", requestId, name)
+                            emitter.emit("onToolStarted", requestId, name, arguments)
+                        }
+
+                        override fun onToolFinished(name: String, durationMs: Long, success: Boolean) {
+                            Logs.add("chat tool finished=$name ${durationMs}ms success=$success")
+                            emitter.emit("onToolFinished", requestId, name, durationMs, success)
                         }
 
                         override fun onCompleted(text: String) {

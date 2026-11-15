@@ -16,6 +16,7 @@ export const state = {
   recTimer: null,
   assistantMsg: null,
   assistantBubble: null,
+  assistantTrace: null,
   textMode: false,
   longPressTimer: null,
   longPressTriggered: false,

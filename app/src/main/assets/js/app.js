@@ -51,8 +51,12 @@ window.Native = {
     chat.handleToken(id, token);
   },
 
-  onTool(id, name) {
-    chat.handleTool(id, name);
+  onToolStarted(id, name, argumentsJson) {
+    chat.handleToolStarted(id, name, argumentsJson);
+  },
+
+  onToolFinished(id, name, durationMs, success) {
+    chat.handleToolFinished(id, name, durationMs, success);
   },
 
   onChatDone(id, full) {

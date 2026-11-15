@@ -51,10 +51,10 @@ function buildMessages() {
     hints.push('需要精确计算时调用 calculator 工具');
   }
   if (state.settings.opencodeEnabled) {
-    hints.push('需要分析代码时调用 ask_opencode，让电脑上的 opencode 只读分析项目 /home/user/dsassist-iterate');
+    hints.push('需要分析代码时调用 ask_opencode，让电脑上的 opencode 只读分析项目 /home/user/DSAssist-iterate');
   }
   if (state.settings.opencodeWriteEnabled) {
-    hints.push('需要修改代码时调用 edit_opencode，只允许修改 /home/user/dsassist-iterate；修改前说明计划，修改后说明 diff 和验证结果，禁止访问项目外目录和密钥文件');
+    hints.push('需要修改代码时调用 edit_opencode，只允许修改 /home/user/DSAssist-iterate；修改前说明计划，修改后说明 diff 和验证结果，禁止访问项目外目录和密钥文件');
   }
   const system = {
     role: 'system',
@@ -93,6 +93,7 @@ export function sendText(raw) {
   assistant.bubble.classList.add('streaming');
   state.assistantMsg = assistant.message;
   state.assistantBubble = assistant.bubble;
+  state.assistantTrace = assistant.trace;
   state.chatId = uid();
   ui.setStatus('思考中…');
 
@@ -129,7 +130,7 @@ export function handleToken(id, token) {
   }
 }
 
-export function handleTool(id, name) {
+export function handleToolStarted(id, name, argumentsJson) {
   if (id !== state.chatId) return;
   state.ttsStopIgnore++;
   callBridge('stopSpeaking');
@@ -143,8 +144,15 @@ export function handleTool(id, name) {
     state.assistantMsg.content = '';
     if (state.assistantBubble) state.assistantBubble.innerHTML = '';
   }
+  ui.addToolTrace(state.assistantTrace, name, argumentsJson);
   const label = name === 'web_search' ? '联网搜索中…' : name === 'calculator' ? '计算中…' : '使用工具…';
   ui.setStatus(label);
+}
+
+export function handleToolFinished(id, name, durationMs, success) {
+  if (id !== state.chatId) return;
+  ui.finishToolTrace(state.assistantTrace, name, durationMs, success);
+  ui.setStatus(success ? '工具完成，继续回答…' : '工具失败，继续回答…');
 }
 
 export function handleDone(id, full) {
@@ -161,6 +169,7 @@ export function handleDone(id, full) {
   }
   state.assistantMsg = null;
   state.assistantBubble = null;
+  state.assistantTrace = null;
   state.busy = false;
   ui.updateControls();
   if (!state.speaking) ui.setStatus('');
@@ -188,6 +197,7 @@ export function handleError(id, message) {
   }
   state.assistantMsg = null;
   state.assistantBubble = null;
+  state.assistantTrace = null;
   state.busy = false;
   ui.updateControls();
   ui.setStatus('');
@@ -211,6 +221,7 @@ export function abandonResponseForBargeIn() {
     }
     state.assistantMsg = null;
     state.assistantBubble = null;
+    state.assistantTrace = null;
     state.chatId = null;
     state.busy = false;
     ui.updateControls();

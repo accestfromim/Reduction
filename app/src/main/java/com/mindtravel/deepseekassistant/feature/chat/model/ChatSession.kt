@@ -89,8 +89,12 @@ class ChatSession(
             )
 
             for (call in calls) {
-                callbacks.onToolStarted(call.name)
+                callbacks.onToolStarted(call.name, call.arguments)
+                val startedAt = System.nanoTime()
                 val result = tools.execute(call.name, call.arguments)
+                val durationMs = (System.nanoTime() - startedAt) / 1_000_000
+                val success = !result.startsWith("工具执行失败") && !result.startsWith("未知工具")
+                callbacks.onToolFinished(call.name, durationMs, success)
                 messages += ChatMessage(
                     role = Role.TOOL,
                     content = result,

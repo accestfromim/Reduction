@@ -162,6 +162,54 @@
 
   .msg-row.user { align-items: flex-end; }
 
+  .tool-trace {
+    width: 84%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-bottom: 2px;
+  }
+
+  .tool-trace.hidden { display: none; }
+
+  .tool-card {
+    padding: 9px 11px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+  }
+
+  .tool-head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+
+  .tool-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #B07A4A;
+  }
+
+  .tool-card.running .tool-dot { animation: blink 1s steps(2, start) infinite; }
+  .tool-card.done .tool-dot { background: #4CAF50; }
+  .tool-card.failed .tool-dot { background: #C05050; }
+
+  .tool-name { color: var(--text); font-weight: 700; }
+  .tool-time { margin-left: auto; color: var(--muted); }
+  .tool-args {
+    margin-top: 6px;
+    color: var(--muted);
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 72px;
+    overflow: hidden;
+  }
+
   .bubble {
     max-width: 84%;
     padding: 11px 14px;

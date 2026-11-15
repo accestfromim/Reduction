@@ -225,10 +225,14 @@ function createMessageNode(message) {
   meta.className = 'meta';
   meta.textContent = message.role === 'user' ? '你' : '助手';
 
+  const trace = document.createElement('div');
+  trace.className = 'tool-trace hidden';
+
   messageMenu.bind(bubble, message);
+  if (message.role === 'assistant') row.appendChild(trace);
   row.appendChild(bubble);
   row.appendChild(meta);
-  return { row, bubble };
+  return { row, bubble, trace };
 }
 
 export function renderAssistantContent(bubble, text) {
@@ -243,7 +247,56 @@ export function appendMessage(role, content) {
   els.messages.appendChild(node.row);
   updateEmptyState();
   scrollToBottom(true);
-  return { message, bubble: node.bubble };
+  return { message, bubble: node.bubble, trace: node.trace };
+}
+
+function formatToolArgs(raw) {
+  try {
+    const value = JSON.parse(raw || '{}');
+    return Object.entries(value)
+      .map(([key, item]) => `${key}: ${String(item)}`)
+      .join('\n')
+      .slice(0, 240);
+  } catch (_) {
+    return String(raw || '').slice(0, 240);
+  }
+}
+
+export function addToolTrace(trace, name, argumentsJson) {
+  if (!trace) return;
+  trace.classList.remove('hidden');
+  const card = document.createElement('div');
+  card.className = 'tool-card running';
+  card.dataset.name = name;
+  const head = document.createElement('div');
+  head.className = 'tool-head';
+  const dot = document.createElement('span');
+  dot.className = 'tool-dot';
+  const title = document.createElement('span');
+  title.className = 'tool-name';
+  title.textContent = name;
+  const time = document.createElement('span');
+  time.className = 'tool-time';
+  time.textContent = '运行中…';
+  head.append(dot, title, time);
+  card.appendChild(head);
+  const args = document.createElement('div');
+  args.className = 'tool-args';
+  args.textContent = formatToolArgs(argumentsJson);
+  card.appendChild(args);
+  trace.appendChild(card);
+  scrollToBottom();
+}
+
+export function finishToolTrace(trace, name, durationMs, success) {
+  if (!trace) return;
+  const cards = Array.from(trace.querySelectorAll('.tool-card.running'));
+  const card = cards.reverse().find((item) => item.dataset.name === name);
+  if (!card) return;
+  card.classList.remove('running');
+  card.classList.add(success ? 'done' : 'failed');
+  const time = card.querySelector('.tool-time');
+  if (time) time.textContent = `${success ? '完成' : '失败'} · ${(durationMs / 1000).toFixed(1)}s`;
 }
 
 export function removeMessage(message) {

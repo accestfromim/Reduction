@@ -97,6 +97,11 @@ await page.evaluateOnNewDocument(() => {
         window.Native.onChatToken(id, '```js\nconsole.log(1)\n```\n');
         window.Native.onChatToken(id, '完成。');
         window.Native.onChatDone(id, full);
+      } else if (lastUser.includes('工具')) {
+        window.Native.onChatToken(id, '我先查一下。');
+        setTimeout(() => window.Native.onToolStarted(id, 'web_search', JSON.stringify({ query: '荣耀 500 Pro 参数' })), 350);
+        setTimeout(() => window.Native.onToolFinished(id, 'web_search', 1234, true), 1500);
+        setTimeout(() => window.Native.onChatDone(id, '查到了，荣耀 500 Pro 的主要参数如下。'), 1700);
       } else {
         window.Native.onChatToken(id, '你好，');
         window.Native.onChatToken(id, '我在。');
@@ -193,6 +198,14 @@ await page.evaluate(({ x, y }) => {
 await new Promise((resolve) => setTimeout(resolve, 80));
 const copiedLength = await page.evaluate(() => (window.__copied || '').length);
 if (!copiedLength) throw new Error('message copy action did not run');
+await page.evaluate(() => {
+  document.getElementById('textInput').value = '';
+});
+await page.type('#textInput', '工具');
+await page.click('#sendBtn');
+await new Promise((resolve) => setTimeout(resolve, 1800));
+await shot('08-tool-trace.png');
+
 await page.click('#settingsBtn');
 await new Promise((resolve) => setTimeout(resolve, 150));
 await shot('03-settings.png');

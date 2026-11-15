@@ -134,9 +134,11 @@ class ChatSessionTest {
             tokens += text
         }
 
-        override fun onToolStarted(name: String) {
+        override fun onToolStarted(name: String, arguments: String) {
             tools += name
         }
+
+        override fun onToolFinished(name: String, durationMs: Long, success: Boolean) = Unit
 
         override fun onCompleted(text: String) {
             completed = text

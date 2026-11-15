@@ -20,7 +20,7 @@ export function openSettings() {
   ui.els.headsetMicInput.checked = state.settings.headsetMicEnabled === true;
   ui.els.opencodeEnabledInput.checked = state.settings.opencodeEnabled === true;
   ui.els.opencodeWriteInput.checked = state.settings.opencodeWriteEnabled === true;
-  ui.els.pcProjectInput.value = state.settings.pcProject || '/home/user/dsassist-iterate';
+  ui.els.pcProjectInput.value = state.settings.pcProject || '/home/user/DSAssist-iterate';
 
   const raw = callBridge('getAppInfo');
   if (typeof raw === 'string' && raw) {
@@ -53,7 +53,7 @@ function currentSettingsFromForm() {
     headsetMicEnabled: ui.els.headsetMicInput.checked,
     opencodeEnabled: ui.els.opencodeEnabledInput.checked,
     opencodeWriteEnabled: ui.els.opencodeWriteInput.checked,
-    pcProject: ui.els.pcProjectInput.value.trim() || '/home/user/dsassist-iterate',
+    pcProject: ui.els.pcProjectInput.value.trim() || '/home/user/DSAssist-iterate',
     pcHost: state.settings.pcHost || '',
     pcPort: state.settings.pcPort || 22,
     pcUser: state.settings.pcUser || ''

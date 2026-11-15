@@ -53,7 +53,7 @@ class SettingsRepository(context: Context) : SettingsGateway {
             headsetMicEnabled = prefs.getBoolean("headsetMicEnabled", false),
             opencodeEnabled = false,
             opencodeWriteEnabled = false,
-            pcProject = "/home/user/dsassist-iterate"
+            pcProject = "/home/user/DSAssist-iterate"
         )
         save(legacy)
         Logs.add("Settings migrated to v2")

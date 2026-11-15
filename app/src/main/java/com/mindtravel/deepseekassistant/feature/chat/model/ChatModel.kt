@@ -158,7 +158,8 @@ sealed interface ChatStreamEvent {
 
 interface ChatCallbacks {
     fun onToken(text: String)
-    fun onToolStarted(name: String)
+    fun onToolStarted(name: String, arguments: String)
+    fun onToolFinished(name: String, durationMs: Long, success: Boolean)
     fun onCompleted(text: String)
     fun onFailed(message: String)
 }
