@@ -1,6 +1,6 @@
 # DSAssist（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.23。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.24。
 
 ## 交互
 
@@ -31,7 +31,7 @@
 - opencode 工具：super agent 只做对话/任务卡/派发/验收；sub agent 只读分析或执行修改；修改后由独立只读 verify_opencode 验收
 - 工具过程展示：工具名、参数摘要、状态、单次耗时
 - 指令整理：用户说“整理一下/更新指令”时，update_brief 维护一个可复制、可编辑的指令框
-- 语音确认：内置音频即时播放，唤醒后说“我在”，说 over 结束后说“好的”
+- 语音确认：内置音频在主线程即时播放，唤醒后说“我在”，说 over 结束后说“好的”
 - 长朗读：按句/逗号切成最多 200 字片段连续播放，避免单次 TTS 截断
 - 免按住模式：
   - 前台服务 + 常驻通知
@@ -42,7 +42,7 @@
 
 ## 安装
 
-1. 把 `DSAssist-v1.0.23.apk` 传到手机。
+1. 把 `DSAssist-v1.0.24.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -112,7 +112,7 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 
 ## 代码结构
 
-v1.0.23 采用功能优先（feature-first）+ API 层分离结构：
+v1.0.24 采用功能优先（feature-first）+ API 层分离结构：
 
 ```text
 api/                   外部 API 实现层，顶层 Controller 不直接依赖
@@ -202,7 +202,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/DSAssist-v1.0.23.apk`
+产物：`dist/DSAssist-v1.0.24.apk`
 
 免按住模式依赖：
 
