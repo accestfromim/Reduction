@@ -4,6 +4,56 @@ import { openSettings } from '../settings/settings.js';
 import { LONG_PRESS_MS, state, uid } from '../../core/state.js';
 import * as ui from '../../ui/ui.js';
 
+// ── Hands-free: the app owns the state machine; this only draws it. ─────────
+
+const LISTENING_HINT = '说完请说：over';
+
+export function isHandsFree() {
+  return state.voice !== 'IDLE';
+}
+
+export function applyVoiceState(name, followup) {
+  const previous = state.voice;
+  state.voice = name;
+
+  if (name === 'PREPARING' || name === 'LISTENING') {
+    ui.showVoiceMode();
+    ui.showRecordingBar(LISTENING_HINT);
+    ui.setRecordingTime('听');
+  } else if (previous === 'PREPARING' || previous === 'LISTENING') {
+    ui.hideRecordingBar();
+  }
+
+  if (name === 'PREPARING') {
+    if (!followup) callBridge('vibrate', 30);
+    ui.setStatus('准备中…');
+  } else if (name === 'LISTENING') {
+    ui.setStatus(followup ? '继续说话…' : '正在听…');
+  } else if (name === 'TURN_ACK') {
+    ui.setStatus('好的');
+  } else if (name === 'IDLE' && previous !== 'IDLE' && !state.busy && !state.speaking) {
+    ui.setStatus('');
+  }
+}
+
+export function showPartial(text) {
+  if (state.voice === 'LISTENING') ui.setStatus(text || '正在听…');
+}
+
+export function showVoiceError(message) {
+  ui.toast(message || '免按住录音失败');
+}
+
+export function finishTurn() {
+  callBridge('voiceFinish');
+}
+
+export function leaveHandsFree() {
+  callBridge('voiceCancel');
+}
+
+// ── Push-to-talk ────────────────────────────────────────────────────────────
+
 function formatElapsed() {
   const seconds = Math.max(0, Math.floor((Date.now() - state.recStartedAt) / 1000));
   const mm = String(Math.floor(seconds / 60)).padStart(2, '0');
@@ -20,7 +70,7 @@ export function handleMicPermission(granted) {
 export function onMicDown(event) {
   if (event) event.preventDefault();
   if (state.recording) return;
-  if (state.wakeActive) endWakeConversation();
+  if (isHandsFree()) leaveHandsFree();
   if (state.speaking) chat.stopSpeaking();
 
   state.micPressed = true;
@@ -49,6 +99,7 @@ export function onMicUp(event) {
 
 export function onMicCancel() {
   if (!state.micPressed && !state.recording) return;
+  if (isHandsFree()) return;
   state.micPressed = false;
   clearTimeout(state.longPressTimer);
   state.longPressTimer = null;
@@ -92,8 +143,8 @@ export function endRecording(event) {
 }
 
 export function cancelRecording() {
-  if (state.wakeActive || state.followupActive) {
-    endWakeConversation();
+  if (isHandsFree()) {
+    leaveHandsFree();
     return;
   }
   state.micPressed = false;
@@ -120,151 +171,10 @@ export function handleRecordingLimit(id) {
 export function handleAsrResult(id, ok, text) {
   if (id !== state.recId) return;
   ui.hideRecordingBar();
-  state.followupActive = false;
-
   if (ok && text) {
-    if (state.busy) {
-      if (state.wakeActive) endWakeConversation();
-      return;
-    }
     chat.sendText(text);
     return;
   }
-
   ui.toast(text || '没有识别到文字');
-  if (state.wakeActive) {
-    endWakeConversation();
-  } else {
-    ui.setStatus('');
-  }
-}
-
-function startWakeListening() {
-  state.awaitWakeAck = false;
-  clearTimeout(state.wakeAckTimer);
-  state.wakeAckTimer = null;
-  state.recId = uid();
-  ui.showVoiceMode();
-  ui.showRecordingBar('说完请说：over');
-  ui.setRecordingTime('听');
-  ui.setStatus('我在听…');
-  callBridge('startHandsFree', state.recId, false);
-}
-
-export function onWakeWord() {
-  callBridge('consumeWakePending');
-  if (!state.settings.wakeWordEnabled) return;
-  if (state.recording) return;
-
-  if (state.busy || state.speaking) {
-    chat.abandonResponseForBargeIn();
-  } else {
-    chat.interruptSpeech();
-  }
-  callBridge('pauseWakeWord');
-  state.ttsStarted = false;
-  state.ttsFinished = false;
-  state.ttsSuppressed = false;
-  state.wakeActive = true;
-  state.followupActive = false;
-  state.textMode = false;
-  state.awaitWakeAck = true;
-  ui.showVoiceMode();
-  ui.showRecordingBar('说完请说：over');
-  ui.setRecordingTime('听');
-  ui.setStatus('我在…');
-  callBridge('vibrate', 30);
-  const ackStarted = callBridge('playWakeAck');
-  if (ackStarted !== true) {
-    startWakeListening();
-    return;
-  }
-  clearTimeout(state.wakeAckTimer);
-  state.wakeAckTimer = setTimeout(() => {
-    if (state.awaitWakeAck) {
-      callBridge('stopAck');
-      startWakeListening();
-    }
-  }, 2000);
-}
-
-export function onWakeAckDone() {
-  if (!state.awaitWakeAck) return;
-  startWakeListening();
-}
-
-export function onTurnEnd(id) {
-  if (id !== state.recId) return;
-  callBridge('playAck', '好的');
-}
-
-export function handleHandsFreeStart(id) {
-  if (id !== state.recId) return;
-  ui.showRecordingBar('说完请说：over');
-  ui.setRecordingTime('听');
-  ui.setStatus('正在听…');
-}
-
-export function handleHandsFreeTimeout(id) {
-  if (id !== state.recId) return;
-  endWakeConversation();
-}
-
-export function handleHandsFreeError(id, message) {
-  if (id !== state.recId) return;
-  ui.toast(message || '免按住录音失败');
-  endWakeConversation();
-}
-
-export function startFollowup() {
-  if (!state.wakeActive || state.followupActive) return;
-  if (state.recording || state.busy || state.speaking) return;
-  if (!state.settings.wakeWordEnabled) {
-    endWakeConversation();
-    return;
-  }
-  callBridge('pauseWakeWord');
-  state.followupActive = true;
-  state.recId = uid();
-  ui.showRecordingBar('继续说话，over 结束');
-  ui.setRecordingTime('听');
-  ui.setStatus('继续说话…');
-  callBridge('startHandsFree', state.recId, true);
-}
-
-export function endWakeConversation() {
-  state.wakeActive = false;
-  state.followupActive = false;
-  state.awaitWakeAck = false;
-  clearTimeout(state.wakeAckTimer);
-  state.wakeAckTimer = null;
-  callBridge('stopAck');
-  ui.hideRecordingBar();
-  callBridge('cancelHandsFree');
-  callBridge('resumeWakeWord');
   ui.setStatus('');
-}
-
-export function onChatFinished() {
-  if (!state.wakeActive) return;
-  if (
-    state.settings.bargeInEnabled &&
-    state.settings.wakeWordEnabled &&
-    state.ttsStarted &&
-    !state.ttsSuppressed &&
-    callBridge('hasHeadsetOutput') === true
-  ) {
-    callBridge('resumeWakeWord');
-  }
-  if (!state.settings.autoSpeak || state.ttsSuppressed || !state.ttsStarted) {
-    setTimeout(startFollowup, 400);
-  }
-}
-
-export function onTtsFinished() {
-  if (state.wakeActive) setTimeout(startFollowup, 250);
-}
-
-export function onChatFailed() {
-  if (state.wakeActive) endWakeConversation();
 }

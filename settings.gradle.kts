@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "DSAssist"
+rootProject.name = "Entropy"
 include(":app")

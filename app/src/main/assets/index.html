@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#000000" />
-<title>DSAssist</title>
+<title>Entropy</title>
 <link rel="icon" href="data:," />
 <link rel="stylesheet" href="./css/app.css" />
 <link rel="stylesheet" href="./vendor/katex/katex.min.css" />
@@ -15,7 +15,7 @@
       <div class="brand">
         <img class="logo" src="./img/app-logo.png" alt="" />
         <div class="brand-text">
-          <div class="app-title">DSAssist</div>
+          <div class="app-title">Entropy</div>
           <div class="status" id="status"></div>
         </div>
       </div>
@@ -45,15 +45,17 @@
       </div>
     </header>
 
-    <section class="brief-card hidden" id="briefCard">
+    <section class="brief-card" id="cardBox">
       <div class="brief-head">
-        <span class="brief-title">指令</span>
+        <span class="brief-title">备忘卡片</span>
         <div class="brief-actions">
-          <button class="text-btn" id="briefCopy">复制</button>
-          <button class="text-btn" id="briefOpen">展开</button>
+          <button class="text-btn" id="cardCopy">复制</button>
+          <button class="text-btn" id="cardOpen">展开</button>
         </div>
       </div>
-      <div class="brief-preview" id="briefPreview"></div>
+      <div class="card-chips" id="cardChips"></div>
+      <div class="card-purpose" id="cardPurpose"></div>
+      <div class="brief-preview" id="cardPreview"></div>
     </section>
 
     <main class="messages" id="messages"></main>
@@ -153,7 +155,7 @@
       </label>
 
       <label class="switch-row">
-        <span>播放中允许“你好助手”打断（需耳机）</span>
+        <span>播放中允许“Hi Entropy”打断（需耳机）</span>
         <input id="bargeInInput" type="checkbox" />
       </label>
 
@@ -163,12 +165,12 @@
       </label>
 
       <label class="switch-row">
-        <span>允许 LLM 调用 opencode（只读）</span>
+        <span>允许 sub agent 只读分析项目</span>
         <input id="opencodeEnabledInput" type="checkbox" />
       </label>
 
       <label class="switch-row">
-        <span>允许 opencode 修改代码（高风险）</span>
+        <span>允许 sub agent 修改代码和执行任务</span>
         <input id="opencodeWriteInput" type="checkbox" />
       </label>
 
@@ -195,21 +197,30 @@
   </div>
 
   <div class="backdrop hidden" id="pcBackdrop"></div>
-  <div class="backdrop hidden" id="briefBackdrop"></div>
-  <div class="sheet hidden" id="briefSheet">
+  <div class="backdrop hidden" id="cardBackdrop"></div>
+  <div class="sheet hidden" id="cardSheet">
     <div class="sheet-header">
-      <div class="sheet-title">指令整理</div>
-      <button class="icon-btn" id="closeBrief" aria-label="关闭">×</button>
+      <div class="sheet-title" id="cardSheetTitle">备忘卡片</div>
+      <button class="icon-btn" id="closeCard" aria-label="关闭">×</button>
     </div>
     <div class="sheet-body">
-      <div class="app-info">让助手把想法压缩成完整、可执行的指令。每次说“整理一下”或“更新指令”，这里会覆盖成最新版本。</div>
-      <textarea class="brief-text" id="briefText" placeholder="还没有指令。对助手说：把这个想法整理到指令框。" spellcheck="false"></textarea>
+      <div class="app-info">一张卡片是一份文本，收一类信息，随时间累积。口述时助手按“用途”判断该改哪一张，像编辑文档一样增、改、删；这里也可以直接改。</div>
+      <label class="field hidden" id="cardNameField">
+        <span>名称</span>
+        <input id="cardNameInput" placeholder="比如：科研想法·检索" autocomplete="off" maxlength="40" />
+      </label>
+      <label class="field">
+        <span>用途（这张卡片收什么）</span>
+        <input id="cardPurposeInput" placeholder="比如：向量检索方向的想法和待验证的假设" autocomplete="off" maxlength="120" />
+      </label>
+      <textarea class="brief-text" id="cardText" placeholder="卡片内容（Markdown）。新卡片可以留空。" spellcheck="false"></textarea>
       <div class="actions">
-        <button class="secondary-btn" id="briefCopySheet">复制</button>
-        <button class="primary-btn" id="briefSave">保存</button>
-        <button class="secondary-btn" id="briefClear">清空</button>
+        <button class="secondary-btn" id="cardCopySheet">复制</button>
+        <button class="primary-btn" id="cardSave">保存</button>
+        <button class="secondary-btn" id="cardDelete">删除</button>
       </div>
     </div>
+  </div>
   </div>
 
   <div class="sheet hidden" id="pcSheet">

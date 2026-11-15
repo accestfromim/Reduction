@@ -12,14 +12,16 @@ val keystoreProps = Properties().apply {
     }
 }
 
-val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 55
-val appVersionName = (project.findProperty("appVersionName") as String?) ?: "1.0.25"
+val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 72
+val appVersionName = (project.findProperty("appVersionName") as String?) ?: "1.0.42"
 
 android {
-    namespace = "com.mindtravel.deepseekassistant"
+    namespace = "com.mindtravel.entropy"
     compileSdk = 35
 
     defaultConfig {
+        // The installed app's identity. Changing it would make Android treat this as a different app:
+        // no update in place, settings and cards left behind.
         applicationId = "com.mindtravel.deepseekassistant"
         minSdk = 26
         targetSdk = 35
@@ -76,6 +78,9 @@ android {
 
     packaging {
         resources.excludes += setOf("META-INF/*.kotlin_module")
+        // The Kotlin API loads only libsherpa-onnx-jni.so (which needs libonnxruntime.so).
+        // The C and C++ API libraries in the AAR are never loaded.
+        jniLibs.excludes += setOf("**/libsherpa-onnx-c-api.so", "**/libsherpa-onnx-cxx-api.so")
     }
 }
 

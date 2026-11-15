@@ -1,22 +1,22 @@
-# DSAssist（Android）
+# Entropy（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.25。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.42。
 
 ## 交互
 
-- **免按住模式（实验）**：说“你好助手”唤醒，然后直接说话，停顿后自动发送；回答完保留 12 秒追问窗口。
+- **免按住模式（实验）**：说“Hi Entropy”唤醒，然后直接说话，停顿后自动发送；回答完保留 12 秒追问窗口。
 - 底部中间麦克风：
   - 轻点：切换到文字输入并弹出键盘。
   - 长按：按住说话，松开发送（保留作为兜底）。
 - 长按消息菜单出现在手指位置，上滑可直接选择“复制 / 朗读”；助手消息可朗读。
-- 耳机输出时，播放/生成中可直接说“你好助手”打断当前回答；手机扬声器播放时暂停唤醒词，避免 TTS 自触发。
+- 耳机输出时，播放/生成中可直接说“Hi Entropy”打断当前回答；手机扬声器播放时暂停唤醒词，避免 TTS 自触发。
 
 ## 功能
 
 - 黑白平面图标：白底 + 黑色圆弧标志，无渐变
 - 全局黑白 UI：黑底白字、灰阶层次，无彩色强调
 - 响应优化：滚动 ASR、唤醒拉起无额外延迟、TTS 首块提前、长按 320ms
-- 语音结束：说完说“over”（也兼容“完毕”）；滚动 ASR 每轮返回后 1 秒再发，末尾结束词或连续 2 次空且无语音时收尾；20 秒上限，可点“结束”手动收尾
+- 语音起止在手机本地逐帧判定：神经网络人声检测（Silero VAD）判断有没有人说话；听到“完毕”立刻结束（本地关键词检测，不经网络），说“over”由云端识别后结束；说完后静音 3 秒也会结束；12 秒没人说话则退出；单轮 60 秒上限，可点“结束”手动收尾
 - DeepSeek 文字聊天、流式回复
 - DeepSeek ASR 语音输入、TTS 朗读
 - 流式朗读 + 连续 AudioTrack 播放 + 预合成下一句，减少短句停顿
@@ -27,40 +27,43 @@
 - 自动更新：连接电脑时检查一次；连接期间电脑侧监听 manifest，版本变化后推送；优先应用 APK 补丁，失败回退完整 APK
 - 资源热更新：JS/CSS/HTML 可下载小资源包更新，不重装 APK
 - 更新推送依赖 App 与电脑 SSH 连接存活；App 被杀或断线时，下次连接补查
-- 播放中打断只认唤醒词“你好助手”，不再被任意语音触发；需要耳机输出
-- opencode 工具：super agent 只做对话/任务卡/派发/验收；sub agent 只读分析或执行修改；修改后由独立只读 verify_opencode 验收
-- 工具过程展示：工具名、参数摘要、状态、单次耗时
-- 指令整理：用户说“整理一下/更新指令”时，update_brief 维护一个可复制、可编辑的指令框
-- 语音确认：内置音频在主线程即时播放，唤醒后说“我在”，说 over 结束后说“好的”
-- 长朗读：按句/逗号切成最多 200 字片段连续播放，避免单次 TTS 截断
+- 播放中打断只认唤醒词“Hi Entropy”；需要耳机输出
+- sub agent：super agent 只做对话、任务卡、派发、验收；所有 sub agent 经 run_agent 一个接口派发，在电脑上的沙箱里后台运行，可随时查询进度；它们用手机设置里的 DeepSeek API Key 和模型
+- 诊断日志：连接电脑期间，手机每 3 秒把运行日志追加到电脑的 `~/entropy-agents/logs/phone.log`
+- 工具过程展示：工具名、状态、单次耗时、完整的输入和输出；卡片内可滚动，点标题展开
+- 备忘卡片：一张卡片是一份 Markdown 文本，收一类信息、随时间累积（比如几个方向的科研想法各一张，再加一张备忘录）；每张有一句用途，助手据此判断口述的内容该改哪一张；助手像编辑文档一样改卡片：写一份 git patch 风格的补丁（patch_cards），一次可以新建、修改、删除多张，整体生效或整体不动；read_card 读全文；平时只拿目录；界面上可新建、切换、编辑、复制、删除
+- 录音提示：开麦的同时响起一个微弱、缓慢起伏的和弦，它持续就表示麦克风仍在收音，录音中断时它会自己停下；每次关麦播“好的”（说完、没人说话、取消、出错都一样）
+- 流式朗读：首段在第一个逗号处切出先合成，之后按句切，单段最多 200 字，播放时预合成后续片段
 - 免按住模式：
   - 前台服务 + 常驻通知
-  - 手机麦克风常驻监听“你好助手”
-  - 唤醒后自动录音，说 over 或手动/上限结束
+  - 手机麦克风常驻监听“Hi Entropy”
+  - 唤醒后自动录音，说 over、点“结束”或到 60 秒上限时结束
   - 12 秒追问窗口
   - 通知栏可停止监听
+  - 开启时弹出系统的“忽略电池优化”授权；允许后锁屏也不会被系统休眠
+  - 麦克风被系统收回时（服务在后台被重启、被别的应用占用），通知栏显示“麦克风被系统收回，点此恢复监听”，回到 App 即恢复
 
 ## 安装
 
-1. 把 `DSAssist-v1.0.25.apk` 传到手机。
+1. 把 `Entropy-v1.0.42.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
-APK 约 39MB，只包含 `arm64-v8a`，适用于荣耀 500 Pro 等现代安卓手机。最低 Android 8.0（API 26）。
+APK 约 38MB，只包含 `arm64-v8a`，适用于荣耀 500 Pro 等现代安卓手机。最低 Android 8.0（API 26）。
 
 ## 免按住模式怎么用
 
 1. 设置 → 打开“免按住模式（实验）” → 保存。
 2. 系统会请求通知权限，允许。
-3. 通知栏出现“正在监听‘你好助手’”。
-4. 说“你好助手”，听到提示后直接说话。
+3. 通知栏出现“正在监听‘Hi Entropy’”。
+4. 说“Hi Entropy”，听到乐音后直接说话。
 5. 停顿约 1.5 秒后自动识别并回答。
 6. 回答完 12 秒内可以继续追问；超时后自动回到唤醒词监听。
 7. 通知栏“停止监听”可以关闭常驻监听，同时在设置里会关闭该开关。
 
 荣耀 500 Pro / MagicOS 需要设置：
 
-- 设置 → 应用 → 应用启动管理 → DSAssist → 关闭自动管理 → 允许自启动、关联启动、后台活动
+- 设置 → 应用 → 应用启动管理 → Entropy → 关闭自动管理 → 允许自启动、关联启动、后台活动
 - 设置 → 电池 → 耗电管理 → 允许后台高耗电/不限制
 - 最近任务里锁定 App，关闭省电模式
 
@@ -83,8 +86,8 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 
 - 播放中打断只在检测到耳机/蓝牙耳机输出时启用；手机扬声器播放时唤醒词会暂停，避免 TTS 自触发，可点麦克风或使用耳机打断。
 - 打断检测触发后，当前回答可能只显示了一部分；这是预期行为。
-- 语音结束后用最新滚动 ASR 结果发 LLM；手动“结束”或 20 秒上限会补一次最终整段 ASR。滚动 ASR 会重复识别增长中的整段音频，流量/费用高于流式接口。
-- 不再用“文本无新增”自动结束；如果忘记说 over，只能在 20 秒上限或手动“结束”时收尾。
+- 语音结束后用最新滚动 ASR 结果发 LLM；手动“结束”或 60 秒上限会补一次最终整段 ASR。滚动 ASR 会重复识别增长中的整段音频，流量/费用高于流式接口。
+- 忘记说 over 时，在静音、60 秒上限或手动“结束”时收尾。
 - 唤醒词使用**手机麦克风**常驻；设置里开启“耳机麦克风（实验）”后，唤醒后的录音会尝试走蓝牙耳机 SCO，失败自动回退手机麦克风。
 - 蓝牙耳机麦克风需要授予“附近的设备/Bluetooth”权限；不同荣耀/耳机组合的 SCO 行为可能不同。
 - 普通 App 无法做系统级锁屏热词；如果 App 进程被系统杀掉，唤醒会失效。
@@ -112,85 +115,126 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 
 ## 代码结构
 
-v1.0.25 采用功能优先（feature-first）+ API 层分离结构：
+四层结构，只允许向下调用、向上发事件。架构图：`docs/interaction-states-simple.html`；agent 分工与判断准则：`docs/agent-principles.md`。
 
 ```text
-api/                   外部 API 实现层，顶层 Controller 不直接依赖
-  DeepSeekHttp         HTTP / SSE 传输与错误映射
-  ApiGraph             API 实现组装点
-  chat/                DeepSeekChatGateway、ChatStreamParser、DeepSeekSearchApi
-  voice/               DeepSeekAudioApi
-  pc/                  SshPcClient、SshKeyStore、PinnedHostKeyRepository
+ui/                    UI 层：只画状态、只发意图
+  activity/            MainActivity（Android 宿主）
+  bridge/              AndroidBridge（JS facade）、VoiceBridge、ChatBridge、
+                       SettingsBridge、PcBridge、UpdateBridge、SystemBridge、JsEmitter
+  di/                  AppGraph（界面自己的接线，挂接到 AppCore）
 
-core/                  纯 Kotlin 基础能力
-  audio/AudioGateway   平台音频接口
+app/                   应用核心：随进程存活，不依赖界面
+  AppCore              组装硬件、模型、功能三层；唤醒词直接由它应答
+  UiLink               核心眼里的界面：在就转发事件、请求授权；不在就丢弃事件、拒绝需要点按的请求
+  EntropyApp           进程启动时创建核心
+
+feature/               功能层：决定什么时候做什么；状态机在这里
+  voice/               VoiceMachine（免按住状态机，纯函数：状态 + 事件 → 新状态 + 要做的事）
+                       VoiceRuntime（执行器：照清单办事，把结果作为事件送回）、VoiceState
+                       AckCue（提示音播放与超时）
+                       TurnListener、TurnRecorder、TurnEndpointer、TurnDetector（一轮用户语音）
+                       ReplyStreamer、SpokenPart、SentenceSplitter、SpeechTextExtractor（流式朗读）
+                       SpeechController、PushToTalkSession、RecordingController
+  voice/wake/          WakeWordService、WakeWordDetector、WakeWordBus
+  chat/model/          ChatSession、ChatEngine、ChatCallbacks、ToolCallAccumulator
+  chat/model/tools/    ToolRegistry、ChatToolFactory、AgentHarness 与 RunAgentTool（沙箱里的 sub agent）、
+                       CardTools（备忘卡片）、WebSearchTool、CalculatorTool
+  chat/ui/             Conversation（对话本身：历史、请求、说的和打字的都走它）、ChatController、ReplyObserver
+  chat/model/          SystemPrompt（系统提示）
+  chat/data/           HistoryRepository、CardRepository、CardPatch（卡片补丁的解析与应用）
+  pc/ui/               PcController
+  update/ui/           UpdateController
+  settings/data/       SettingsRepository
+
+model/                 模型层：输入进、结果出，无状态
+  DeepSeekHttp         HTTP / SSE 传输与错误映射
+  ModelGraph           远端模型组装点
+  chat/                ChatGateway、DeepSeekChatGateway、ChatStreamParser、
+                       SearchGateway、DeepSeekSearchApi、ChatModel（消息与请求类型）
+  voice/               DeepSeekAudioApi（ASR / TTS）、RollingAsr、
+                       TtsSynthesizer、TtsCache、VoiceDetector（Silero VAD）
+  wake/                KeywordSpotterModel（sherpa-onnx：英文模型认唤醒词，中文模型认结束词）
+
+hardware/              硬件层：设备与系统的薄封装，不含策略
+  audio/               PcmCapture、WavRecorder、WavEncoder、HeadsetMicController、
+                       AudioQueue（唯一的播放队列）、AudioTrackSink（唯一的输出流）、PcmPlayer（朗读入队）、WavPcm
+  pc/                  SshPcClient、SshKeyStore、PinnedHostKeyRepository、PcGateway
+  update/              UpdateClient、UpdateInstaller、AssetUpdater、BsPatch
+  web/                 HotAssetPathHandler
+
+core/                  各层共用的接口与基础类型
+  audio/AudioGateway   语音识别 / 合成接口
   events/EventSink     事件出口接口
   host/Hosts           权限 / 音频输出 / 更新 Host 接口
   settings/            AppSettings、SettingsGateway
-
-feature/chat/
-  model/               ChatSession、ChatEngine、ToolCallAccumulator、ChatGateway、SearchGateway
-  model/tools/         ToolRegistry、Calculator、WebSearch、ChatToolFactory
-  data/                HistoryRepository（本地历史）
-  ui/                  ChatController
-
-feature/voice/
-  model/               TtsEngine、RollingAsr、TranscriptEndDetector
-  data/                AndroidTtsEngine（适配 TtsPipeline + TtsCache）
-  ui/                  PushToTalkSession、HandsFreeSession、RecordingController、TtsController
-
-feature/pc/
-  model/               PcGateway、PcInfo、PcProfile
-  ui/                  PcController
-
-feature/settings/
-  data/                SettingsRepository
-
-platform/
-  audio/               PcmCapture、WavEncoder、WavRecorder、SpeechVad
-                       HandsFreeRecorder、BargeInDetector、HeadsetMicController
-                       TtsCache、TtsSynthesizer、TtsPlayback、TtsPipeline
-  wake/                WakeWordBus、WakeWordDetector、WakeWordService
-  update/              UpdateInstaller
-
-ui/
-  activity/            MainActivity
-  bridge/              AndroidBridge（JS facade）
-                       SettingsBridge、VoiceBridge、ChatBridge、PcBridge、SystemBridge
-                       JsEmitter
-  di/                  AppGraph（唯一对象组装点）
 ```
 
-前端按功能拆分：
+前端是 UI 层的一部分，`index.html` 只保留 DOM，CSS 在 `assets/css`：
 
 ```text
-assets/js/app.js
+assets/js/app.js                       Native 事件入口与 DOM 事件绑定
 assets/js/core/bridge.js, state.js
-assets/js/features/chat/chat.js, history-store.js, tts-text.js
-assets/js/features/voice/voice.js
+assets/js/features/chat/chat.js, history-store.js   显示对话；历史和请求都在 App 里
+assets/js/features/cards/cards.js       备忘卡片目录与编辑
+assets/js/features/voice/voice.js      渲染 onVoiceState；按住说话
 assets/js/features/settings/settings.js, settings-store.js
 assets/js/features/pc/pc.js
 assets/js/ui/ui.js, markdown.js
 ```
 
+免按住语音的桥接协议：
+
+| 方向 | 名称 | 含义 |
+| --- | --- | --- |
+| App → JS | `onVoiceState(state, followup)` | 状态变化：`IDLE` `PREPARING` `LISTENING` `TURN_ACK` `REPLYING` |
+| App → JS | `onVoicePartial(text)` | 聆听中的实时字幕 |
+| App → JS | `onReplyBegin(id, text)` | 一次新的问答开始了（说的或打字的），界面画出用户气泡和回复占位 |
+| JS → App | `submitText(text)` | 提交打字或按住说话得到的文字 |
+| App → JS | `onChatAborted(id)` | 回复被唤醒词打断 |
+| JS → App | `voiceFinish()` / `voiceCancel()` | 结束本轮 / 退出免按住对话 |
+| JS → App | `voiceState()` | 页面加载时读取当前状态 |
+| JS → App | `speak(id, text)` / `stopSpeaking()` | 朗读一条消息 / 停止朗读 |
+
 关键约束：
 
+- 语音状态只有 `VoiceMachine` 一份，是纯函数；每次转换在日志里是一行 `Voice 状态 + 事件 -> 新状态 [要做的事]`。JS 不计时、不排队、不决定迁移。
+- 对话核心不依赖界面：唤醒、录音、请求、朗读都在 `AppCore` 里，熄屏或界面被回收时照常工作；界面回来后读取当前状态和历史。
+- 所有声音（提示音、录音中的乐音、朗读）都排进 `AudioQueue`，写入同一条输出流：先入队的先响，后一段的首个采样紧接前一段的末个采样。没有第二个播放器。
+- 会打断声音输出的操作（蓝牙耳机在听歌模式和通话模式之间切换）只发生在乐音响起之前和“好的”播完之后，不在任何声音播放期间。
+- `VoiceMachineTest` 逐条检查每个转换，并用任意事件顺序验证：每次开始的录音恰好以一个“好的”结束，空闲时一定在听唤醒词。
+- 回复文本由 App 同时送给界面和朗读，JS 不参与朗读分句。
+- 一条回复的格式是 `【朗读】` + 朗读版，可选地跟 `【详情】` + 只显示的补充（依据、分析）；朗读只念朗读版，界面画成“朗读”“详情”两块。系统提示在 `feature/chat/model/SystemPrompt.kt`。
+- 下层不 import 上层：`hardware/` 与 `model/` 不依赖 `feature/`、`ui/`。
+- sub agent 一律经 `assets/harness/run-agent.sh` 在电脑上的 `bwrap` 沙箱里运行，只能写自己的文件夹；电脑需装有 `bwrap`。
 - SSE 中 `content: null` 不会变成字符串 `"null"`。
 - 工具参数只接受字符串片段，缺 id/name 会直接失败。
 - 协议层不把 `JSONObject` 传给业务层。
-- 聊天、录音、TTS、电脑、更新各自独立 Controller。
-- 滚动 ASR 收尾后，才发 LLM；支持“over/完毕”、空结果兜底、20 秒上限和手动结束。
+- 资源热更新包的 `assetsMinVersionCode` 必须不低于 72（当前桥接协议的起始版本），否则不会被使用。
 - 设置升级会自动从旧版本迁移，不会丢 API Key。
-
-前端也拆成了 `assets/js` 下的模块，`index.html` 只保留 DOM，CSS 在 `assets/css`。
 
 测试：
 
 ```bash
-./gradlew testReleaseUnitTest
+./gradlew testReleaseUnitTest          # Kotlin 单测
+cd tools/ui-preview && node run.js     # 前端截图 + 免按住状态渲染检查
 ```
 
-覆盖 SSE null、工具调用分片、工具循环、消息序列化、计算器等。
+发版：
+
+```bash
+./build.sh                                   # dist/Entropy-v<版本>.apk
+tools/release/make_update.py \
+  --from dist/Entropy-v1.0.25.apk --from-code 55 \
+  --to dist/Entropy-v1.0.26.apk --to-code 56 --to-name 1.0.26
+# 生成 patch-55-56.bin、manifest.json、SHA256SUMS.txt，并先在本机验证补丁能还原新包
+# 上传顺序：先 APK 和补丁，最后 manifest.json
+ENTROPY_UPDATE_MANIFEST=http://example.com/dsassist/manifest.json \
+ENTROPY_INSTALLED_APK=dist/Entropy-v1.0.25.apk \
+  ./gradlew testReleaseUnitTest --tests '*UpdateFlowTest*'   # 用 App 的更新代码验证线上文件
+```
+
+单测覆盖 SSE null、工具调用分片、工具循环、消息序列化、计算器、结束词检测、朗读文本清洗、朗读分句、提示音保证等。
 
 ## 从源码构建
 
@@ -202,13 +246,15 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/DSAssist-v1.0.25.apk`
+产物：`dist/Entropy-v1.0.42.apk`
 
 免按住模式依赖：
 
 - `app/libs/sherpa-onnx-arm64.aar`
-- `app/src/main/assets/kws/` 下的中文 KWS 模型
-- 唤醒词：`你好助手`
+- `app/src/main/assets/kws-en/` 下的英文 KWS 模型（唤醒词 Hi Entropy，`keywords.txt` 里是它的子词编码 `▁HI ▁ ENT RO P Y`）
+- `app/src/main/assets/kws/` 下的中文 KWS 模型（结束词“完毕”）
+- `app/src/main/assets/vad/silero_vad.onnx` 人声检测模型
+- 唤醒词：`Hi Entropy`
 
 签名配置在 `keystore.properties` 和 `keystore/release.jks`。升级安装必须使用同一个签名文件。
 

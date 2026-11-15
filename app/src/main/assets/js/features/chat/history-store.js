@@ -19,10 +19,6 @@ export function loadHistory() {
   }
 }
 
-export function saveHistory(messages) {
-  return callBridge('saveHistory', JSON.stringify(messages.slice(-100))) === true;
-}
-
 export function clearHistory() {
   callBridge('clearHistory');
 }

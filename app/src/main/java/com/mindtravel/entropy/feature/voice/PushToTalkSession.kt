@@ -1,0 +1,109 @@
+package com.mindtravel.entropy.feature.voice
+
+import com.mindtravel.entropy.core.Logs
+import com.mindtravel.entropy.core.audio.AudioGateway
+import com.mindtravel.entropy.core.events.EventSink
+import com.mindtravel.entropy.core.settings.SettingsGateway
+import com.mindtravel.entropy.hardware.audio.HeadsetMicController
+import com.mindtravel.entropy.hardware.audio.WavRecorder
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
+
+class PushToTalkSession(
+    private val settingsRepository: SettingsGateway,
+    private val audioGateway: AudioGateway,
+    private val wavRecorder: WavRecorder,
+    private val headsetMic: HeadsetMicController,
+    private val emitter: EventSink,
+    private val scope: CoroutineScope
+) {
+    private val finishing = AtomicBoolean(false)
+    private val endDetector = TurnDetector()
+
+    fun start(id: String) {
+        if (wavRecorder.isRecording() || finishing.get()) {
+            emitter.emit("onError", id, "正在处理上一段语音")
+            return
+        }
+
+        val settings = settingsRepository.load()
+        if (settings.apiKey.isBlank()) {
+            emitter.emit("onError", id, "请先在设置里填写 API Key")
+            return
+        }
+
+        endDetector.reset()
+        val useHeadset = settings.headsetMicEnabled && headsetMic.start()
+        val started = wavRecorder.start(useCommunicationSource = useHeadset) {
+            emitter.emit("onRecordingLimit", id)
+            scope.launch { finish(id) }
+        }
+        if (!started) {
+            headsetMic.stop()
+            emitter.emit("onError", id, "无法启动录音")
+            return
+        }
+        emitter.emit("onRecordingStart", id)
+    }
+
+    fun stopAndTranscribe(id: String) {
+        scope.launch { finish(id) }
+    }
+
+    fun isActive(): Boolean = wavRecorder.isRecording() || finishing.get()
+
+    fun cancel() {
+        wavRecorder.cancel()
+        headsetMic.stop()
+        finishing.set(false)
+    }
+
+    fun cancelActive() {
+        wavRecorder.cancel()
+        headsetMic.stop()
+    }
+
+    fun dispose() = cancel()
+
+    private suspend fun finish(id: String) {
+        if (!finishing.compareAndSet(false, true)) return
+        try {
+            val wav = wavRecorder.stop()
+            if (wav == null || wav.size < 1_000) {
+                emitter.emit("onAsrResult", id, false, "没有录到声音，请再试一次")
+                return
+            }
+            transcribe(id, wav)
+        } catch (t: Throwable) {
+            Logs.add("ASR failed: ${t.message}")
+            emitter.emit("onAsrResult", id, false, t.message ?: "识别失败")
+        } finally {
+            headsetMic.stop()
+            finishing.set(false)
+        }
+    }
+
+    private suspend fun transcribe(id: String, wav: ByteArray) {
+        val settings = settingsRepository.load()
+        if (settings.apiKey.isBlank()) {
+            emitter.emit("onAsrResult", id, false, "请先在设置里填写 API Key")
+            return
+        }
+        emitter.emit("onStatus", id, "识别中")
+        val raw = withContext(Dispatchers.IO) { audioGateway.transcribe(settings.apiKey, wav) }
+        val text = clean(raw)
+        if (text.isBlank()) {
+            emitter.emit("onAsrResult", id, false, "没有识别到内容，请重说")
+        } else {
+            emitter.emit("onAsrResult", id, true, text)
+        }
+    }
+
+    private fun clean(raw: String): String {
+        val body = endDetector.stripEndWord(raw)
+        return (body ?: raw).trim()
+    }
+}

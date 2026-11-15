@@ -12,12 +12,14 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <uses-feature
         android:name="android.hardware.microphone"
         android:required="true" />
 
     <application
+        android:name=".app.EntropyApp"
         android:allowBackup="false"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -39,7 +41,7 @@
         </provider>
 
         <service
-            android:name=".platform.wake.WakeWordService"
+            android:name=".feature.voice.wake.WakeWordService"
             android:exported="false"
             android:foregroundServiceType="microphone"
             android:stopWithTask="false" />

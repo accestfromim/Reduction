@@ -1,5 +1,5 @@
 import { callBridge } from './core/bridge.js';
-import * as brief from './features/brief/brief.js';
+import * as cards from './features/cards/cards.js';
 import * as chat from './features/chat/chat.js';
 import * as pc from './features/pc/pc.js';
 import * as settings from './features/settings/settings.js';
@@ -26,34 +26,26 @@ window.Native = {
     voice.handleAsrResult(id, ok, text);
   },
 
-  onHandsFreeStart(id) {
-    voice.handleHandsFreeStart(id);
+  onVoiceState(name, followup) {
+    voice.applyVoiceState(name, followup);
   },
 
-  onHandsFreeTimeout(id) {
-    voice.handleHandsFreeTimeout(id);
+  onVoicePartial(text) {
+    voice.showPartial(text);
   },
 
-  onHandsFreeError(id, message) {
-    voice.handleHandsFreeError(id, message);
-  },
-
-  onWakeWord() {
-    voice.onWakeWord();
-  },
-
-  onWakeAckDone() {
-    voice.onWakeAckDone();
-  },
-
-  onTurnEnd(id) {
-    voice.onTurnEnd(id);
+  onVoiceError(message) {
+    voice.showVoiceError(message);
   },
 
   onStatus(id, status) {
     if (status === '识别中') ui.setStatus('识别中…');
     else if (status === '思考中') ui.setStatus('思考中…');
     else ui.setStatus(status);
+  },
+
+  onReplyBegin(id, text) {
+    chat.handleBegin(id, text);
   },
 
   onChatToken(id, token) {
@@ -64,40 +56,44 @@ window.Native = {
     chat.handleToolStarted(id, name, argumentsJson);
   },
 
-  onToolFinished(id, name, durationMs, success) {
-    chat.handleToolFinished(id, name, durationMs, success);
+  onToolFinished(id, name, durationMs, success, result) {
+    chat.handleToolFinished(id, name, durationMs, success, result);
   },
 
   onChatDone(id, full) {
-    if (chat.handleDone(id, full)) voice.onChatFinished();
+    chat.handleDone(id, full);
   },
 
   onChatError(id, message) {
-    if (chat.handleError(id, message)) voice.onChatFailed();
+    chat.handleError(id, message);
   },
 
-  onTtsStart(id) {
-    chat.handleTtsStart(id);
+  onChatAborted(id) {
+    chat.handleAborted(id);
   },
 
-  onTtsDone(id) {
-    if (chat.handleTtsDone(id)) voice.onTtsFinished();
+  onTtsStart() {
+    chat.handleTtsStart();
+  },
+
+  onTtsDone() {
+    chat.handleTtsDone();
   },
 
   onTtsError(id, message) {
-    if (chat.handleTtsError(id, message)) voice.onTtsFinished();
+    chat.handleTtsError(message);
   },
 
   onTtsStopped() {
-    if (chat.handleTtsStopped()) voice.onTtsFinished();
+    chat.handleTtsStopped();
   },
 
   onUpdateState(state, version, progress) {
     ui.setUpdateState(state, version, progress);
   },
 
-  onBriefUpdated(text) {
-    brief.updateFromTool(text);
+  onCardsChanged(name) {
+    cards.onChanged(name);
   },
 
   onAssetsUpdated(version) {
@@ -138,7 +134,7 @@ window.Native = {
 window.onAndroidBack = function () {
   if (!ui.els.pcSheet.classList.contains('hidden') ||
       !ui.els.settingsSheet.classList.contains('hidden') ||
-      !ui.els.briefSheet.classList.contains('hidden')) {
+      !ui.els.cardSheet.classList.contains('hidden')) {
     ui.closeSheets();
     return true;
   }
@@ -172,9 +168,8 @@ ui.els.voiceBtn.addEventListener('click', ui.showVoiceMode);
 
 ui.els.finishRecording.addEventListener('click', (event) => {
   event.preventDefault();
-  if (state.wakeActive || state.followupActive) {
-    ui.setStatus('识别中…');
-    callBridge('finishHandsFree');
+  if (voice.isHandsFree()) {
+    voice.finishTurn();
   } else if (state.recording) {
     voice.endRecording();
   }
@@ -203,19 +198,19 @@ ui.els.pcBackdrop.addEventListener('click', ui.closeSheets);
 ui.els.pcTest.addEventListener('click', pc.testPc);
 ui.els.pcCopyKey.addEventListener('click', pc.copyPublicKey);
 ui.els.pcRunCommand.addEventListener('click', pc.runPcCommand);
-ui.els.briefOpen.addEventListener('click', brief.openBrief);
-ui.els.briefCopy.addEventListener('click', brief.copyBrief);
-ui.els.briefCopySheet.addEventListener('click', brief.copyBrief);
-ui.els.briefSave.addEventListener('click', brief.saveBrief);
-ui.els.briefClear.addEventListener('click', brief.clearBrief);
-ui.els.closeBrief.addEventListener('click', ui.closeSheets);
-ui.els.briefBackdrop.addEventListener('click', ui.closeSheets);
+ui.els.cardOpen.addEventListener('click', cards.openCard);
+ui.els.cardCopy.addEventListener('click', cards.copyCard);
+ui.els.cardCopySheet.addEventListener('click', cards.copyCard);
+ui.els.cardSave.addEventListener('click', cards.saveCard);
+ui.els.cardDelete.addEventListener('click', cards.deleteCard);
+ui.els.closeCard.addEventListener('click', ui.closeSheets);
+ui.els.cardBackdrop.addEventListener('click', ui.closeSheets);
 
 function init() {
   state.settings = loadSettings();
   state.messages = loadHistory();
-  brief.loadBrief();
-  ui.setReadHandler((text) => chat.speakText(text, true));
+  cards.loadCards();
+  ui.setReadHandler((text) => chat.speakText(text));
   ui.renderAll();
   ui.updateHint();
   ui.updateControls();
@@ -223,9 +218,10 @@ function init() {
 
   callBridge('requestMicPermission');
 
-  if (callBridge('consumeWakePending') === true) {
-    setTimeout(() => window.Native.onWakeWord(), 0);
-  }
+  try {
+    const voiceNow = JSON.parse(callBridge('voiceState') || '{}');
+    if (voiceNow.state) voice.applyVoiceState(voiceNow.state, !!voiceNow.followup);
+  } catch (_) {}
 
   if (!state.settings.apiKey) {
     setTimeout(settings.openSettings, 350);

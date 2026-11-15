@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Entropy 四层架构</title>
+<style>
+  :root {
+    --bg:#080808; --panel:#111; --line:#2b2b2b; --text:#f2f2f2; --muted:#8a8a8a;
+    --ui:#c9c9c9; --fn:#7EA6C4; --md:#d0a06a; --hw:#8fc79a;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans CJK SC",sans-serif; }
+  .page { max-width:1500px; margin:0 auto; padding:38px 44px 50px; }
+  h1 { font-size:26px; margin:0 0 8px; }
+  h2 { font-size:15px; margin:0 0 6px; color:#ddd; font-weight:600; }
+  .sub { color:var(--muted); font-size:14px; margin-bottom:22px; line-height:1.7; }
+  .cap { color:var(--muted); font-size:13px; margin:0 0 16px; line-height:1.6; }
+  .card { border:1px solid var(--line); background:var(--panel); border-radius:18px; padding:24px 26px; }
+  .card + .card { margin-top:20px; }
+  code { font-family:ui-monospace,Menlo,Consolas,monospace; font-size:12px; color:#bdbdbd; }
+  b.q { color:#fff; }
+
+  /* 1. 分层图 */
+  .stack { display:grid; grid-template-columns:1fr 170px; gap:0 18px; }
+  .layer { grid-column:1; border:1px solid var(--line); border-left:3px solid var(--c); border-radius:12px; padding:14px 16px; background:#0c0c0c; }
+  .layer-head { display:flex; align-items:baseline; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .layer-name { font-size:15px; font-weight:600; color:var(--c); }
+  .layer-rule { font-size:12.5px; color:#bbb; }
+  .layer-pkg { margin-left:auto; }
+  .mods { display:grid; grid-template-columns:repeat(5,1fr); gap:10px; }
+  .mod { border:1px solid #333; border-radius:9px; padding:9px 11px; background:#151515; }
+  .mod.new { border-style:dashed; border-color:var(--c); }
+  .mod-t { font-size:13px; font-weight:600; }
+  .mod-d { font-size:12px; color:var(--muted); margin-top:4px; line-height:1.5; }
+  .tag { font-size:10.5px; color:var(--c); border:1px solid var(--c); border-radius:999px; padding:0 6px; margin-left:6px; font-weight:400; }
+  .port { grid-column:1; display:flex; justify-content:center; gap:60px; padding:7px 0; font-size:12px; color:var(--muted); }
+  .port span b { color:#ddd; font-weight:500; }
+  .side { grid-column:2; grid-row:1 / span 7; border:1px dashed #333; border-radius:12px; padding:14px 12px; font-size:12px; color:var(--muted); line-height:1.7; align-self:stretch; }
+  .side b { display:block; color:#ddd; font-size:13px; margin-bottom:6px; }
+  .side hr { border:0; border-top:1px dashed #333; margin:12px 0; }
+
+  /* 2. 状态机 */
+  .two { display:grid; grid-template-columns:1.05fr 1fr; gap:26px; align-items:center; }
+  .mermaid { text-align:center; margin:0; }
+  .cues { display:grid; gap:12px; }
+  .cue { border:1px solid #333; border-radius:12px; padding:14px 16px; background:#0c0c0c; }
+  .cue-t { font-size:20px; font-weight:700; }
+  .cue-m { font-size:13px; color:#ddd; margin:4px 0 6px; }
+  .cue-d { font-size:12.5px; color:var(--muted); line-height:1.65; }
+
+  /* 3. 状态 × 分层 */
+  table { width:100%; border-collapse:separate; border-spacing:0; font-size:12.5px; table-layout:fixed; }
+  th, td { border-bottom:1px solid var(--line); padding:10px 11px; vertical-align:top; text-align:left; line-height:1.6; }
+  thead th { color:#ddd; font-weight:600; font-size:13px; border-bottom:1px solid #444; }
+  thead th small { display:block; color:var(--muted); font-weight:400; font-size:11.5px; }
+  thead th.ack { background:#1b1b1b; border-top:1px solid #555; border-left:1px solid #555; border-right:1px solid #555; border-radius:8px 8px 0 0; }
+  td.ack { background:#161616; border-left:1px solid #555; border-right:1px solid #555; }
+  tr:last-child td.ack { border-bottom:1px solid #555; }
+  th.row { width:92px; color:var(--c); font-weight:600; border-left:3px solid var(--c); }
+  td { color:#c8c8c8; }
+  tr.lat td, tr.lat th { color:var(--muted); border-bottom:0; font-size:12px; }
+  tr.lat th.row { color:var(--muted); border-left-color:#444; }
+
+  /* 4. 落地 */
+  .todo { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .todo div { border:1px solid #2a2a2a; border-radius:11px; padding:12px 14px; background:#0c0c0c; font-size:12.5px; color:var(--muted); line-height:1.65; }
+  .todo b { display:block; color:#eee; font-size:13px; margin-bottom:4px; font-weight:600; }
+  .todo i { font-style:normal; color:#666; font-size:11px; display:block; margin-bottom:2px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <h1>Entropy 四层架构</h1>
+  <div class="sub">
+    两条设计主线：<b class="q">流式 TTS</b> 把“首句出声”的延迟压到最低；<b class="q">乐音和“好的”</b>包住每一次录音：乐音响起就是开麦，乐音持续就是仍在录，“好的”就是关麦。<br/>
+    四层只允许向下调用、向上发事件。对话核心随进程存活，不依赖界面：熄屏、界面被系统回收，唤醒和对话照常。语音状态机是一个纯函数 <code>VoiceMachine.next(状态, 事件)</code>。
+  </div>
+
+  <!-- ───────────── 1 ───────────── -->
+  <section class="card">
+    <h2>1. 分层与模块</h2>
+    <p class="cap">每层一句话职责 + 归属包。模块名即类名或文件名。</p>
+    <div class="stack">
+
+      <div class="layer" style="--c:var(--ui)">
+        <div class="layer-head">
+          <span class="layer-name">UI 层</span>
+          <span class="layer-rule">只画状态、只发意图；不计时、不排队、不判断</span>
+          <code class="layer-pkg">assets/js · ui/</code>
+        </div>
+        <div class="mods">
+          <div class="mod"><div class="mod-t">voice.js</div><div class="mod-d">按 onVoiceState 画状态条、录音条、实时字幕</div></div>
+          <div class="mod"><div class="mod-t">chat.js</div><div class="mod-d">显示对话：流式 Markdown、工具轨迹；不存历史、不拼请求</div></div>
+          <div class="mod"><div class="mod-t">app.js</div><div class="mod-d">Native 事件入口，按钮与输入绑定</div></div>
+          <div class="mod"><div class="mod-t">AndroidBridge</div><div class="mod-d">JS ↔ Kotlin 门面，JsEmitter 发事件</div></div>
+          <div class="mod"><div class="mod-t">AppGraph</div><div class="mod-d">界面自己的接线；挂接到核心，界面消失时摘下</div></div>
+        </div>
+      </div>
+
+      <div class="port"><span>↓ 意图 <b>voiceFinish · voiceCancel · submitText · speak</b></span><span>↑ 事件 <b>onVoiceState · onVoicePartial · onReplyBegin · onChatToken</b></span></div>
+
+      <div class="layer" style="--c:var(--fn)">
+        <div class="layer-head">
+          <span class="layer-name">功能层</span>
+          <span class="layer-rule">决定“什么时候做什么”；唯一的状态源；不碰设备、不发 HTTP</span>
+          <code class="layer-pkg">feature/</code>
+        </div>
+        <div class="mods">
+          <div class="mod"><div class="mod-t">VoiceMachine</div><div class="mod-d">语音状态机，纯函数：给定状态和事件，返回新状态和要做的事；不碰任何设备</div></div>
+          <div class="mod"><div class="mod-t">VoiceRuntime</div><div class="mod-d">执行器：照状态机给的清单办事，把结果作为事件送回；自己不做任何决定</div></div>
+          <div class="mod"><div class="mod-t">TurnListener</div><div class="mod-d">一轮用户语音：本地逐帧判定起止，结束词、静音、60 秒上限</div></div>
+          <div class="mod"><div class="mod-t">ReplyStreamer</div><div class="mod-d">回复文本 → 清洗 → 分句 → 合成队列 → 播放</div></div>
+          <div class="mod"><div class="mod-t">Conversation</div><div class="mod-d">对话本身：历史、系统提示、发出请求；说的和打字的都走它，不需要界面</div></div>
+        </div>
+      </div>
+
+      <div class="port"><span>↓ 调用 <b>accept(frame) · transcribe · stream · synthesize</b></span><span>↑ 返回 <b>文本 · token 流 · PCM</b></span></div>
+
+      <div class="layer" style="--c:var(--md)">
+        <div class="layer-head">
+          <span class="layer-name">模型层</span>
+          <span class="layer-rule">输入进、结果出；无状态，不知道现在是哪一轮</span>
+          <code class="layer-pkg">model/</code>
+        </div>
+        <div class="mods">
+          <div class="mod"><div class="mod-t">KeywordSpotterModel</div><div class="mod-d">本地 sherpa-onnx：英文模型认唤醒词 Hi Entropy，中文模型认结束词“完毕”</div></div>
+          <div class="mod"><div class="mod-t">VoiceDetector</div><div class="mod-d">本地 Silero VAD，逐帧判断有无人声</div></div>
+          <div class="mod"><div class="mod-t">RollingAsr</div><div class="mod-d">每秒识别一次增长中的整段音频</div></div>
+          <div class="mod"><div class="mod-t">ChatGateway</div><div class="mod-d">流式对话 + 工具调用（SSE）</div></div>
+          <div class="mod"><div class="mod-t">TtsSynthesizer</div><div class="mod-d">单段合成 + PCM 缓存</div></div>
+        </div>
+      </div>
+
+      <div class="port"><span>↓ 调用 <b>capture.start · queue.play(pcm) · queue.setLoop</b></span><span>↑ 回调 <b>PCM 帧 · 某段声音已播完</b></span></div>
+
+      <div class="layer" style="--c:var(--hw)">
+        <div class="layer-head">
+          <span class="layer-name">硬件层</span>
+          <span class="layer-rule">设备与系统的薄封装；不含任何策略</span>
+          <code class="layer-pkg">hardware/</code>
+        </div>
+        <div class="mods">
+          <div class="mod"><div class="mod-t">PcmCapture</div><div class="mod-d">AudioRecord 16k PCM，手机 / 耳机麦克风</div></div>
+          <div class="mod"><div class="mod-t">AudioQueue</div><div class="mod-d">唯一的播放队列，写入唯一的输出流：提示音、乐音、朗读按入队顺序首尾相接</div></div>
+          <div class="mod"><div class="mod-t">AudioTrackSink</div><div class="mod-d">一条 24k 单声道流；报告已播放到第几个采样</div></div>
+          <div class="mod"><div class="mod-t">SshPcClient</div><div class="mod-d">电脑 SSH 会话；sub agent 在电脑上的沙箱里运行</div></div>
+          <div class="mod"><div class="mod-t">UpdateClient</div><div class="mod-d">APK 与资源包下载、安装</div></div>
+        </div>
+      </div>
+
+      <aside class="side">
+        <b>依赖规则</b>
+        上层调下层的接口；下层只通过回调往上报，不 import 上层。
+        <hr/>
+        <b>功能层直达硬件层</b>
+        开麦克风、播提示音不经过模型，由功能层直接调硬件层。
+        <hr/>
+        <b>判断归属</b>
+        含“如果…就…”的时序判断 → 功能层。<br/>
+        有模型权重或远端推理 → 模型层。<br/>
+        碰 Android 音频 / 系统 API → 硬件层。
+        <hr/>
+        <b>共用类型</b>
+        <code>core/</code> 放各层共用的接口：AudioGateway、EventSink、设置。
+        <hr/>
+        <b>应用核心</b>
+        <code>app/AppCore</code> 在进程启动时组装硬件、模型、功能三层，随进程存活。界面经 <code>UiLink</code> 挂上来看和点，不拥有任何东西。
+      </aside>
+    </div>
+  </section>
+
+  <!-- ───────────── 2 ───────────── -->
+  <section class="card">
+    <h2>2. 语音状态机（VoiceMachine）</h2>
+    <p class="cap">录音状态由 PREPARING → LISTENING → TURN_ACK 三段组成，进出各只有一条路。UI 层只订阅这一份状态。</p>
+    <div class="two">
+      <pre class="mermaid">
+stateDiagram-v2
+    direction TB
+    [*] --> IDLE
+    IDLE --> PREPARING: Hi Entropy
+    state "录音" as REC {
+        PREPARING --> LISTENING: 麦克风就绪，乐音响起
+        LISTENING --> TURN_ACK: 听到“完毕” / 云端识别到 over / 静音 3s / 点结束 / 满 60s / 12s 没人说话 / 取消 / 出错
+        PREPARING --> TURN_ACK: 取消（无声）
+    }
+    TURN_ACK --> REPLYING: 识别到文本
+    TURN_ACK --> PREPARING: 识别为空，重听一次
+    TURN_ACK --> IDLE: 没人说话 / 取消 / 出错
+    REPLYING --> PREPARING: 回复播完 / Hi Entropy（打断）
+    REPLYING --> IDLE: 回复失败
+      </pre>
+      <div class="cues">
+        <div class="cue">
+          <div class="cue-t">乐音</div>
+          <div class="cue-m">含义：麦克风开着，正在录，可以说。</div>
+          <div class="cue-d">进入录音状态的唯一信号，唤醒、追问、重听都一样。先把麦克风准备好（用耳机麦克风时先让蓝牙切到通话模式），就绪的那一刻开始录音，同时响起一个微弱的和弦，各音以不同的慢速率起伏。它靠麦克风送来的音频帧续命，每半秒一次：麦克风不出声音或录音中断，1.5 秒内自己停下。耳机和外放音量相同。</div>
+        </div>
+        <div class="cue">
+          <div class="cue-t">“好的”</div>
+          <div class="cue-m">含义：麦克风已关。</div>
+          <div class="cue-d">离开录音状态的唯一出口，无论原因：说完、没人说话、取消、出错。结束的同一刻乐音停、“好的”响，<b class="q">与文本定稿、LLM 请求并行</b>；首句 TTS 排在它后面接着播。蓝牙等“好的”完全播出之后才切回听歌模式。</div>
+        </div>
+        <div class="cue">
+          <div class="cue-t" style="font-size:14px;color:#ddd">一个队列</div>
+          <div class="cue-d">乐音、“好的”、朗读都排进同一个队列、写入同一条流。顺序由入队顺序决定，衔接处是相邻的两个采样，不存在重叠或空白。</div>
+        </div>
+        <div class="cue">
+          <div class="cue-t" style="font-size:14px;color:#ddd">保证方式</div>
+          <div class="cue-d">状态机是纯函数，规则可以直接调用来验证。<code>VoiceMachineTest</code> 逐条检查每个转换，并用任意事件顺序验证：每次开始的录音恰好以一个“好的”结束，没开始的录音不会说“好的”，空闲时一定在听唤醒词。</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ───────────── 3 ───────────── -->
+  <section class="card">
+    <h2>3. 每个状态里，每层各做什么</h2>
+    <p class="cap">横向是时间，纵向是分层。按列看一个状态的完整行为，按行检查一层有没有越界。</p>
+    <table>
+      <thead>
+        <tr>
+          <th class="row" style="border-left-color:transparent"></th>
+          <th>IDLE<small>待唤醒</small></th>
+          <th class="ack">PREPARING<small>准备麦克风</small></th>
+          <th>LISTENING<small>聆听</small></th>
+          <th class="ack">TURN_ACK<small>“好的”</small></th>
+          <th>REPLYING<small>回复中 · 流式 TTS</small></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th class="row" style="--c:var(--ui)">UI 层</th>
+          <td>状态条为空</td>
+          <td class="ack">状态条“准备中”，录音条出现；唤醒时震动</td>
+          <td>实时字幕；“结束”按钮</td>
+          <td class="ack">状态条“好的”；有文本时出用户气泡</td>
+          <td>流式文字、工具轨迹；状态条“回复中 / 播放中”</td>
+        </tr>
+        <tr>
+          <th class="row" style="--c:var(--fn)">功能层</th>
+          <td>等唤醒词事件</td>
+          <td class="ack">准备麦克风；就绪即开始录音</td>
+          <td>TurnEndpointer 逐帧判定起止：听到“完毕”立刻结束、或静音 3s、或 12s 没人说话；满 60s 强制结束；每半秒音频为蜂鸣续命一次</td>
+          <td class="ack">播“好的”；同时定稿文本，文本一到就交给 Conversation</td>
+          <td>ReplyStreamer：只念朗读版（<code>【详情】</code> 之前）；首段在第一个逗号（≥ 6 字）切出去合成；之后按句切，单段 ≤ 200 字；播放时预合成后续 3 段</td>
+        </tr>
+        <tr>
+          <th class="row" style="--c:var(--md)">模型层</th>
+          <td>KWS 持续跑</td>
+          <td class="ack">无模型调用</td>
+          <td>Silero VAD（人声）+ KWS（结束词“完毕”）在本地逐帧运行；滚动 ASR 出实时字幕并识别“over”</td>
+          <td class="ack">滚动结果直接定稿，或整段识别；随后 LLM 首 token</td>
+          <td>LLM token 流；TTS 逐段合成，命中缓存直接返回</td>
+        </tr>
+        <tr>
+          <th class="row" style="--c:var(--hw)">硬件层</th>
+          <td>麦克风 → KWS（前台服务常驻）</td>
+          <td class="ack">KWS 让出麦克风；蓝牙切到通话模式（用耳机麦克风时）；麦克风打开</td>
+          <td>麦克风 PCM；队列空闲时循环写入乐音</td>
+          <td class="ack">清空队列，“好的”入队；麦克风关闭；播完后归还蓝牙通话模式</td>
+          <td>朗读片段排进 AudioQueue，接在“好的”之后；耳机输出时麦克风交还 KWS 以支持打断</td>
+        </tr>
+        <tr class="lat">
+          <th class="row">延迟目标</th>
+          <td>—</td>
+          <td class="ack">唤醒 → 乐音响起：手机麦克风 ≤ 300ms；蓝牙耳机麦克风取决于模式切换</td>
+          <td>—</td>
+          <td class="ack">说完 → 出声 ≤ 300ms</td>
+          <td>“好的”结束 → 首句出声 ≤ 1.5s；段间无停顿</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ───────────── 4 ───────────── -->
+  <section class="card">
+    <h2>4. 状态机的接口：事件进，清单出</h2>
+    <p class="cap"><code>VoiceMachine.next(状态, 事件) → (新状态, 要做的事)</code>。函数本身什么都不执行；执行器照清单办事，再把结果作为事件送回。每次转换在日志里是一行。</p>
+    <pre style="margin:0 0 16px;padding:12px 14px;border:1px solid #2a2a2a;border-radius:10px;background:#0c0c0c;color:#bdbdbd;font:12px/1.7 ui-monospace,Menlo,Consolas,monospace;overflow-x:auto">Voice IDLE + WakeWord -> PREPARING [AbortReply, PauseWake, PrepareMic(turn=1, followup=false)]
+Voice PREPARING + MicReady(turn=1) -> LISTENING [StartRecording(turn=1, followup=false)]
+Voice LISTENING + TurnSpoken(turn=1) -> TURN_ACK [SayOk(turn=1), Transcribe(turn=1)]
+Voice TURN_ACK + Transcribed(1, 12 chars) -> TURN_ACK [Submit(1, 12 chars)]
+Voice TURN_ACK + ReplyStarted(id=…) -> REPLYING []
+Voice REPLYING + OkDone(turn=1) -> REPLYING [ReleaseRoute, ArmBargeIn]
+Voice REPLYING + ReplyEnded(id=…, ok=true) -> PREPARING [PauseWake, PrepareMic(turn=2, followup=true)]</pre>
+    <div class="todo">
+      <div><i>事件 · 来自硬件 / 模型</i><b>麦克风与唤醒词</b><code>WakeWord</code>、<code>MicReady</code>、<code>MicFailed</code>、<code>TurnSpoken</code>、<code>TurnSilent</code>、<code>Transcribed</code>、<code>OkDone</code>。</div>
+      <div><i>事件 · 来自对话</i><b>回复的起止</b><code>ReplyStarted</code>、<code>ReplyEnded(ok)</code>、<code>ReplyOverdue</code>（话发出去了却没有回复开始）。</div>
+      <div><i>事件 · 来自用户</i><b>两个按钮</b><code>UserFinish</code> 结束本轮；<code>UserCancel</code> 退出对话。</div>
+      <div><i>清单 · 麦克风</i><b>录音</b><code>PrepareMic</code>、<code>StartRecording</code>（同时起乐音）、<code>FinishRecording</code>、<code>DiscardRecording</code>、<code>ReleaseRoute</code>。</div>
+      <div><i>清单 · 声音与文字</i><b>收尾</b><code>SayOk</code>（停乐音、播“好的”）、<code>Transcribe</code>、<code>Submit</code>（交给 Conversation）、<code>ShowError</code>。</div>
+      <div><i>清单 · 唤醒词</i><b>麦克风归属</b><code>PauseWake</code>、<code>ResumeWake</code>、<code>ArmBargeIn</code>（仅耳机输出时生效）、<code>AbortReply</code>。</div>
+    </div>
+    <p class="cap" style="margin:16px 0 0">每次录音有一个编号 <code>turn</code>。关于录音的事件都带编号，属于更早一次录音的事件会被忽略，所以迟到的回调不会打乱当前状态。</p>
+  </section>
+</div>
+<script src="./mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'dark',
+    securityLevel: 'loose',
+    themeVariables: {
+      background: '#111111', primaryColor: '#171717', primaryTextColor: '#f2f2f2',
+      primaryBorderColor: '#555', lineColor: '#8a8a8a', secondaryColor: '#111',
+      tertiaryColor: '#111', fontSize: '15px',
+      fontFamily: '-apple-system,BlinkMacSystemFont,Segoe UI,Noto Sans CJK SC,sans-serif'
+    }
+  });
+</script>
+</body>
+</html>

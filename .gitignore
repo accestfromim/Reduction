@@ -9,3 +9,4 @@ keystore.properties
 keystore/
 tools/ui-preview/node_modules/
 *.log
+__pycache__/

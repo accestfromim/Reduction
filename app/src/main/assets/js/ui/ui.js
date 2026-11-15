@@ -49,17 +49,23 @@ export const els = {
   pcPillText: byId('pcPillText'),
   updatePill: byId('updatePill'),
   updatePillText: byId('updatePillText'),
-  briefCard: byId('briefCard'),
-  briefPreview: byId('briefPreview'),
-  briefCopy: byId('briefCopy'),
-  briefOpen: byId('briefOpen'),
-  briefBackdrop: byId('briefBackdrop'),
-  briefSheet: byId('briefSheet'),
-  closeBrief: byId('closeBrief'),
-  briefText: byId('briefText'),
-  briefCopySheet: byId('briefCopySheet'),
-  briefSave: byId('briefSave'),
-  briefClear: byId('briefClear'),
+  cardBox: byId('cardBox'),
+  cardChips: byId('cardChips'),
+  cardPurpose: byId('cardPurpose'),
+  cardPreview: byId('cardPreview'),
+  cardNameField: byId('cardNameField'),
+  cardNameInput: byId('cardNameInput'),
+  cardPurposeInput: byId('cardPurposeInput'),
+  cardCopy: byId('cardCopy'),
+  cardOpen: byId('cardOpen'),
+  cardBackdrop: byId('cardBackdrop'),
+  cardSheet: byId('cardSheet'),
+  cardSheetTitle: byId('cardSheetTitle'),
+  closeCard: byId('closeCard'),
+  cardText: byId('cardText'),
+  cardCopySheet: byId('cardCopySheet'),
+  cardSave: byId('cardSave'),
+  cardDelete: byId('cardDelete'),
   pcBackdrop: byId('pcBackdrop'),
   pcSheet: byId('pcSheet'),
   closePc: byId('closePc'),
@@ -124,7 +130,7 @@ export function setUpdateState(state, version, progress) {
   if (!visible) return;
   els.updatePill.classList.add(state);
   els.updatePill.disabled = state !== 'ready';
-  els.updatePill.title = version ? `DSAssist ${version}` : '软件更新';
+  els.updatePill.title = version ? `Entropy ${version}` : '软件更新';
   els.updatePillText.textContent = state === 'available'
     ? '有新版本'
     : state === 'downloading'
@@ -188,10 +194,10 @@ export function closeSheets() {
   for (const element of [
     els.settingsSheet,
     els.pcSheet,
-    els.briefSheet,
+    els.cardSheet,
     els.settingsBackdrop,
     els.pcBackdrop,
-    els.briefBackdrop
+    els.cardBackdrop
   ]) {
     element.classList.add('hidden');
   }
@@ -256,9 +262,30 @@ function createMessageNode(message) {
   return { row, bubble, trace };
 }
 
+const SPOKEN_TAG = '【朗读】';
+const DETAIL_TAG = '【详情】';
+
+/** Splits a reply into the part that is read aloud and the part that is only shown. */
+export function splitReply(text) {
+  // A tag still arriving at the very end is not shown half-written.
+  let raw = String(text || '').replace(/【[朗读详情]{0,2}$/, '');
+  const at = raw.indexOf(DETAIL_TAG);
+  const detail = at >= 0 ? raw.slice(at + DETAIL_TAG.length).trim() : '';
+  let spoken = (at >= 0 ? raw.slice(0, at) : raw).trim();
+  if (spoken.startsWith(SPOKEN_TAG)) spoken = spoken.slice(SPOKEN_TAG.length).trim();
+  return { spoken, detail, hasDetail: at >= 0 };
+}
+
 export function renderAssistantContent(bubble, text) {
   if (!bubble) return;
-  bubble.innerHTML = renderMarkdown(text);
+  const { spoken, detail, hasDetail } = splitReply(text);
+  if (!hasDetail) {
+    bubble.innerHTML = renderMarkdown(spoken);
+    return;
+  }
+  bubble.innerHTML =
+    '<div class="reply-part spoken"><div class="reply-label">朗读</div>' + renderMarkdown(spoken) + '</div>' +
+    '<div class="reply-part detail"><div class="reply-label">详情 · 只显示</div>' + renderMarkdown(detail) + '</div>';
 }
 
 export function appendMessage(role, content) {
@@ -276,11 +303,23 @@ function formatToolArgs(raw) {
     const value = JSON.parse(raw || '{}');
     return Object.entries(value)
       .map(([key, item]) => `${key}: ${String(item)}`)
-      .join('\n')
-      .slice(0, 240);
+      .join('\n');
   } catch (_) {
-    return String(raw || '').slice(0, 240);
+    return String(raw || '');
   }
+}
+
+function toolSection(label, text) {
+  const section = document.createElement('div');
+  section.className = 'tool-section';
+  const title = document.createElement('div');
+  title.className = 'tool-label';
+  title.textContent = label;
+  const body = document.createElement('div');
+  body.className = 'tool-text';
+  body.textContent = text;
+  section.append(title, body);
+  return section;
 }
 
 export function addToolTrace(trace, name, argumentsJson) {
@@ -299,17 +338,25 @@ export function addToolTrace(trace, name, argumentsJson) {
   const time = document.createElement('span');
   time.className = 'tool-time';
   time.textContent = '运行中…';
-  head.append(dot, title, time);
+  const toggle = document.createElement('span');
+  toggle.className = 'tool-toggle';
+  toggle.textContent = '展开';
+  head.append(dot, title, time, toggle);
   card.appendChild(head);
-  const args = document.createElement('div');
-  args.className = 'tool-args';
-  args.textContent = formatToolArgs(argumentsJson);
-  card.appendChild(args);
+  // The body scrolls on its own; tapping the head switches between a peek and the full view.
+  const body = document.createElement('div');
+  body.className = 'tool-body';
+  body.appendChild(toolSection('输入', formatToolArgs(argumentsJson)));
+  card.appendChild(body);
+  head.addEventListener('click', () => {
+    const open = card.classList.toggle('open');
+    toggle.textContent = open ? '收起' : '展开';
+  });
   trace.appendChild(card);
   scrollToBottom();
 }
 
-export function finishToolTrace(trace, name, durationMs, success) {
+export function finishToolTrace(trace, name, durationMs, success, result) {
   if (!trace) return;
   const cards = Array.from(trace.querySelectorAll('.tool-card.running'));
   const card = cards.reverse().find((item) => item.dataset.name === name);
@@ -318,6 +365,8 @@ export function finishToolTrace(trace, name, durationMs, success) {
   card.classList.add(success ? 'done' : 'failed');
   const time = card.querySelector('.tool-time');
   if (time) time.textContent = `${success ? '完成' : '失败'} · ${(durationMs / 1000).toFixed(1)}s`;
+  const body = card.querySelector('.tool-body');
+  if (body && result) body.appendChild(toolSection('输出', String(result)));
 }
 
 export function removeMessage(message) {

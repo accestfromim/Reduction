@@ -86,13 +86,12 @@ export function testTts() {
   }
   state.settings = result.settings;
   ui.updateHint();
-  speakText('你好，我是 DSAssist，现在正在测试朗读。', true);
+  speakText('你好，我是 Entropy，现在正在测试朗读。');
   ui.toast('正在测试朗读，请确认媒体音量已打开');
 }
 
 export function clearAudioCache() {
   const result = callBridge('clearAudioCache');
-  state.ttsSuppressed = true;
   ui.toast(typeof result === 'string' ? result : '已清理音频缓存');
 }
 

@@ -213,15 +213,48 @@
 
   .tool-name { color: var(--text); font-weight: 700; }
   .tool-time { margin-left: auto; color: var(--muted); }
-  .tool-args {
+  .tool-head { cursor: pointer; }
+  .tool-toggle { margin-left: 8px; color: var(--muted); }
+
+  /* A peek by default; scrolls inside the card. Tapping the head opens the full view. */
+  .tool-body {
     margin-top: 6px;
+    max-height: 104px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+  .tool-card.open .tool-body { max-height: 60vh; }
+
+  .tool-section + .tool-section {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .tool-label { color: var(--text); opacity: 0.7; margin-bottom: 3px; }
+  .tool-text {
     color: var(--muted);
     line-height: 1.45;
     white-space: pre-wrap;
     word-break: break-word;
-    max-height: 72px;
-    overflow: hidden;
+    user-select: text;
   }
+
+  .reply-part + .reply-part {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+  }
+  .reply-label {
+    font-size: 11px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .reply-part.spoken { font-size: 1.04em; }
+  .reply-part.detail { color: var(--muted); }
+  .reply-part.detail a, .reply-part.detail code, .reply-part.detail pre { color: var(--text); }
 
   .bubble {
     max-width: 84%;
@@ -736,6 +769,28 @@
   }
 
   .brief-actions .text-btn { margin-left: 0; }
+
+  .card-chips {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    margin: 8px 0 2px;
+    scrollbar-width: none;
+  }
+  .card-chips::-webkit-scrollbar { display: none; }
+  .card-chip {
+    flex: none;
+    padding: 4px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .card-chip.active { color: var(--text); border-color: var(--text); }
+  .card-chip.add { border-style: dashed; }
+  .card-purpose { margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .brief-actions .text-btn.hidden { display: none; }
 
   .brief-preview {
     margin-top: 6px;
