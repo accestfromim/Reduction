@@ -49,6 +49,7 @@ export function handleBegin(id, text) {
 /** Ends the reply being drawn. An empty assistant bubble is removed. */
 function closeReply() {
   if (state.assistantBubble) state.assistantBubble.classList.remove('streaming');
+  ui.settleToolTrace(state.assistantTrace);
   if (state.assistantMsg && !state.assistantMsg.content.trim()) {
     ui.removeMessage(state.assistantMsg);
   }
@@ -76,7 +77,7 @@ export function handleToken(id, token) {
   ui.scrollToBottom();
 }
 
-export function handleToolStarted(id, name, argumentsJson) {
+export function handleToolStarted(id, name, summary, argumentsJson) {
   if (id !== state.chatId) return;
   // What came before a tool call is a preamble; the answer starts over after the tool.
   state.speaking = false;
@@ -84,7 +85,7 @@ export function handleToolStarted(id, name, argumentsJson) {
     state.assistantMsg.content = '';
     if (state.assistantBubble) state.assistantBubble.innerHTML = '';
   }
-  ui.addToolTrace(state.assistantTrace, name, argumentsJson);
+  ui.addToolTrace(state.assistantTrace, name, summary, argumentsJson);
   const label = name === 'web_search' ? '联网搜索中…' : name === 'calculator' ? '计算中…' : name === 'run_agent' ? 'sub agent 工作中…' : '使用工具…';
   ui.setStatus(label);
 }

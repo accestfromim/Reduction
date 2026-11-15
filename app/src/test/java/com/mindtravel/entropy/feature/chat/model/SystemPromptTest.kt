@@ -15,18 +15,37 @@ class SystemPromptTest {
         webSearchEnabled = web, calculatorEnabled = calc, opencodeEnabled = read, opencodeWriteEnabled = write, pcProject = project
     )
 
-    /** The reference texts were produced by the wording this prompt was ported from. */
+    private fun built(): Map<String, String> = mapOf(
+        "all" to SystemPrompt.build(
+            settings(true, true, true, true, "/home/u/p"), "2026-01-02",
+            listOf("- 备忘：零碎待办（12 字）", "- 想法：（没有写用途）（3 字）")
+        ),
+        "readonly" to SystemPrompt.build(settings(false, true, true, false, "/home/u/p"), "2026-01-02", emptyList()),
+        "bare" to SystemPrompt.build(settings(false, false, false, false, "/x"), "2026-01-02", emptyList())
+    )
+
+    /**
+     * The reference texts are the wording as it was last read and approved. A change to the
+     * prompt shows up here; set ENTROPY_APPROVE_PROMPTS to the resources folder to approve it,
+     * and read the resulting diff.
+     */
     @Test
     fun theTextIsExactlyTheApprovedWording() {
-        assertEquals(
-            reference("all"),
-            SystemPrompt.build(
-                settings(true, true, true, true, "/home/u/p"), "2026-01-02",
-                listOf("- 备忘：零碎待办（12 字）", "- 想法：（没有写用途）（3 字）")
-            )
-        )
-        assertEquals(reference("readonly"), SystemPrompt.build(settings(false, true, true, false, "/home/u/p"), "2026-01-02", emptyList()))
-        assertEquals(reference("bare"), SystemPrompt.build(settings(false, false, false, false, "/x"), "2026-01-02", emptyList()))
+        val approveInto = System.getenv("ENTROPY_APPROVE_PROMPTS")
+        for ((name, text) in built()) {
+            if (approveInto.isNullOrBlank()) {
+                assertEquals(reference(name), text)
+            } else {
+                java.io.File(approveInto, "system-prompt-$name.txt").writeText(text)
+            }
+        }
+    }
+
+    @Test
+    fun repliesAreSpokenInFull() {
+        val all = built().getValue("all")
+        assertFalse(all.contains("【朗读】") || all.contains("【详情】"))
+        assertTrue(all.contains("summary") && all.contains("session_status"))
     }
 
     @Test

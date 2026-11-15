@@ -4,6 +4,10 @@ object WakeWordBus {
     @Volatile
     var listener: (() -> Unit)? = null
 
+    /** Given the few seconds of audio that led to each detection, as a WAV file. */
+    @Volatile
+    var clipSink: ((wav: ByteArray, keyword: String) -> Unit)? = null
+
     @Volatile
     private var pending = false
 

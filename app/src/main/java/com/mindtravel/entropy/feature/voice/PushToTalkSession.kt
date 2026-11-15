@@ -17,6 +17,8 @@ class PushToTalkSession(
     private val audioGateway: AudioGateway,
     private val wavRecorder: WavRecorder,
     private val headsetMic: HeadsetMicController,
+    /** Keeps a recording, with what was heard in it, for later use. */
+    private val keepRecording: (kind: String, wav: ByteArray, heard: String) -> Unit,
     private val emitter: EventSink,
     private val scope: CoroutineScope
 ) {
@@ -95,6 +97,7 @@ class PushToTalkSession(
         emitter.emit("onStatus", id, "识别中")
         val raw = withContext(Dispatchers.IO) { audioGateway.transcribe(settings.apiKey, wav) }
         val text = clean(raw)
+        withContext(Dispatchers.IO) { keepRecording("talk", wav, text) }
         if (text.isBlank()) {
             emitter.emit("onAsrResult", id, false, "没有识别到内容，请重说")
         } else {

@@ -12,6 +12,9 @@ class CalculatorTool : ChatTool {
         parameterDescription = "要计算的数学表达式"
     )
 
+    override fun describe(argumentsJson: String): String =
+        "计算：" + JSONObject(argumentsJson).stringOrNull("expression").orEmpty().trim()
+
     override fun execute(argumentsJson: String): String {
         val expression = JSONObject(argumentsJson).stringOrNull("expression")?.trim().orEmpty()
         if (expression.isBlank()) return "计算失败：expression 为空"

@@ -24,6 +24,12 @@ class PatchCardsTool(
         parameterDescription = "补丁全文"
     )
 
+    override fun describe(argumentsJson: String): String {
+        val patch = JSONObject(argumentsJson).stringOrNull("patch").orEmpty()
+        val names = runCatching { CardPatch.parse(patch).map { it.name } }.getOrDefault(emptyList())
+        return if (names.isEmpty()) "改卡片" else "改卡片：" + names.distinct().joinToString("、")
+    }
+
     override fun execute(argumentsJson: String): String {
         val patch = JSONObject(argumentsJson).stringOrNull("patch").orEmpty()
         if (patch.isBlank()) return "补丁是空的"
@@ -50,6 +56,9 @@ class ReadCardTool(private val cards: CardRepository) : ChatTool {
         parameterName = "name",
         parameterDescription = "卡片名称，与目录中的一致"
     )
+
+    override fun describe(argumentsJson: String): String =
+        "读卡片：" + JSONObject(argumentsJson).stringOrNull("name").orEmpty().trim()
 
     override fun execute(argumentsJson: String): String {
         val name = JSONObject(argumentsJson).stringOrNull("name").orEmpty()

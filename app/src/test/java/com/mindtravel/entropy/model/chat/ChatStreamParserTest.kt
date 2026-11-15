@@ -136,8 +136,8 @@ class ChatSessionTest {
             tokens += text
         }
 
-        override fun onToolStarted(name: String, arguments: String) {
-            tools += name
+        override fun onToolStarted(name: String, summary: String, arguments: String, announce: Boolean) {
+            tools += "$name｜$summary｜$announce"
         }
 
         override fun onToolFinished(name: String, durationMs: Long, success: Boolean, result: String) = Unit
@@ -216,7 +216,7 @@ class ChatSessionTest {
 
         assertEquals("答案是 2", callbacks.completed)
         assertEquals(listOf("答案", "是 2"), callbacks.tokens)
-        assertEquals(listOf("calculator"), callbacks.tools)
+        assertEquals(listOf("calculator｜计算：1+1｜false"), callbacks.tools)
         assertEquals(2, api.requests.size)
         assertEquals(4, api.requests[1].messages.size)
         assertEquals(Role.ASSISTANT, api.requests[1].messages[2].role)

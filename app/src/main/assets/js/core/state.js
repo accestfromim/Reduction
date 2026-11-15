@@ -5,7 +5,9 @@ export const LONG_PRESS_MS = 360;
 export const state = {
   settings: { ...DEFAULT_SETTINGS },
   messages: [],
-  // Memo cards: the directory, and which one is shown.
+  // Which of the two pages is showing: 'stream' or 'cards'.
+  page: 'stream',
+  // Memo cards: the directory, and the one that is open, if any.
   cards: [],
   cardName: '',
   busy: false,

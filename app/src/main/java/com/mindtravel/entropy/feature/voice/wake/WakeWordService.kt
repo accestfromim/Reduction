@@ -132,6 +132,7 @@ class WakeWordService : Service() {
                 updateNotification("已唤醒，正在打开 Entropy…")
                 launchApp()
             },
+            onClip = { wav, keyword -> WakeWordBus.clipSink?.invoke(wav, keyword) },
             onListening = {
                 deaf = false
                 updateNotification("正在监听“Hi Entropy”")

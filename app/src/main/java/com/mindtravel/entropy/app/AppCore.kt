@@ -31,6 +31,7 @@ import com.mindtravel.entropy.hardware.audio.AudioRoutes
 import com.mindtravel.entropy.hardware.audio.AudioTrackSink
 import com.mindtravel.entropy.hardware.audio.HeadsetMicController
 import com.mindtravel.entropy.hardware.audio.PcmPlayer
+import com.mindtravel.entropy.hardware.audio.RecordingArchive
 import com.mindtravel.entropy.hardware.audio.WavPcm
 import com.mindtravel.entropy.hardware.audio.WavRecorder
 import com.mindtravel.entropy.hardware.pc.PcGateway
@@ -70,6 +71,7 @@ class AppCore private constructor(context: Context) {
     private val audioQueue = AudioQueue(AudioTrackSink()) { callback -> mainHandler.post(callback) }
     private val pcmPlayer = PcmPlayer(context, audioQueue, scope)
     private val pcGateway: PcGateway = SshPcClient(context)
+    private val recordings = RecordingArchive(File(context.filesDir, "recordings"))
 
     // ── models ──────────────────────────────────────────────────────────────
     private val models = ModelGraph()
@@ -92,6 +94,7 @@ class AppCore private constructor(context: Context) {
         audioGateway = models.audioGateway,
         wavRecorder = WavRecorder(),
         headsetMic = headsetMic,
+        keepRecording = recordings::keep,
         emitter = ui,
         scope = scope
     )
@@ -108,9 +111,8 @@ class AppCore private constructor(context: Context) {
             approvalHost = ui,
             emitter = ui,
             cards = cardRepository,
-            agentLauncherScript = {
-                context.assets.open("harness/run-agent.sh").bufferedReader().use { it.readText() }
-            }
+            agentLauncherScript = { harnessScript(context, "run-agent.sh") },
+            sessionStatusScript = { harnessScript(context, "session-status.py") }
         ),
         speech = speech,
         emitter = ui,
@@ -132,6 +134,7 @@ class AppCore private constructor(context: Context) {
             endWordSpotter = KeywordSpotterModel(context, KeywordSpotterModel.Language.CHINESE)
         ),
         headsetMic = headsetMic,
+        keepRecording = recordings::keep,
         rollingAsr = RollingAsr(models.audioGateway, scope),
         scope = scope
     )
@@ -162,6 +165,7 @@ class AppCore private constructor(context: Context) {
     val pc = PcController(
         settingsRepository = settingsRepository,
         pcGateway = pcGateway,
+        recordings = recordings,
         emitter = ui,
         scope = scope,
         updateManifestUrl = UpdateController.MANIFEST_URL
@@ -174,8 +178,13 @@ class AppCore private constructor(context: Context) {
             voice.onWakeWord()
         }
         if (WakeWordBus.consumePending()) voice.onWakeWord()
+        WakeWordBus.clipSink = { wav, keyword -> recordings.keep("wake", wav, keyword) }
         Logs.add("Core started")
     }
+
+    /** A script that runs on the computer, as bundled with the app. */
+    private fun harnessScript(context: Context, name: String): String =
+        context.assets.open("harness/$name").bufferedReader().use { it.readText() }
 
     /** A bundled cue as PCM. The cues are 24 kHz mono, the audio queue's own format. */
     private fun cueSound(context: Context, resId: Int): ByteArray {

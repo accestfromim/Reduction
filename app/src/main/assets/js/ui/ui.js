@@ -49,22 +49,24 @@ export const els = {
   pcPillText: byId('pcPillText'),
   updatePill: byId('updatePill'),
   updatePillText: byId('updatePillText'),
-  cardBox: byId('cardBox'),
-  cardChips: byId('cardChips'),
-  cardPurpose: byId('cardPurpose'),
-  cardPreview: byId('cardPreview'),
+  tabStream: byId('tabStream'),
+  tabCards: byId('tabCards'),
+  streamPage: byId('streamPage'),
+  cardsPage: byId('cardsPage'),
+  cardList: byId('cardList'),
+  cardNew: byId('cardNew'),
+  cardPage: byId('cardPage'),
+  cardBack: byId('cardBack'),
+  cardTitle: byId('cardTitle'),
+  cardEdit: byId('cardEdit'),
+  cardBody: byId('cardBody'),
+  cardEditor: byId('cardEditor'),
   cardNameField: byId('cardNameField'),
   cardNameInput: byId('cardNameInput'),
   cardPurposeInput: byId('cardPurposeInput'),
-  cardCopy: byId('cardCopy'),
-  cardOpen: byId('cardOpen'),
-  cardBackdrop: byId('cardBackdrop'),
-  cardSheet: byId('cardSheet'),
-  cardSheetTitle: byId('cardSheetTitle'),
-  closeCard: byId('closeCard'),
   cardText: byId('cardText'),
-  cardCopySheet: byId('cardCopySheet'),
   cardSave: byId('cardSave'),
+  cardCopy: byId('cardCopy'),
   cardDelete: byId('cardDelete'),
   pcBackdrop: byId('pcBackdrop'),
   pcSheet: byId('pcSheet'),
@@ -111,6 +113,17 @@ const messageMenu = createMessageMenu({
   readText: (text) => readHandler(text),
   vibrate: (ms) => callBridge('vibrate', ms)
 });
+
+/** Shows one of the two pages: 'stream', what is being said, or 'cards', what is kept. */
+export function showPage(name) {
+  state.page = name === 'cards' ? 'cards' : 'stream';
+  const cards = state.page === 'cards';
+  els.streamPage.classList.toggle('hidden', cards);
+  els.cardsPage.classList.toggle('hidden', !cards);
+  els.tabStream.classList.toggle('active', !cards);
+  els.tabCards.classList.toggle('active', cards);
+  if (!cards) scrollToBottom(true);
+}
 
 export function setStatus(text) {
   els.status.textContent = text;
@@ -194,10 +207,8 @@ export function closeSheets() {
   for (const element of [
     els.settingsSheet,
     els.pcSheet,
-    els.cardSheet,
     els.settingsBackdrop,
-    els.pcBackdrop,
-    els.cardBackdrop
+    els.pcBackdrop
   ]) {
     element.classList.add('hidden');
   }
@@ -262,30 +273,9 @@ function createMessageNode(message) {
   return { row, bubble, trace };
 }
 
-const SPOKEN_TAG = '【朗读】';
-const DETAIL_TAG = '【详情】';
-
-/** Splits a reply into the part that is read aloud and the part that is only shown. */
-export function splitReply(text) {
-  // A tag still arriving at the very end is not shown half-written.
-  let raw = String(text || '').replace(/【[朗读详情]{0,2}$/, '');
-  const at = raw.indexOf(DETAIL_TAG);
-  const detail = at >= 0 ? raw.slice(at + DETAIL_TAG.length).trim() : '';
-  let spoken = (at >= 0 ? raw.slice(0, at) : raw).trim();
-  if (spoken.startsWith(SPOKEN_TAG)) spoken = spoken.slice(SPOKEN_TAG.length).trim();
-  return { spoken, detail, hasDetail: at >= 0 };
-}
-
+/** Draws a reply: the text that is read aloud, as Markdown. */
 export function renderAssistantContent(bubble, text) {
-  if (!bubble) return;
-  const { spoken, detail, hasDetail } = splitReply(text);
-  if (!hasDetail) {
-    bubble.innerHTML = renderMarkdown(spoken);
-    return;
-  }
-  bubble.innerHTML =
-    '<div class="reply-part spoken"><div class="reply-label">朗读</div>' + renderMarkdown(spoken) + '</div>' +
-    '<div class="reply-part detail"><div class="reply-label">详情 · 只显示</div>' + renderMarkdown(detail) + '</div>';
+  if (bubble) bubble.innerHTML = renderMarkdown(String(text || '').trim());
 }
 
 export function appendMessage(role, content) {
@@ -322,51 +312,64 @@ function toolSection(label, text) {
   return section;
 }
 
-export function addToolTrace(trace, name, argumentsJson) {
+function clock(date) {
+  const two = (value) => String(value).padStart(2, '0');
+  return two(date.getHours()) + ':' + two(date.getMinutes());
+}
+
+/** A tool call begins: one line with its summary. What went in is behind a tap. */
+export function addToolTrace(trace, name, summary, argumentsJson) {
   if (!trace) return;
   trace.classList.remove('hidden');
-  const card = document.createElement('div');
-  card.className = 'tool-card running';
-  card.dataset.name = name;
+  const line = document.createElement('div');
+  line.className = 'tool-line running';
+  line.dataset.name = name;
   const head = document.createElement('div');
   head.className = 'tool-head';
   const dot = document.createElement('span');
   dot.className = 'tool-dot';
   const title = document.createElement('span');
-  title.className = 'tool-name';
-  title.textContent = name;
+  title.className = 'tool-summary';
+  title.textContent = summary || name;
   const time = document.createElement('span');
   time.className = 'tool-time';
-  time.textContent = '运行中…';
-  const toggle = document.createElement('span');
-  toggle.className = 'tool-toggle';
-  toggle.textContent = '展开';
-  head.append(dot, title, time, toggle);
-  card.appendChild(head);
-  // The body scrolls on its own; tapping the head switches between a peek and the full view.
+  time.textContent = '进行中';
+  head.append(dot, title, time);
   const body = document.createElement('div');
   body.className = 'tool-body';
+  body.appendChild(toolSection('工具', name));
   body.appendChild(toolSection('输入', formatToolArgs(argumentsJson)));
-  card.appendChild(body);
-  head.addEventListener('click', () => {
-    const open = card.classList.toggle('open');
-    toggle.textContent = open ? '收起' : '展开';
-  });
-  trace.appendChild(card);
+  line.append(head, body);
+  head.addEventListener('click', () => line.classList.toggle('open'));
+  trace.appendChild(line);
   scrollToBottom();
 }
 
+/** The call is over: the line shows when it finished and whether it worked. */
 export function finishToolTrace(trace, name, durationMs, success, result) {
   if (!trace) return;
-  const cards = Array.from(trace.querySelectorAll('.tool-card.running'));
-  const card = cards.reverse().find((item) => item.dataset.name === name);
-  if (!card) return;
-  card.classList.remove('running');
-  card.classList.add(success ? 'done' : 'failed');
-  const time = card.querySelector('.tool-time');
-  if (time) time.textContent = `${success ? '完成' : '失败'} · ${(durationMs / 1000).toFixed(1)}s`;
-  const body = card.querySelector('.tool-body');
-  if (body && result) body.appendChild(toolSection('输出', String(result)));
+  const lines = Array.from(trace.querySelectorAll('.tool-line.running'));
+  const line = lines.reverse().find((item) => item.dataset.name === name);
+  if (!line) return;
+  line.classList.remove('running');
+  line.classList.add(success ? 'done' : 'failed');
+  const time = line.querySelector('.tool-time');
+  if (time) time.textContent = (success ? '' : '失败 ') + clock(new Date());
+  const body = line.querySelector('.tool-body');
+  if (!body) return;
+  if (result) body.appendChild(toolSection('输出', String(result)));
+  body.appendChild(toolSection('用时', (durationMs / 1000).toFixed(1) + ' 秒'));
+}
+
+/** The reply ended: a call still marked as running never finished. */
+export function settleToolTrace(trace) {
+  if (!trace) return;
+  for (const line of trace.querySelectorAll('.tool-line.running')) {
+    line.classList.remove('running');
+    line.classList.add('failed');
+    const time = line.querySelector('.tool-time');
+    if (time) time.textContent = '已中断';
+  }
 }
 
 export function removeMessage(message) {

@@ -49,6 +49,20 @@ class RunAgentTool(
         )
     )
 
+    override fun describe(argumentsJson: String): String {
+        val args = JSONObject(argumentsJson)
+        return when (args.stringOrNull("action")?.trim()) {
+            "start" -> "派发：" + args.stringOrNull("task").orEmpty().trim().lineSequence().firstOrNull().orEmpty()
+            "status" -> "查询 sub agent 进度"
+            "stop" -> "结束 sub agent 运行"
+            else -> spec.name
+        }
+    }
+
+    /** Handing a task to a sub agent is the costly call: the user hears that it happened. */
+    override fun announces(argumentsJson: String): Boolean =
+        JSONObject(argumentsJson).stringOrNull("action")?.trim() == "start"
+
     override fun execute(argumentsJson: String): String {
         val args = JSONObject(argumentsJson)
         if (!harness.isConfigured) return "派发失败：请先配置电脑 SSH"

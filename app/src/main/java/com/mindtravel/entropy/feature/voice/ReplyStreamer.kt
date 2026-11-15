@@ -31,7 +31,6 @@ class ReplyStreamer(
     private var session = 0
     private var job: Job? = null
     private var texts: Channel<String>? = null
-    private var spoken = SpokenPart()
     private var extractor = SpeechTextExtractor()
     private var splitter = SentenceSplitter()
 
@@ -39,7 +38,6 @@ class ReplyStreamer(
     fun start(apiKey: String, voice: String, events: Events) {
         stop()
         val current = ++session
-        spoken = SpokenPart()
         extractor = SpeechTextExtractor()
         splitter = SentenceSplitter()
         val queue = Channel<String>(Channel.UNLIMITED)
@@ -79,18 +77,18 @@ class ReplyStreamer(
         }
     }
 
-    /** Feeds raw reply text (Markdown allowed). Only the spoken version of a reply is voiced. */
+    /** Feeds raw reply text. Markdown is allowed: what cannot be read aloud is left out. */
     @Synchronized
     fun push(text: String) {
         val queue = texts ?: return
-        for (piece in splitter.push(extractor.push(spoken.push(text)))) queue.trySend(piece)
+        for (piece in splitter.push(extractor.push(text))) queue.trySend(piece)
     }
 
     /** No more text is coming; the session ends after the queued audio has played. */
     @Synchronized
     fun finish() {
         val queue = texts ?: return
-        val tail = extractor.push(spoken.finish()) + extractor.finish()
+        val tail = extractor.finish()
         for (piece in splitter.push(tail) + splitter.finish()) queue.trySend(piece)
         queue.close()
         texts = null

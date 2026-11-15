@@ -14,24 +14,6 @@ import java.nio.file.Files
 
 class AgentHarnessTest {
 
-    /** Runs the command with a real shell, the way the SSH session on the computer would. */
-    private class LocalShell : PcGateway {
-        override fun exec(profile: PcProfile, command: String): String {
-            val process = ProcessBuilder("sh", "-c", command).redirectErrorStream(true).start()
-            val output = process.inputStream.bufferedReader().readText()
-            process.waitFor()
-            return output
-        }
-
-        override fun connect(profile: PcProfile) = Unit
-        override fun isConnected() = true
-        override fun info(profile: PcProfile): PcInfo = throw UnsupportedOperationException()
-        override fun watchUpdates(profile: PcProfile, manifestUrl: String, onLine: (String) -> Unit) =
-            AutoCloseable { }
-        override fun publicKey() = ""
-        override fun close() = Unit
-    }
-
     private fun harness(script: String) =
         AgentHarness(LocalShell(), PcProfile("host", 22, "user"), "sk-test_KEY-1", "deepseek-flash") { script }
 

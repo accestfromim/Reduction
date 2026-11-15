@@ -15,7 +15,9 @@ class ChatToolFactory(
     private val emitter: EventSink,
     private val cards: CardRepository,
     /** The sandbox launcher that runs on the computer. */
-    private val agentLauncherScript: () -> String
+    private val agentLauncherScript: () -> String,
+    /** The script that reports how the sessions on the computer are doing. */
+    private val sessionStatusScript: () -> String
 ) {
     fun create(settings: AppSettings): ToolRegistry {
         val harness = AgentHarness(
@@ -31,6 +33,7 @@ class ChatToolFactory(
             if (settings.webSearchEnabled) add(WebSearchTool(searchGateway, settings.apiKey))
             if (settings.calculatorEnabled) add(CalculatorTool())
             if (harness.isConfigured && (settings.opencodeEnabled || settings.opencodeWriteEnabled)) {
+                add(SessionStatusTool(harness, sessionStatusScript))
                 add(
                     RunAgentTool(
                         harness = harness,

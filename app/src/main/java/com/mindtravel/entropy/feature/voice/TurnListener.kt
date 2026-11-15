@@ -20,6 +20,8 @@ class TurnListener(
     private val audioGateway: AudioGateway,
     private val recorder: TurnRecorder,
     private val headsetMic: HeadsetMicController,
+    /** Keeps a recording, with what was heard in it, for later use. */
+    private val keepRecording: (kind: String, wav: ByteArray, heard: String) -> Unit,
     private val rollingAsr: RollingAsr,
     private val scope: CoroutineScope
 ) : TurnCapture {
@@ -132,6 +134,12 @@ class TurnListener(
 
     /** The final transcript of [turn]; blank when nothing intelligible was said. */
     override suspend fun transcribe(turn: Turn): String {
+        val text = finalText(turn)
+        turn.wav?.let { wav -> withContext(Dispatchers.IO) { keepRecording("turn", wav, text) } }
+        return text
+    }
+
+    private suspend fun finalText(turn: Turn): String {
         if (turn.trustText && turn.text.isNotBlank()) return turn.text
         val wav = turn.wav ?: return turn.text
         return try {

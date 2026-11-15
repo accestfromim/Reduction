@@ -52,8 +52,8 @@ window.Native = {
     chat.handleToken(id, token);
   },
 
-  onToolStarted(id, name, argumentsJson) {
-    chat.handleToolStarted(id, name, argumentsJson);
+  onToolStarted(id, name, summary, argumentsJson) {
+    chat.handleToolStarted(id, name, summary, argumentsJson);
   },
 
   onToolFinished(id, name, durationMs, success, result) {
@@ -133,9 +133,13 @@ window.Native = {
 
 window.onAndroidBack = function () {
   if (!ui.els.pcSheet.classList.contains('hidden') ||
-      !ui.els.settingsSheet.classList.contains('hidden') ||
-      !ui.els.cardSheet.classList.contains('hidden')) {
+      !ui.els.settingsSheet.classList.contains('hidden')) {
     ui.closeSheets();
+    return true;
+  }
+  if (cards.back()) return true;
+  if (state.page === 'cards') {
+    ui.showPage('stream');
     return true;
   }
   return false;
@@ -198,13 +202,14 @@ ui.els.pcBackdrop.addEventListener('click', ui.closeSheets);
 ui.els.pcTest.addEventListener('click', pc.testPc);
 ui.els.pcCopyKey.addEventListener('click', pc.copyPublicKey);
 ui.els.pcRunCommand.addEventListener('click', pc.runPcCommand);
-ui.els.cardOpen.addEventListener('click', cards.openCard);
-ui.els.cardCopy.addEventListener('click', cards.copyCard);
-ui.els.cardCopySheet.addEventListener('click', cards.copyCard);
+ui.els.tabStream.addEventListener('click', () => ui.showPage('stream'));
+ui.els.tabCards.addEventListener('click', () => ui.showPage('cards'));
+ui.els.cardNew.addEventListener('click', cards.newCard);
+ui.els.cardBack.addEventListener('click', cards.back);
+ui.els.cardEdit.addEventListener('click', cards.editCard);
 ui.els.cardSave.addEventListener('click', cards.saveCard);
+ui.els.cardCopy.addEventListener('click', cards.copyCard);
 ui.els.cardDelete.addEventListener('click', cards.deleteCard);
-ui.els.closeCard.addEventListener('click', ui.closeSheets);
-ui.els.cardBackdrop.addEventListener('click', ui.closeSheets);
 
 function init() {
   state.settings = loadSettings();

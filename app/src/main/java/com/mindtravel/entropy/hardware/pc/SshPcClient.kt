@@ -9,6 +9,7 @@ import com.mindtravel.entropy.core.Logs
 import com.mindtravel.entropy.hardware.pc.PcGateway
 import com.mindtravel.entropy.hardware.pc.PcInfo
 import com.mindtravel.entropy.hardware.pc.PcProfile
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.LocalDateTime
@@ -57,6 +58,13 @@ class SshPcClient(context: Context) : PcGateway {
         if (command.isBlank()) throw ApiException("命令为空")
         return synchronized(lock) {
             withSessionLocked(profile) { current -> run(current, command) }
+        }
+    }
+
+    override fun send(profile: PcProfile, command: String, input: ByteArray): String {
+        if (command.isBlank()) throw ApiException("命令为空")
+        return synchronized(lock) {
+            withSessionLocked(profile) { current -> run(current, command, input) }
         }
     }
 
@@ -197,11 +205,12 @@ done
         return "echo $encoded | base64 -d | sh"
     }
 
-    private fun run(current: Session, command: String): String {
+    private fun run(current: Session, command: String, stdin: ByteArray? = null): String {
         val channel = current.openChannel("exec") as ChannelExec
         val error = ByteArrayOutputStream()
         channel.setErrStream(error)
         channel.setCommand(command)
+        if (stdin != null) channel.setInputStream(ByteArrayInputStream(stdin))
         val input = channel.inputStream
         channel.connect(10_000)
         return try {

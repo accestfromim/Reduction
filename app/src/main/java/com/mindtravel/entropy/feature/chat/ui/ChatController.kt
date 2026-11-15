@@ -118,12 +118,13 @@ class ChatController(
             speech.push(reply.id, text)
         }
 
-        override fun onToolStarted(name: String, arguments: String) {
+        override fun onToolStarted(name: String, summary: String, arguments: String, announce: Boolean) {
             if (!isCurrent(reply)) return
-            Logs.add("chat tool started=$name")
+            Logs.add("chat tool started=$name announce=$announce")
             // Text before a tool call is a preamble the UI discards; stop saying it.
             speech.restart(reply.id)
-            emitter.emit("onToolStarted", reply.id, name, arguments)
+            if (announce) speech.push(reply.id, "$summary。\n")
+            emitter.emit("onToolStarted", reply.id, name, summary, arguments)
         }
 
         override fun onToolFinished(name: String, durationMs: Long, success: Boolean, result: String) {

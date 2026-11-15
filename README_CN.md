@@ -1,6 +1,6 @@
 # Entropy（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.42。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.43。
 
 ## 交互
 
@@ -30,8 +30,11 @@
 - 播放中打断只认唤醒词“Hi Entropy”；需要耳机输出
 - sub agent：super agent 只做对话、任务卡、派发、验收；所有 sub agent 经 run_agent 一个接口派发，在电脑上的沙箱里后台运行，可随时查询进度；它们用手机设置里的 DeepSeek API Key 和模型
 - 诊断日志：连接电脑期间，手机每 3 秒把运行日志追加到电脑的 `~/entropy-agents/logs/phone.log`
-- 工具过程展示：工具名、状态、单次耗时、完整的输入和输出；卡片内可滚动，点标题展开
-- 备忘卡片：一张卡片是一份 Markdown 文本，收一类信息、随时间累积（比如几个方向的科研想法各一张，再加一张备忘录）；每张有一句用途，助手据此判断口述的内容该改哪一张；助手像编辑文档一样改卡片：写一份 git patch 风格的补丁（patch_cards），一次可以新建、修改、删除多张，整体生效或整体不动；read_card 读全文；平时只拿目录；界面上可新建、切换、编辑、复制、删除
+- 录音留存：每轮说的话、每次按住说话、每次唤醒词触发前 3 秒的音频各存成一个 WAV，识别出的文字放在同名的文本文件里；连接电脑期间送到电脑的 `~/entropy-agents/recordings/`，电脑上的文件大小核对无误后从手机删除；没连上时留在手机上，最多 300 MB，满了先丢最早的
+- 会话状态：助手可以查看电脑上 Claude、codex、opencode 编程会话各自的状态（session_status）。电脑上的脚本读会话记录，只交回摘要：最后活动时间、在做什么、是否卡住或在等用户、最后一句话的开头；会话原文不离开电脑
+- 工具过程展示：每次工具调用在朗读流里占一行，显示助手写的一句摘要、完成时间和状态；点这一行展开工具名、完整的输入输出和用时。派发 sub agent 时摘要会念出来，其它调用不出声
+- 备忘卡片：一张卡片是一份 Markdown 文本，收一类信息、随时间累积（比如几个方向的科研想法各一张，再加一张备忘录）；每张有一句用途，助手据此判断口述的内容该改哪一张；助手像编辑文档一样改卡片：写一份 git patch 风格的补丁（patch_cards），一次可以新建、修改、删除多张，整体生效或整体不动；read_card 读全文；平时只拿目录
+- 界面两页：「朗读」是流动的对话，回复全部念出来；「卡片」是固定下来的内容，列表只显示名称，点开后正文铺满整页，可编辑、复制、删除
 - 录音提示：开麦的同时响起一个微弱、缓慢起伏的和弦，它持续就表示麦克风仍在收音，录音中断时它会自己停下；每次关麦播“好的”（说完、没人说话、取消、出错都一样）
 - 流式朗读：首段在第一个逗号处切出先合成，之后按句切，单段最多 200 字，播放时预合成后续片段
 - 免按住模式：
@@ -45,7 +48,7 @@
 
 ## 安装
 
-1. 把 `Entropy-v1.0.42.apk` 传到手机。
+1. 把 `Entropy-v1.0.43.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -134,12 +137,12 @@ feature/               功能层：决定什么时候做什么；状态机在这
                        VoiceRuntime（执行器：照清单办事，把结果作为事件送回）、VoiceState
                        AckCue（提示音播放与超时）
                        TurnListener、TurnRecorder、TurnEndpointer、TurnDetector（一轮用户语音）
-                       ReplyStreamer、SpokenPart、SentenceSplitter、SpeechTextExtractor（流式朗读）
+                       ReplyStreamer、SentenceSplitter、SpeechTextExtractor（流式朗读）
                        SpeechController、PushToTalkSession、RecordingController
   voice/wake/          WakeWordService、WakeWordDetector、WakeWordBus
   chat/model/          ChatSession、ChatEngine、ChatCallbacks、ToolCallAccumulator
   chat/model/tools/    ToolRegistry、ChatToolFactory、AgentHarness 与 RunAgentTool（沙箱里的 sub agent）、
-                       CardTools（备忘卡片）、WebSearchTool、CalculatorTool
+                       SessionStatusTool（电脑上的会话状态）、CardTools（备忘卡片）、WebSearchTool、CalculatorTool
   chat/ui/             Conversation（对话本身：历史、请求、说的和打字的都走它）、ChatController、ReplyObserver
   chat/model/          SystemPrompt（系统提示）
   chat/data/           HistoryRepository、CardRepository、CardPatch（卡片补丁的解析与应用）
@@ -158,7 +161,8 @@ model/                 模型层：输入进、结果出，无状态
 
 hardware/              硬件层：设备与系统的薄封装，不含策略
   audio/               PcmCapture、WavRecorder、WavEncoder、HeadsetMicController、
-                       AudioQueue（唯一的播放队列）、AudioTrackSink（唯一的输出流）、PcmPlayer（朗读入队）、WavPcm
+                       AudioQueue（唯一的播放队列）、AudioTrackSink（唯一的输出流）、PcmPlayer（朗读入队）、WavPcm、
+                       RecordingArchive（等待送往电脑的录音）
   pc/                  SshPcClient、SshKeyStore、PinnedHostKeyRepository、PcGateway
   update/              UpdateClient、UpdateInstaller、AssetUpdater、BsPatch
   web/                 HotAssetPathHandler
@@ -176,7 +180,7 @@ core/                  各层共用的接口与基础类型
 assets/js/app.js                       Native 事件入口与 DOM 事件绑定
 assets/js/core/bridge.js, state.js
 assets/js/features/chat/chat.js, history-store.js   显示对话；历史和请求都在 App 里
-assets/js/features/cards/cards.js       备忘卡片目录与编辑
+assets/js/features/cards/cards.js       卡片页：名称列表、整页阅读与编辑
 assets/js/features/voice/voice.js      渲染 onVoiceState；按住说话
 assets/js/features/settings/settings.js, settings-store.js
 assets/js/features/pc/pc.js
@@ -204,13 +208,14 @@ assets/js/ui/ui.js, markdown.js
 - 会打断声音输出的操作（蓝牙耳机在听歌模式和通话模式之间切换）只发生在乐音响起之前和“好的”播完之后，不在任何声音播放期间。
 - `VoiceMachineTest` 逐条检查每个转换，并用任意事件顺序验证：每次开始的录音恰好以一个“好的”结束，空闲时一定在听唤醒词。
 - 回复文本由 App 同时送给界面和朗读，JS 不参与朗读分句。
-- 一条回复的格式是 `【朗读】` + 朗读版，可选地跟 `【详情】` + 只显示的补充（依据、分析）；朗读只念朗读版，界面画成“朗读”“详情”两块。系统提示在 `feature/chat/model/SystemPrompt.kt`。
+- 回复只有一种：要念出来的话。App 把它整条朗读，界面原样显示；需要留下来看的证据由助手写进卡片。每个工具都多带一个 `summary` 参数，由助手填写，是界面上那一行摘要的来源。系统提示在 `feature/chat/model/SystemPrompt.kt`，改动后用 `ENTROPY_APPROVE_PROMPTS=app/src/test/resources` 跑 `SystemPromptTest` 更新参考文本，diff 即审阅对象。
 - 下层不 import 上层：`hardware/` 与 `model/` 不依赖 `feature/`、`ui/`。
 - sub agent 一律经 `assets/harness/run-agent.sh` 在电脑上的 `bwrap` 沙箱里运行，只能写自己的文件夹；电脑需装有 `bwrap`。
+- 会话状态由 `assets/harness/session-status.py` 在沙箱之外提取，只读脚本开头 `SOURCES` 列出的三处会话记录；电脑需装有 `python3`。
 - SSE 中 `content: null` 不会变成字符串 `"null"`。
 - 工具参数只接受字符串片段，缺 id/name 会直接失败。
 - 协议层不把 `JSONObject` 传给业务层。
-- 资源热更新包的 `assetsMinVersionCode` 必须不低于 72（当前桥接协议的起始版本），否则不会被使用。
+- 资源热更新包的 `assetsMinVersionCode` 必须不低于 73（当前桥接协议的起始版本），否则不会被使用。
 - 设置升级会自动从旧版本迁移，不会丢 API Key。
 
 测试：
@@ -234,7 +239,7 @@ ENTROPY_INSTALLED_APK=dist/Entropy-v1.0.25.apk \
   ./gradlew testReleaseUnitTest --tests '*UpdateFlowTest*'   # 用 App 的更新代码验证线上文件
 ```
 
-单测覆盖 SSE null、工具调用分片、工具循环、消息序列化、计算器、结束词检测、朗读文本清洗、朗读分句、提示音保证等。
+单测覆盖 SSE null、工具调用分片、工具循环、消息序列化、计算器、结束词检测、朗读文本清洗、朗读分句、提示音保证、工具摘要、会话状态脚本、录音留存等。
 
 ## 从源码构建
 
@@ -246,7 +251,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/Entropy-v1.0.42.apk`
+产物：`dist/Entropy-v1.0.43.apk`
 
 免按住模式依赖：
 

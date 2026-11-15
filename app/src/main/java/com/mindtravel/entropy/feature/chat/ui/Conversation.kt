@@ -41,7 +41,7 @@ class Conversation(
                     "assistant" -> Role.ASSISTANT
                     else -> continue
                 }
-                val content = item.optString("content")
+                val content = if (role == Role.ASSISTANT) said(item.optString("content")) else item.optString("content")
                 if (content.isNotBlank()) lines += Line(role, content)
             }
         }.onFailure { Logs.add("History unreadable: ${it.message}") }
@@ -103,6 +103,12 @@ class Conversation(
     }
 
     private companion object {
+        /**
+         * A stored reply may be written in two tagged sections, the second one never read
+         * aloud. Only what was said is kept, so the assistant sees one way of replying.
+         */
+        fun said(reply: String): String = reply.substringBefore("【详情】").replace("【朗读】", "").trim()
+
         /** How much of the conversation the assistant is shown. */
         const val CONTEXT_LINES = 20
         const val KEPT_LINES = 100

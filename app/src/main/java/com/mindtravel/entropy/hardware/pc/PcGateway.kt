@@ -5,6 +5,9 @@ interface PcGateway {
     fun isConnected(): Boolean
     fun info(profile: PcProfile): PcInfo
     fun exec(profile: PcProfile, command: String): String
+
+    /** Runs [command] on the computer with [input] as its standard input. */
+    fun send(profile: PcProfile, command: String, input: ByteArray): String
     fun watchUpdates(
         profile: PcProfile,
         manifestUrl: String,

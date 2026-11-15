@@ -102,8 +102,10 @@ await page.evaluateOnNewDocument(() => {
         window.Native.onChatDone(id, full);
       } else if (text.includes('工具')) {
         window.Native.onChatToken(id, '我先查一下。');
-        setTimeout(() => window.Native.onToolStarted(id, 'web_search', JSON.stringify({ query: '荣耀 500 Pro 参数' })), 350);
+        setTimeout(() => window.Native.onToolStarted(id, 'web_search', '搜索荣耀 500 Pro 的参数', JSON.stringify({ summary: '搜索荣耀 500 Pro 的参数', query: '荣耀 500 Pro 参数' })), 350);
         setTimeout(() => window.Native.onToolFinished(id, 'web_search', 1234, true, '1. 荣耀 500 Pro 参数…'), 1500);
+        setTimeout(() => window.Native.onToolStarted(id, 'run_agent', '派 sub agent 核对官网参数', JSON.stringify({ summary: '派 sub agent 核对官网参数', action: 'start', task: '核对官网参数' })), 1550);
+        setTimeout(() => window.Native.onToolFinished(id, 'run_agent', 96, true, '【完成】官网参数一致'), 1650);
         setTimeout(() => window.Native.onChatDone(id, '查到了，荣耀 500 Pro 的主要参数如下。'), 1700);
       } else {
         window.Native.onChatToken(id, '你好，');
@@ -165,36 +167,65 @@ await page.evaluate(() => {
   window.Native.onCardsChanged('科研想法·检索');
 });
 await new Promise((resolve) => setTimeout(resolve, 80));
-await shot('12-brief.png');
+// The cards page lists names only; a card opens over the whole screen.
 const cardsShown = await page.evaluate(async () => {
-  const names = () => Array.from(document.querySelectorAll('#cardChips .card-chip:not(.add)')).map((chip) => chip.textContent);
+  const names = () => Array.from(document.querySelectorAll('#cardList .card-row')).map((row) => row.textContent);
+  const hidden = (id) => document.getElementById(id).classList.contains('hidden');
+  const streamFirst = !hidden('streamPage') && hidden('cardsPage');
+  document.getElementById('tabCards').click();
+  const onCards = hidden('streamPage') && !hidden('cardsPage');
   const before = names().slice().sort();
-  const purpose = document.getElementById('cardPurpose').textContent;
-  const preview = document.getElementById('cardPreview').textContent;
-  Array.from(document.querySelectorAll('#cardChips .card-chip')).find((chip) => chip.textContent === '备忘').click();
-  const second = document.getElementById('cardPreview').textContent;
+  const listText = document.getElementById('cardList').textContent;
 
+  Array.from(document.querySelectorAll('#cardList .card-row')).find((row) => row.textContent === '科研想法·检索').click();
+  const page = document.getElementById('cardPage');
+  const rect = page.getBoundingClientRect();
+  const opened = {
+    shown: !hidden('cardPage'),
+    fills: rect.width === window.innerWidth && rect.height === window.innerHeight,
+    title: document.getElementById('cardTitle').textContent,
+    heading: !!document.querySelector('#cardBody h2'),
+    text: document.getElementById('cardBody').textContent.includes('用倒排索引做粗筛'),
+    reading: hidden('cardEditor') && !hidden('cardBody')
+  };
+  return { streamFirst, onCards, before, namesOnly: !listText.includes('向量检索方向') && !listText.includes('倒排'), opened };
+});
+await shot('12-card-open.png');
+const cardsEdited = await page.evaluate(async () => {
+  const names = () => Array.from(document.querySelectorAll('#cardList .card-row')).map((row) => row.textContent);
+  const hidden = (id) => document.getElementById(id).classList.contains('hidden');
+  // The assistant changes the open card: the page follows.
+  window.__cards['科研想法·检索'].text += '\n- 新加的一条';
+  window.Native.onCardsChanged('科研想法·检索');
+  const followed = document.getElementById('cardBody').textContent.includes('新加的一条');
+  // Edit by hand.
+  document.getElementById('cardEdit').click();
+  const editing = !hidden('cardEditor') && hidden('cardBody') && hidden('cardNameField');
+  document.getElementById('cardText').value = '改过的正文';
+  document.getElementById('cardSave').click();
+  const saved = hidden('cardEditor') && document.getElementById('cardBody').textContent.includes('改过的正文');
+  const backToList = window.onAndroidBack() === true && hidden('cardPage');
   // Create a card by hand.
-  document.querySelector('#cardChips .card-chip.add').click();
-  const nameShown = !document.getElementById('cardNameField').classList.contains('hidden');
+  document.getElementById('cardNew').click();
+  const nameShown = !hidden('cardNameField') && hidden('cardDelete');
   document.getElementById('cardNameInput').value = '科研想法·评测';
   document.getElementById('cardPurposeInput').value = '评测方法与指标';
   document.getElementById('cardSave').click();
   const after = names().slice().sort();
-
-  return {
-    before, after, nameShown,
-    purpose: purpose.includes('向量检索方向') && purpose.includes(' 字'),
-    newestShown: preview.includes('用倒排索引做粗筛'),
-    second: second.includes('周五前交报告')
-  };
+  window.onAndroidBack();
+  const backToStream = window.onAndroidBack() === true && !hidden('streamPage');
+  return { followed, editing, saved, backToList, nameShown, after, backToStream, nothingLeft: window.onAndroidBack() === false };
 });
-console.log('cards:', JSON.stringify(cardsShown));
-if (cardsShown.before.join() !== '备忘,科研想法·检索' || cardsShown.after.join() !== '备忘,科研想法·检索,科研想法·评测' || !cardsShown.nameShown ||
-    !cardsShown.purpose || !cardsShown.newestShown || !cardsShown.second) {
-  throw new Error('cards did not behave: ' + JSON.stringify(cardsShown));
+console.log('cards:', JSON.stringify(cardsShown), JSON.stringify(cardsEdited));
+if (!cardsShown.streamFirst || !cardsShown.onCards || cardsShown.before.join() !== '备忘,科研想法·检索' || !cardsShown.namesOnly ||
+    Object.values(cardsShown.opened).some((value) => !value) || cardsShown.opened.title !== '科研想法·检索' ||
+    !cardsEdited.followed || !cardsEdited.editing || !cardsEdited.saved || !cardsEdited.backToList || !cardsEdited.nameShown ||
+    cardsEdited.after.join() !== '备忘,科研想法·检索,科研想法·评测' || !cardsEdited.backToStream || !cardsEdited.nothingLeft) {
+  throw new Error('cards did not behave: ' + JSON.stringify(cardsShown) + JSON.stringify(cardsEdited));
 }
-await page.click('#cardBackdrop').catch(() => {});
+await page.evaluate(() => document.getElementById('tabCards').click());
+await shot('13-card-list.png');
+await page.evaluate(() => document.getElementById('tabStream').click());
 
 await page.evaluate(() => window.Native.onUpdateState('available', '1.0.13', 0));
 await shot('09-update-available.png');
@@ -305,8 +336,8 @@ if (JSON.stringify(round) !== JSON.stringify(expected)) errors.push('hands-free 
 
 // A spoken exchange that happened with no page showing appears once the page hears of it.
 const missed = await page.evaluate(async () => {
-  window.Android.loadHistory = () => JSON.stringify([{ role: 'user', content: '熄屏时说的话' }, { role: 'assistant', content: '【朗读】\n熄屏时的回答' }]);
-  window.Native.onChatDone('unknown-reply', '【朗读】\n熄屏时的回答');
+  window.Android.loadHistory = () => JSON.stringify([{ role: 'user', content: '熄屏时说的话' }, { role: 'assistant', content: '熄屏时的回答' }]);
+  window.Native.onChatDone('unknown-reply', '熄屏时的回答');
   const text = document.getElementById('messages').textContent;
   return { shown: text.includes('熄屏时说的话') && text.includes('熄屏时的回答') };
 });
@@ -314,49 +345,58 @@ console.log('missed reply:', JSON.stringify(missed));
 if (!missed.shown) errors.push('a reply made without the page was not shown');
 
 
-// A reply is drawn as two blocks: what is read aloud, and what is only shown.
+// A reply is drawn as it is spoken: one block of text.
 const reply = await page.evaluate(async () => {
   const ui = await import('/js/ui/ui.js');
   const node = document.createElement('div');
-  ui.renderAssistantContent(node, '【朗读】\n结论是可以。\n【详情】\n**依据**：原文');
-  const plain = document.createElement('div');
-  ui.renderAssistantContent(plain, '【朗读】\n已更新');
-  const streaming = document.createElement('div');
-  ui.renderAssistantContent(streaming, '【朗读】\n结论是可以。\n【详');
-  return {
-    blocks: node.querySelectorAll('.reply-part').length,
-    spoken: node.querySelector('.reply-part.spoken')?.textContent.includes('结论是可以'),
-    detail: node.querySelector('.reply-part.detail')?.textContent.includes('原文'),
-    tagsShown: /【朗读】|【详情】/.test(node.textContent + plain.textContent),
-    plain: plain.textContent.trim(),
-    halfTagShown: streaming.textContent.includes('【')
-  };
+  ui.renderAssistantContent(node, '结论是可以。\n\n证据放在**备忘**卡片里。');
+  return { blocks: node.querySelectorAll('.reply-part').length, text: node.textContent.trim(), bold: !!node.querySelector('strong') };
 });
-console.log('reply blocks:', JSON.stringify(reply));
-if (reply.blocks !== 2 || !reply.spoken || !reply.detail || reply.tagsShown || reply.plain !== '已更新' || reply.halfTagShown) {
-  errors.push('reply rendered ' + JSON.stringify(reply));
-}
+console.log('reply:', JSON.stringify(reply));
+if (reply.blocks !== 0 || !reply.text.startsWith('结论是可以。') || !reply.bold) errors.push('reply rendered ' + JSON.stringify(reply));
 
-// A tool card shows its whole input and output and can be opened.
-const card = await page.evaluate(async () => {
+// A tool call is one line: its summary, when it finished, how it went. A tap opens the rest.
+const line = await page.evaluate(async () => {
   const ui = await import('/js/ui/ui.js');
   const trace = document.createElement('div');
-  document.body.appendChild(trace);
+  trace.className = 'tool-trace';
+  document.querySelector('.messages').appendChild(trace);
   const longInput = 'x'.repeat(900);
-  ui.addToolTrace(trace, 'run_agent', JSON.stringify({ prompt: longInput }));
+  ui.addToolTrace(trace, 'run_agent', '派 sub agent 查检索综述', JSON.stringify({ task: longInput }));
+  const el = trace.querySelector('.tool-line');
+  const running = el.querySelector('.tool-time').textContent;
   ui.finishToolTrace(trace, 'run_agent', 4200, true, 'y'.repeat(3000));
-  const el = trace.querySelector('.tool-card');
+  ui.addToolTrace(trace, 'web_search', '', '{}');
+  ui.finishToolTrace(trace, 'web_search', 300, false, '工具执行失败：超时');
+  const failed = trace.querySelectorAll('.tool-line')[1];
+  ui.addToolTrace(trace, 'read_card', '读备忘卡片', '{}');
+  ui.settleToolTrace(trace);
+  const cut = trace.querySelectorAll('.tool-line')[2];
   const body = el.querySelector('.tool-body');
-  const before = { height: body.clientHeight, scrollable: body.scrollHeight > body.clientHeight, overflow: getComputedStyle(body).overflowY };
+  const closed = { bodyShown: getComputedStyle(body).display !== 'none', height: el.getBoundingClientRect().height };
   el.querySelector('.tool-head').click();
-  const after = { height: body.clientHeight, open: el.classList.contains('open') };
+  const open = { bodyShown: getComputedStyle(body).display !== 'none', overflow: getComputedStyle(body).overflowY, scrollable: body.scrollHeight > body.clientHeight };
   const text = body.textContent;
+  const result = {
+    running, closed, open,
+    summary: el.querySelector('.tool-summary').textContent,
+    time: el.querySelector('.tool-time').textContent,
+    done: el.classList.contains('done'),
+    failedTime: failed.querySelector('.tool-time').textContent,
+    failedClass: failed.classList.contains('failed'),
+    cut: cut.querySelector('.tool-time').textContent + (cut.classList.contains('running') ? ' running' : ''),
+    fallbackName: failed.querySelector('.tool-summary').textContent,
+    fullInput: text.includes(longInput), fullOutput: text.includes('y'.repeat(3000)), duration: text.includes('4.2 秒')
+  };
   trace.remove();
-  return { before, after, fullInput: text.includes(longInput), fullOutput: text.includes('y'.repeat(3000)) };
+  return result;
 });
-console.log('tool card:', JSON.stringify(card));
-if (!card.fullInput || !card.fullOutput || card.before.overflow !== 'auto' || !card.before.scrollable || !card.after.open || card.after.height <= card.before.height) {
-  errors.push('tool card ' + JSON.stringify(card));
+console.log('tool line:', JSON.stringify(line));
+if (line.running !== '进行中' || line.closed.bodyShown || line.closed.height > 30 || !line.open.bodyShown || line.open.overflow !== 'auto' ||
+    !line.open.scrollable || line.summary !== '派 sub agent 查检索综述' || !/^\d\d:\d\d$/.test(line.time) || !line.done ||
+    !/^失败 \d\d:\d\d$/.test(line.failedTime) || !line.failedClass || line.fallbackName !== 'web_search' || line.cut !== '已中断' ||
+    !line.fullInput || !line.fullOutput || !line.duration) {
+  errors.push('tool line ' + JSON.stringify(line));
 }
 
 if (errors.length) {

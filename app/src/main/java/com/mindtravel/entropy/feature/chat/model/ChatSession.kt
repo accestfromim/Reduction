@@ -95,7 +95,12 @@ class ChatSession(
             )
 
             for (call in calls) {
-                callbacks.onToolStarted(call.name, call.arguments)
+                callbacks.onToolStarted(
+                    call.name,
+                    tools.summary(call.name, call.arguments),
+                    call.arguments,
+                    tools.announces(call.name, call.arguments)
+                )
                 val startedAt = System.nanoTime()
                 val result = tools.execute(call.name, call.arguments)
                 val durationMs = (System.nanoTime() - startedAt) / 1_000_000

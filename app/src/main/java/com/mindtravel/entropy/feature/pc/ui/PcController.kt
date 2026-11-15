@@ -3,6 +3,7 @@ package com.mindtravel.entropy.feature.pc.ui
 import com.mindtravel.entropy.core.Logs
 import com.mindtravel.entropy.core.events.EventSink
 import com.mindtravel.entropy.core.settings.SettingsGateway
+import com.mindtravel.entropy.hardware.audio.RecordingArchive
 import com.mindtravel.entropy.hardware.pc.PcGateway
 import com.mindtravel.entropy.hardware.pc.PcProfile
 import kotlinx.coroutines.CoroutineScope
@@ -16,6 +17,7 @@ import java.util.Base64
 class PcController(
     private val settingsRepository: SettingsGateway,
     private val pcGateway: PcGateway,
+    private val recordings: RecordingArchive,
     private val emitter: EventSink,
     private val scope: CoroutineScope,
     private val updateManifestUrl: String
@@ -35,22 +37,19 @@ class PcController(
     private var watch: AutoCloseable? = null
     private var watchStarting = false
     private var logJob: Job? = null
+    private var recordingJob: Job? = null
 
     fun state(): String = connectionState
 
     private fun setState(next: String) {
         if (connectionState == next) {
-            if (next == "connected") {
-                startWatch(profile())
-                startLogShipping(profile())
-                startLogShipping(profile())
-            }
+            if (next == "connected") startConnectedWork()
             return
         }
         connectionState = next
         when (next) {
             "connected" -> {
-                startWatch(profile())
+                startConnectedWork()
                 onUpdateSignal()
             }
             "disconnected" -> stopWatch()
@@ -137,6 +136,14 @@ class PcController(
         pcGateway.close()
     }
 
+    /** Everything that runs for as long as the computer is reachable. Safe to call again. */
+    private fun startConnectedWork() {
+        val profile = profile()
+        startWatch(profile)
+        startLogShipping(profile)
+        startRecordingShipping(profile)
+    }
+
     private fun startWatch(profile: PcProfile) {
         if (profile.host.isBlank() || profile.user.isBlank()) return
         synchronized(watchLock) {
@@ -194,6 +201,37 @@ class PcController(
         }
     }
 
+    /**
+     * While connected, hands every kept recording over to the computer, oldest first. A
+     * recording leaves the phone only after the computer holds all of it.
+     */
+    private fun startRecordingShipping(profile: PcProfile) {
+        if (recordingJob?.isActive == true) return
+        recordingJob = scope.launch(Dispatchers.IO) {
+            while (isActive && connectionState == "connected") {
+                for (item in recordings.pending()) {
+                    if (!isActive || connectionState != "connected") break
+                    val delivered = runCatching {
+                        item.note?.let { deliver(profile, it.name, it.readBytes()) }
+                        deliver(profile, item.audio.name, item.audio.readBytes())
+                    }.getOrDefault(false)
+                    if (!delivered) break
+                    recordings.remove(item)
+                    Logs.add("Recording delivered: ${item.audio.name}")
+                }
+                delay(RECORDING_SHIP_INTERVAL_MS)
+            }
+        }
+    }
+
+    /** Writes one file on the computer. True once it is there in full under its own name. */
+    private fun deliver(profile: PcProfile, name: String, data: ByteArray): Boolean {
+        val target = "$RECORDING_DIR/$name"
+        val command = "mkdir -p $RECORDING_DIR && cat > $target.part && " +
+            "[ \"\$(wc -c < $target.part)\" -eq ${data.size} ] && mv $target.part $target && echo DELIVERED"
+        return pcGateway.send(profile, command, data).trim() == "DELIVERED"
+    }
+
     private fun stopWatch() {
         val current = synchronized(watchLock) {
             val active = watch
@@ -206,6 +244,8 @@ class PcController(
     private companion object {
         const val LOG_DIR = "~/entropy-agents/logs"
         const val LOG_SHIP_INTERVAL_MS = 3_000L
+        const val RECORDING_DIR = "~/entropy-agents/recordings"
+        const val RECORDING_SHIP_INTERVAL_MS = 10_000L
     }
 
     private fun profile(): PcProfile {

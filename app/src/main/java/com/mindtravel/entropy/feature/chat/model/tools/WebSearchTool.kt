@@ -16,13 +16,16 @@ class WebSearchTool(
         parameterDescription = "搜索关键词，1 到 128 个字符"
     )
 
+    override fun describe(argumentsJson: String): String =
+        "搜索：" + JSONObject(argumentsJson).stringOrNull("query").orEmpty().trim()
+
     override fun execute(argumentsJson: String): String {
         val query = JSONObject(argumentsJson).stringOrNull("query")?.trim().orEmpty()
         if (query.isBlank()) return "搜索失败：query 为空"
         val results = searchApi.search(apiKey, query)
         if (results.isEmpty()) return "没有找到相关结果"
         return buildString {
-            appendLine("搜索结果（引用时使用 [简短标题](URL)）：")
+            appendLine("搜索结果：")
             results.forEachIndexed { index, item ->
                 appendLine("${index + 1}. ${item.title}")
                 appendLine(item.url)

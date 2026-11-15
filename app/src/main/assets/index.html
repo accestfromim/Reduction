@@ -45,19 +45,12 @@
       </div>
     </header>
 
-    <section class="brief-card" id="cardBox">
-      <div class="brief-head">
-        <span class="brief-title">备忘卡片</span>
-        <div class="brief-actions">
-          <button class="text-btn" id="cardCopy">复制</button>
-          <button class="text-btn" id="cardOpen">展开</button>
-        </div>
-      </div>
-      <div class="card-chips" id="cardChips"></div>
-      <div class="card-purpose" id="cardPurpose"></div>
-      <div class="brief-preview" id="cardPreview"></div>
-    </section>
+    <nav class="tabs">
+      <button class="tab active" id="tabStream">朗读</button>
+      <button class="tab" id="tabCards">卡片</button>
+    </nav>
 
+    <section class="page" id="streamPage">
     <main class="messages" id="messages"></main>
 
     <section class="empty-state" id="emptyState">
@@ -104,6 +97,41 @@
         </button>
       </div>
     </footer>
+    </section>
+
+    <section class="page hidden" id="cardsPage">
+      <div class="card-list" id="cardList"></div>
+      <button class="card-new" id="cardNew">＋ 新卡片</button>
+    </section>
+  </div>
+
+  <div class="card-page hidden" id="cardPage">
+    <header class="card-page-head">
+      <button class="icon-btn" id="cardBack" aria-label="返回">
+        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 5l-7 7 7 7"></path>
+        </svg>
+      </button>
+      <div class="card-page-title" id="cardTitle"></div>
+      <button class="text-btn" id="cardEdit">编辑</button>
+    </header>
+    <div class="card-read markdown" id="cardBody"></div>
+    <div class="card-editor hidden" id="cardEditor">
+      <label class="field hidden" id="cardNameField">
+        <span>名称</span>
+        <input id="cardNameInput" placeholder="比如：科研想法·检索" autocomplete="off" maxlength="40" />
+      </label>
+      <label class="field">
+        <span>用途（这张卡片收什么）</span>
+        <input id="cardPurposeInput" placeholder="比如：向量检索方向的想法和待验证的假设" autocomplete="off" maxlength="120" />
+      </label>
+      <textarea class="brief-text" id="cardText" placeholder="卡片内容（Markdown）。新卡片可以留空。" spellcheck="false"></textarea>
+      <div class="actions">
+        <button class="primary-btn" id="cardSave">保存</button>
+        <button class="secondary-btn" id="cardCopy">复制</button>
+        <button class="secondary-btn" id="cardDelete">删除</button>
+      </div>
+    </div>
   </div>
 
   <div class="backdrop hidden" id="settingsBackdrop"></div>
@@ -197,32 +225,6 @@
   </div>
 
   <div class="backdrop hidden" id="pcBackdrop"></div>
-  <div class="backdrop hidden" id="cardBackdrop"></div>
-  <div class="sheet hidden" id="cardSheet">
-    <div class="sheet-header">
-      <div class="sheet-title" id="cardSheetTitle">备忘卡片</div>
-      <button class="icon-btn" id="closeCard" aria-label="关闭">×</button>
-    </div>
-    <div class="sheet-body">
-      <div class="app-info">一张卡片是一份文本，收一类信息，随时间累积。口述时助手按“用途”判断该改哪一张，像编辑文档一样增、改、删；这里也可以直接改。</div>
-      <label class="field hidden" id="cardNameField">
-        <span>名称</span>
-        <input id="cardNameInput" placeholder="比如：科研想法·检索" autocomplete="off" maxlength="40" />
-      </label>
-      <label class="field">
-        <span>用途（这张卡片收什么）</span>
-        <input id="cardPurposeInput" placeholder="比如：向量检索方向的想法和待验证的假设" autocomplete="off" maxlength="120" />
-      </label>
-      <textarea class="brief-text" id="cardText" placeholder="卡片内容（Markdown）。新卡片可以留空。" spellcheck="false"></textarea>
-      <div class="actions">
-        <button class="secondary-btn" id="cardCopySheet">复制</button>
-        <button class="primary-btn" id="cardSave">保存</button>
-        <button class="secondary-btn" id="cardDelete">删除</button>
-      </div>
-    </div>
-  </div>
-  </div>
-
   <div class="sheet hidden" id="pcSheet">
     <div class="sheet-header">
       <div class="sheet-title">电脑</div>

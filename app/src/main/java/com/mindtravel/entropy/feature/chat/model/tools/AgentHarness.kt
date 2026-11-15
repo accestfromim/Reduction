@@ -60,15 +60,20 @@ class AgentHarness(
     /** Runs a plain command on the computer, outside any agent. */
     fun exec(command: String): String = pcGateway.exec(profile, command)
 
+    /** Runs [script] on the computer through [interpreter], which reads it from standard input. */
+    fun runScript(interpreter: String, script: String, vararg args: String, environment: String = ""): String {
+        val encoded = Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_8))
+        val command = "echo $encoded | base64 -d | $environment$interpreter " + args.joinToString(" ") { quote(it) }
+        return pcGateway.exec(profile, command)
+    }
+
     private fun launcher(vararg args: String, withModel: Boolean = false): String {
-        val script = Base64.getEncoder().encodeToString(launcherScript().toByteArray(Charsets.UTF_8))
         val environment = if (withModel) {
             "AGENT_KEY=${quote(apiKey)} AGENT_MODEL=${quote("deepseek/$model")} "
         } else {
             ""
         }
-        val command = "echo $script | base64 -d | ${environment}sh -s -- " + args.joinToString(" ") { quote(it) }
-        return pcGateway.exec(profile, command)
+        return runScript("sh -s --", launcherScript(), *args, environment = environment)
     }
 
     companion object {
