@@ -24,6 +24,10 @@ class SshPcClient(context: Context) : PcGateway {
     private var session: Session? = null
     private var connectedProfile: PcProfile? = null
 
+    override fun connect(profile: PcProfile) {
+        synchronized(lock) { ensureSessionLocked(profile) }
+    }
+
     override fun info(profile: PcProfile): PcInfo = synchronized(lock) {
         withSessionLocked(profile) { current ->
             val hostname = run(current, "hostname").trim()

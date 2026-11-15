@@ -108,6 +108,7 @@ class AppGraph(
     private val updateController = UpdateController(
         host = activity,
         client = UpdateClient(),
+        emitter = emitter,
         scope = scope
     )
     private val updateBridge = UpdateBridge(updateController)
@@ -126,4 +127,9 @@ class AppGraph(
         update = updateBridge,
         system = systemBridge
     )
+
+    fun onStartup() {
+        pcController.connect()
+        updateController.check()
+    }
 }

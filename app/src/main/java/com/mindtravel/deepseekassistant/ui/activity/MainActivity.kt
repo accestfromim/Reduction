@@ -85,6 +85,7 @@ class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, Updat
         settingsRepository = graph.settingsRepository
         bridge = graph.bridge
         webView.addJavascriptInterface(bridge, "Android")
+        graph.onStartup()
 
         WakeWordBus.listener = { runOnUiThread { bridge.onWakeWord() } }
         if (settingsRepository.load().wakeWordEnabled) {

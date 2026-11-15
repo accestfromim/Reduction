@@ -16,6 +16,16 @@ class PcController(
     private val scope: CoroutineScope
 ) {
 
+    fun connect() {
+        val profile = profile()
+        if (profile.host.isBlank() || profile.user.isBlank()) return
+        scope.launch(Dispatchers.IO) {
+            runCatching { pcGateway.connect(profile) }
+                .onSuccess { Logs.add("PC SSH auto-connected") }
+                .onFailure { Logs.add("PC SSH auto-connect failed: ${it.message}") }
+        }
+    }
+
     fun info(requestId: String) {
         val profile = profile()
         scope.launch(Dispatchers.IO) {

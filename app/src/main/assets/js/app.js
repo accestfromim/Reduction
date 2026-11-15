@@ -84,6 +84,14 @@ window.Native = {
     voice.startListeningAfterBargeIn();
   },
 
+  onUpdateStatus(text) {
+    ui.toast(text || '更新中…');
+  },
+
+  onUpdateError(message) {
+    ui.toast(message || '自动更新失败');
+  },
+
   onPcInfo(id, json) {
     pc.handlePcInfo(id, json);
   },
@@ -192,7 +200,6 @@ function init() {
     setTimeout(settings.openSettings, 350);
   }
 
-  setTimeout(() => callBridge('checkUpdate'), 4000);
 }
 
 init();
