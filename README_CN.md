@@ -1,6 +1,6 @@
 # DSAssist（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v0.9.17。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.0。
 
 ## 交互
 
@@ -23,17 +23,17 @@
 - 音频缓存，相同文本和音色复用 PCM
 - 联网搜索：DeepSeek Search API
 - 计算器：本地精确计算
-- 电脑连接：Windows `pc-agent.exe`
+- 电脑连接：Tailscale + Windows OpenSSH，RSA 密钥登录，host key 固定
 - 免按住模式：
   - 前台服务 + 常驻通知
   - 手机麦克风常驻监听“你好助手”
-  - 唤醒后自动录音，静音约 1.5 秒自动结束
+  - 唤醒后自动录音，说 over 或手动/上限结束
   - 12 秒追问窗口
   - 通知栏可停止监听
 
 ## 安装
 
-1. 把 `DSAssist-v0.9.17.apk` 传到手机。
+1. 把 `DSAssist-v1.0.0.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -86,18 +86,25 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 - 联网搜索和计算器默认开启；搜索会产生 DeepSeek Search API 的额外费用。
 - 音频缓存存在 App 缓存目录，系统可能在空间不足时清理。
 - API Key 存在手机本地，请使用单独的低额度 Key。
-- 电脑端是未签名 exe，Windows SmartScreen 可能提示。
+- 电脑端使用 Tailscale + OpenSSH Server；手机必须保持 Tailscale 连接。
+- SSH 默认是公钥登录；首次连接会信任并固定 host key 指纹，未做人工指纹确认。
+- PC 命令默认是 raw shell，需要二次点击确认；自动更新尚未接入。
 
-## 电脑连接
+## 电脑连接（Tailscale + OpenSSH）
 
-1. Windows 解压 `pc-agent-windows.zip`。
-2. 双击 `start.bat`，允许防火墙“专用网络”。
-3. 窗口显示地址和 Token；Token 也可以在同目录 `pc-agent-config.json` 里复制。
-4. 手机右上角电脑图标，填地址和 Token，连接测试。
+1. Windows 和手机安装 Tailscale，登录同一个 tailnet，确认手机能解析电脑的 MagicDNS 名称或 `100.x` 地址。
+2. Windows 可选功能里安装 OpenSSH Server，启动 `sshd` 服务，防火墙只放行 Tailscale/专用网络。
+3. 手机电脑页点“复制公钥”。
+   - 普通用户：追加到 `C:\Users\<用户>\.ssh\authorized_keys`。
+   - 管理员用户：追加到 `C:\ProgramData\ssh\administrators_authorized_keys`，并确保 ACL 只允许 Administrators 和 SYSTEM。
+4. 手机填电脑主机、端口 22、SSH 用户，点“连接测试”。
+5. 首次连接会固定 host key 指纹；之后指纹变化会直接拒绝。
+
+命令执行是 SSH raw shell，LLM 调用前仍需在手机上二次确认。
 
 ## 代码结构
 
-v0.9.17 采用功能优先（feature-first）+ API 层分离结构：
+v1.0.0 采用功能优先（feature-first）+ API 层分离结构：
 
 ```text
 api/                   外部 API 实现层，顶层 Controller 不直接依赖
@@ -105,7 +112,7 @@ api/                   外部 API 实现层，顶层 Controller 不直接依赖
   ApiGraph             API 实现组装点
   chat/                DeepSeekChatGateway、ChatStreamParser、DeepSeekSearchApi
   voice/               DeepSeekAudioApi
-  pc/                  PcClient
+  pc/                  SshPcClient、SshKeyStore、PinnedHostKeyRepository
 
 core/                  纯 Kotlin 基础能力
   audio/AudioGateway   平台音频接口
@@ -125,8 +132,8 @@ feature/voice/
   ui/                  PushToTalkSession、HandsFreeSession、RecordingController、TtsController
 
 feature/pc/
-  model/               PcGateway、PcInfo、UpdateManifest
-  ui/                  PcController、UpdateController
+  model/               PcGateway、PcInfo、PcProfile
+  ui/                  PcController
 
 feature/settings/
   data/                SettingsRepository
@@ -187,7 +194,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/DSAssist-v0.9.17.apk`
+产物：`dist/DSAssist-v1.0.0.apk`
 
 免按住模式依赖：
 
@@ -195,18 +202,11 @@ export ANDROID_HOME=/path/to/android-sdk
 - `app/src/main/assets/kws/` 下的中文 KWS 模型
 - 唤醒词：`你好助手`
 
-电脑端需要 Go 1.23：
-
-```bash
-cd pc-agent
-GOOS=windows GOARCH=amd64 go build -buildvcs=false -trimpath -ldflags "-s -w" -o pc-agent.exe .
-```
-
 签名配置在 `keystore.properties` 和 `keystore/release.jks`。升级安装必须使用同一个签名文件。
 
 ## 下一步
 
-- 播放中打断（先手机麦克风监听，蓝牙耳机播放）
+- 自动更新：GitHub Releases + APK 校验
 - 蓝牙耳机麦克风常驻唤醒
 - 更低延迟：TTS WebSocket 流式合成
 - 唤醒词误唤醒/功耗调优

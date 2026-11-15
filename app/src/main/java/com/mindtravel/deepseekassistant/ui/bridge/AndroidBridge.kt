@@ -70,7 +70,7 @@ class AndroidBridge(
     fun pcExec(id: String, command: String) = pc.exec(id, command)
 
     @JavascriptInterface
-    fun pcCheckUpdate(id: String) = pc.checkUpdate(id)
+    fun pcPublicKey(): String = pc.publicKey()
 
     @JavascriptInterface
     fun vibrate(ms: Int) = system.vibrate(ms)

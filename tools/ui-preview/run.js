@@ -62,8 +62,9 @@ await page.evaluateOnNewDocument(() => {
       model: 'deepseek-flash',
       voice: 'stella',
       autoSpeak: true,
-      pcUrl: 'http://192.168.1.10:8765',
-      pcToken: 'preview-token',
+      pcHost: 'desktop.tailnet.ts.net',
+      pcPort: 22,
+      pcUser: 'user',
       webSearchEnabled: true,
       calculatorEnabled: true,
       wakeWordEnabled: true
@@ -117,7 +118,9 @@ await page.evaluateOnNewDocument(() => {
       sdk: 35,
       device: 'HONOR 500 Pro',
       hasKey: true,
-      pcUrl: 'http://192.168.1.10:8765',
+      pcHost: 'desktop.tailnet.ts.net',
+      pcPort: 22,
+      pcUser: 'user',
       cacheMb: 1.2
     }),
     shareDiagnostics: () => {},
@@ -129,7 +132,7 @@ await page.evaluateOnNewDocument(() => {
       time: '2026-11-15T00:00:00+08:00'
     })), 10),
     pcExec: (id, command) => setTimeout(() => window.Native.onPcExec(id, `ok: ${command}`), 10),
-    pcCheckUpdate: (id) => setTimeout(() => window.Native.onUpdateNone(id, '0.6.0'), 10)
+    pcPublicKey: () => 'ssh-rsa AAAAB3NzaC1yc2E preview dsassist@android'
   };
 });
 

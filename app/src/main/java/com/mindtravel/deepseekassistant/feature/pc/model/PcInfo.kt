@@ -8,7 +8,8 @@ data class PcInfo(
     val os: String = "",
     val user: String = "",
     val ips: List<String> = emptyList(),
-    val time: String = ""
+    val time: String = "",
+    val hostKey: String = ""
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("hostname", hostname)
@@ -16,5 +17,6 @@ data class PcInfo(
         put("user", user)
         put("ips", JSONArray(ips))
         put("time", time)
+        put("hostKey", hostKey)
     }
 }

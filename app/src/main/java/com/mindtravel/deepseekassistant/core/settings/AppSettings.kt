@@ -8,8 +8,9 @@ data class AppSettings(
     val model: String = "deepseek-flash",
     val voice: String = "stella",
     val autoSpeak: Boolean = true,
-    val pcUrl: String = "",
-    val pcToken: String = "",
+    val pcHost: String = "",
+    val pcPort: Int = 22,
+    val pcUser: String = "",
     val webSearchEnabled: Boolean = true,
     val calculatorEnabled: Boolean = true,
     val wakeWordEnabled: Boolean = false,
@@ -21,8 +22,9 @@ data class AppSettings(
         put("model", model)
         put("voice", voice)
         put("autoSpeak", autoSpeak)
-        put("pcUrl", pcUrl)
-        put("pcToken", pcToken)
+        put("pcHost", pcHost)
+        put("pcPort", pcPort)
+        put("pcUser", pcUser)
         put("webSearchEnabled", webSearchEnabled)
         put("calculatorEnabled", calculatorEnabled)
         put("wakeWordEnabled", wakeWordEnabled)
@@ -38,8 +40,9 @@ data class AppSettings(
                 model = json.stringOrEmpty("model").trim().ifBlank { "deepseek-flash" },
                 voice = json.stringOrEmpty("voice").trim().takeIf { it == "tide" } ?: "stella",
                 autoSpeak = json.optBoolean("autoSpeak", true),
-                pcUrl = json.stringOrEmpty("pcUrl").trim(),
-                pcToken = json.stringOrEmpty("pcToken").trim(),
+                pcHost = json.stringOrEmpty("pcHost").trim(),
+                pcPort = json.optInt("pcPort", 22).takeIf { it in 1..65535 } ?: 22,
+                pcUser = json.stringOrEmpty("pcUser").trim(),
                 webSearchEnabled = json.optBoolean("webSearchEnabled", true),
                 calculatorEnabled = json.optBoolean("calculatorEnabled", true),
                 wakeWordEnabled = json.optBoolean("wakeWordEnabled", false),

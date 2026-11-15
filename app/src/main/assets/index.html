@@ -163,19 +163,26 @@
       <div class="pc-status" id="pcStatus">未连接</div>
 
       <label class="field">
-        <span>电脑地址</span>
-        <input id="pcUrlInput" placeholder="http://192.168.1.10:8765" autocomplete="off" />
+        <span>电脑主机（Tailscale / MagicDNS）</span>
+        <input id="pcHostInput" placeholder="desktop.tailnet.ts.net" autocomplete="off" />
       </label>
 
       <label class="field">
-        <span>配对 Token</span>
-        <input id="pcTokenInput" type="password" placeholder="电脑端启动时显示" autocomplete="off" />
+        <span>SSH 端口</span>
+        <input id="pcPortInput" type="number" inputmode="numeric" value="22" min="1" max="65535" />
+      </label>
+
+      <label class="field">
+        <span>SSH 用户</span>
+        <input id="pcUserInput" placeholder="Windows 用户名" autocomplete="off" />
       </label>
 
       <div class="actions">
         <button class="secondary-btn" id="pcTest">连接测试</button>
-        <button class="secondary-btn" id="pcCheckUpdate">检查更新</button>
+        <button class="secondary-btn" id="pcCopyKey">复制公钥</button>
       </div>
+
+      <div class="app-info">先连接 Tailscale，并在 Windows 开启 OpenSSH Server。首次连接会固定 host key。</div>
 
       <label class="field" style="margin-top:16px;">
         <span>执行命令</span>

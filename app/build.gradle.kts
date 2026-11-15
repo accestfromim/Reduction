@@ -12,8 +12,8 @@ val keystoreProps = Properties().apply {
     }
 }
 
-val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 29
-val appVersionName = (project.findProperty("appVersionName") as String?) ?: "0.9.17"
+val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 30
+val appVersionName = (project.findProperty("appVersionName") as String?) ?: "1.0.0"
 
 android {
     namespace = "com.mindtravel.deepseekassistant"
@@ -85,6 +85,7 @@ dependencies {
     implementation("androidx.webkit:webkit:1.12.1")
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.github.mwiede:jsch:2.28.8")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation(files("libs/sherpa-onnx-arm64.aar"))
     testImplementation("junit:junit:4.13.2")

@@ -100,22 +100,6 @@ window.Native = {
     pc.handlePcError(id, message);
   },
 
-  onUpdateStatus(id, text) {
-    pc.handleUpdateStatus(id, text);
-  },
-
-  onUpdateNone(id, version) {
-    pc.handleUpdateNone(id, version);
-  },
-
-  onUpdateReady(id, version) {
-    pc.handleUpdateReady(id, version);
-  },
-
-  onUpdateError(id, message) {
-    pc.handleUpdateError(id, message);
-  },
-
   onError(id, message) {
     if (state.recording) voice.cancelRecording();
     ui.toast(message || '出错了');
@@ -186,7 +170,7 @@ ui.els.pcBtn.addEventListener('click', pc.openPc);
 ui.els.closePc.addEventListener('click', ui.closeSheets);
 ui.els.pcBackdrop.addEventListener('click', ui.closeSheets);
 ui.els.pcTest.addEventListener('click', pc.testPc);
-ui.els.pcCheckUpdate.addEventListener('click', pc.checkUpdate);
+ui.els.pcCopyKey.addEventListener('click', pc.copyPublicKey);
 ui.els.pcRunCommand.addEventListener('click', pc.runPcCommand);
 
 function init() {

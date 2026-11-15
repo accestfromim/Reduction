@@ -1,9 +1,10 @@
 package com.mindtravel.deepseekassistant.feature.pc.ui
 
 import com.mindtravel.deepseekassistant.core.Logs
+import com.mindtravel.deepseekassistant.core.events.EventSink
 import com.mindtravel.deepseekassistant.core.settings.SettingsGateway
 import com.mindtravel.deepseekassistant.feature.pc.model.PcGateway
-import com.mindtravel.deepseekassistant.core.events.EventSink
+import com.mindtravel.deepseekassistant.feature.pc.model.PcProfile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -16,15 +17,15 @@ class PcController(
 ) {
 
     fun info(requestId: String) {
-        val settings = settingsRepository.load()
+        val profile = profile()
         scope.launch(Dispatchers.IO) {
-            runCatching { pcGateway.info(settings.pcUrl, settings.pcToken) }
+            runCatching { pcGateway.info(profile) }
                 .onSuccess {
-                    Logs.add("PC info ok")
+                    Logs.add("PC SSH info ok")
                     emitter.emit("onPcInfo", requestId, it.toJson().toString())
                 }
                 .onFailure {
-                    Logs.add("PC info failed: ${it.message}")
+                    Logs.add("PC SSH info failed: ${it.message}")
                     emitter.emit("onPcError", requestId, it.message ?: "连接电脑失败")
                 }
         }
@@ -35,13 +36,24 @@ class PcController(
             emitter.emit("onPcError", requestId, "命令为空")
             return
         }
-        val settings = settingsRepository.load()
-        Logs.add("PC exec length=${command.length}")
+        val profile = profile()
+        Logs.add("PC SSH exec length=${command.length}")
         emitter.emit("onPcStatus", requestId, "执行中…")
         scope.launch(Dispatchers.IO) {
-            runCatching { pcGateway.exec(settings.pcUrl, settings.pcToken, command) }
+            runCatching { pcGateway.exec(profile, command) }
                 .onSuccess { emitter.emit("onPcExec", requestId, it) }
                 .onFailure { emitter.emit("onPcError", requestId, it.message ?: "命令执行失败") }
         }
+    }
+
+    fun publicKey(): String = pcGateway.publicKey()
+
+    private fun profile(): PcProfile {
+        val settings = settingsRepository.load()
+        return PcProfile(
+            host = settings.pcHost,
+            port = settings.pcPort,
+            user = settings.pcUser
+        )
     }
 }

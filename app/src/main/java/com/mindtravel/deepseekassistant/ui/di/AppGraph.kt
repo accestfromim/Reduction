@@ -8,7 +8,6 @@ import com.mindtravel.deepseekassistant.feature.chat.model.ChatSession
 import com.mindtravel.deepseekassistant.feature.chat.model.tools.ChatToolFactory
 import com.mindtravel.deepseekassistant.feature.chat.ui.ChatController
 import com.mindtravel.deepseekassistant.feature.pc.ui.PcController
-import com.mindtravel.deepseekassistant.feature.pc.ui.UpdateController
 import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
 import com.mindtravel.deepseekassistant.feature.voice.data.AndroidTtsEngine
 import com.mindtravel.deepseekassistant.feature.voice.model.RollingAsr
@@ -42,7 +41,7 @@ class AppGraph(
     val settingsRepository = SettingsRepository(activity)
     val historyRepository = HistoryRepository(activity)
 
-    private val api = ApiGraph()
+    private val api = ApiGraph(activity)
     private val chatEngine: ChatEngine = ChatSession(api.chatGateway)
     private val toolFactory = ChatToolFactory(api.searchGateway)
 
@@ -102,18 +101,11 @@ class AppGraph(
         emitter = emitter,
         scope = scope
     )
-    private val updateController = UpdateController(
-        host = activity,
-        settingsRepository = settingsRepository,
-        pcGateway = api.pcGateway,
-        emitter = emitter,
-        scope = scope
-    )
 
     private val settingsBridge = SettingsBridge(settingsRepository, historyRepository)
     private val voiceBridge = VoiceBridge(recordingController, ttsController)
     private val chatBridge = ChatBridge(chatController)
-    private val pcBridge = PcBridge(pcController, updateController)
+    private val pcBridge = PcBridge(pcController)
     private val systemBridge = SystemBridge(activity, settingsRepository, voiceBridge, emitter)
 
     val bridge = AndroidBridge(

@@ -27,7 +27,7 @@ export function openSettings() {
         `版本 ${info.version} · Android ${info.android} (API ${info.sdk})\n` +
         `设备 ${info.device}\n` +
         `Key：${info.hasKey ? '已设置' : '未设置'}\n` +
-        `电脑：${info.pcUrl || '未设置'}\n` +
+        `电脑：${info.pcUser || ''}@${info.pcHost || '未设置'}:${info.pcPort || 22}\n` +
         `音频缓存：${Number(info.cacheMb || 0).toFixed(1)} MB`
       );
     } catch (error) {
@@ -48,8 +48,9 @@ function currentSettingsFromForm() {
     wakeWordEnabled: ui.els.wakeWordInput.checked,
     bargeInEnabled: ui.els.bargeInInput.checked,
     headsetMicEnabled: ui.els.headsetMicInput.checked,
-    pcUrl: state.settings.pcUrl || '',
-    pcToken: state.settings.pcToken || ''
+    pcHost: state.settings.pcHost || '',
+    pcPort: state.settings.pcPort || 22,
+    pcUser: state.settings.pcUser || ''
   };
 }
 

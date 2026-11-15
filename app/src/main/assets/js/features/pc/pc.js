@@ -8,16 +8,18 @@ let commandArmed = false;
 let commandTimer = null;
 
 export function openPc() {
-  ui.els.pcUrlInput.value = state.settings.pcUrl || '';
-  ui.els.pcTokenInput.value = state.settings.pcToken || '';
+  ui.els.pcHostInput.value = state.settings.pcHost || '';
+  ui.els.pcPortInput.value = state.settings.pcPort || 22;
+  ui.els.pcUserInput.value = state.settings.pcUser || '';
   ui.openSheet(ui.els.pcSheet, ui.els.pcBackdrop);
 }
 
 function savePcFields() {
   const next = {
     ...state.settings,
-    pcUrl: ui.els.pcUrlInput.value.trim(),
-    pcToken: ui.els.pcTokenInput.value.trim()
+    pcHost: ui.els.pcHostInput.value.trim(),
+    pcPort: Math.max(1, Math.min(65535, Number(ui.els.pcPortInput.value) || 22)),
+    pcUser: ui.els.pcUserInput.value.trim()
   };
   const result = saveSettings(next);
   if (!result.ok) {
@@ -30,8 +32,8 @@ function savePcFields() {
 
 export function testPc() {
   if (!savePcFields()) return;
-  if (!state.settings.pcUrl) {
-    ui.toast('请先填写电脑地址');
+  if (!state.settings.pcHost || !state.settings.pcUser) {
+    ui.toast('请填写主机和 SSH 用户');
     return;
   }
   ui.setPcStatus('连接中…');
@@ -47,8 +49,8 @@ export function runPcCommand() {
     ui.toast('请输入要执行的命令');
     return;
   }
-  if (!state.settings.pcUrl) {
-    ui.toast('请先填写电脑地址');
+  if (!state.settings.pcHost || !state.settings.pcUser) {
+    ui.toast('请填写主机和 SSH 用户');
     return;
   }
   if (!commandArmed) {
@@ -71,16 +73,15 @@ export function runPcCommand() {
   callBridge('pcExec', pcRequestId, command);
 }
 
-export function checkUpdate() {
-  if (!savePcFields()) return;
-  if (!state.settings.pcUrl) {
-    ui.toast('请先填写电脑地址');
+export function copyPublicKey() {
+  const key = callBridge('pcPublicKey');
+  if (typeof key !== 'string' || !key) {
+    ui.toast('生成公钥失败');
     return;
   }
-  pcRequestId = uid();
-  ui.setPcStatus('检查更新…');
-  ui.setPcOutput('');
-  callBridge('pcCheckUpdate', pcRequestId);
+  callBridge('copyText', key);
+  ui.setPcOutput(key);
+  ui.toast('公钥已复制');
 }
 
 export function handlePcInfo(id, json) {
@@ -92,8 +93,8 @@ export function handlePcInfo(id, json) {
       `主机：${info.hostname || ''}\n` +
       `系统：${info.os || ''}\n` +
       `用户：${info.user || ''}\n` +
-      `地址：${Array.isArray(info.ips) ? info.ips.join(', ') : ''}\n` +
-      `时间：${info.time || ''}`
+      `时间：${info.time || ''}\n` +
+      `Host key：${info.hostKey || ''}`
     );
     ui.toast('电脑连接成功');
   } catch (error) {
@@ -118,27 +119,4 @@ export function handlePcError(id, message) {
   ui.setPcStatus(message || '电脑操作失败', 'err');
   ui.setPcOutput(message || '');
   ui.toast(message || '电脑操作失败');
-}
-
-export function handleUpdateStatus(id, text) {
-  if (id !== pcRequestId) return;
-  ui.setPcStatus(text);
-}
-
-export function handleUpdateNone(id, version) {
-  if (id !== pcRequestId) return;
-  ui.setPcStatus(`已是最新版本 ${version}`, 'ok');
-  ui.toast('已是最新版本');
-}
-
-export function handleUpdateReady(id, version) {
-  if (id !== pcRequestId) return;
-  ui.setPcStatus(`更新 ${version} 已下载，请在系统弹窗里点安装`, 'ok');
-  ui.toast('更新已下载，请在系统弹窗里点安装');
-}
-
-export function handleUpdateError(id, message) {
-  if (id !== pcRequestId) return;
-  ui.setPcStatus(message || '更新失败', 'err');
-  ui.toast(message || '更新失败');
 }

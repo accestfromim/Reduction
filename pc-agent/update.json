@@ -1,7 +1,0 @@
-{
-  "versionCode": 29,
-  "versionName": "0.9.17",
-  "apk": "DSAssist-v0.9.17.apk",
-  "sha256": "eef27eb88159dd306ef0a7db01ca0423ddfcd2ee8957bf8bea62a3b6f1617daa",
-  "notes": "v0.9.17: 修复 TTS 播放时自唤醒；手机扬声器暂停唤醒词，耳机输出可打断。"
-}
