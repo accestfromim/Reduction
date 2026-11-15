@@ -106,5 +106,8 @@ class AndroidBridge(
 
     fun onPause() = system.onPause()
 
-    fun dispose() = system.dispose()
+    fun dispose() {
+        system.dispose()
+        pc.close()
+    }
 }

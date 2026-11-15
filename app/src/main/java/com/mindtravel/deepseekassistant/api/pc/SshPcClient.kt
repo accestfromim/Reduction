@@ -19,65 +19,93 @@ class SshPcClient(context: Context) : PcGateway {
     private val keyStore = SshKeyStore(context)
     private val hostKeyFile = File(context.filesDir, "ssh/host_key.txt")
     private val hostKeys = PinnedHostKeyRepository(hostKeyFile)
+    private val lock = Any()
 
-    override fun info(profile: PcProfile): PcInfo = withSession(profile) { session ->
-        val hostname = run(session, "hostname").trim()
-        val user = run(session, "whoami").trim()
-        var os = run(session, "ver").trim()
-        if (os.isBlank() || os.startsWith("错误")) os = run(session, "uname -a").trim()
-        PcInfo(
-            hostname = hostname,
-            os = os,
-            user = user,
-            time = LocalDateTime.now().toString(),
-            hostKey = hostKeys.currentFingerprint()
-        )
+    private var session: Session? = null
+    private var connectedProfile: PcProfile? = null
+
+    override fun info(profile: PcProfile): PcInfo = synchronized(lock) {
+        withSessionLocked(profile) { current ->
+            val hostname = run(current, "hostname").trim()
+            val user = run(current, "whoami").trim()
+            var os = run(current, "ver").trim()
+            if (os.isBlank() || os.startsWith("错误")) os = run(current, "uname -a").trim()
+            PcInfo(
+                hostname = hostname,
+                os = os,
+                user = user,
+                time = LocalDateTime.now().toString(),
+                hostKey = hostKeys.currentFingerprint()
+            )
+        }
     }
 
     override fun exec(profile: PcProfile, command: String): String {
         if (command.isBlank()) throw ApiException("命令为空")
-        return withSession(profile) { session -> run(session, command) }
+        return synchronized(lock) {
+            withSessionLocked(profile) { current -> run(current, command) }
+        }
     }
 
     override fun publicKey(): String = keyStore.publicKey()
 
-    private fun <T> withSession(profile: PcProfile, block: (Session) -> T): T {
+    override fun close() {
+        synchronized(lock) { disconnectLocked() }
+    }
+
+    private fun <T> withSessionLocked(profile: PcProfile, block: (Session) -> T): T {
+        return try {
+            block(ensureSessionLocked(profile))
+        } catch (t: ApiException) {
+            disconnectLocked()
+            throw t
+        } catch (t: Throwable) {
+            disconnectLocked()
+            Logs.add("SSH PC error: ${t.javaClass.simpleName}: ${t.message}")
+            throw ApiException("连接电脑失败：${t.message ?: t.javaClass.simpleName}", t)
+        }
+    }
+
+    private fun ensureSessionLocked(profile: PcProfile): Session {
         if (profile.host.isBlank()) throw ApiException("请先填写电脑主机")
         if (profile.user.isBlank()) throw ApiException("请先填写 SSH 用户")
+
+        val existing = session
+        if (existing?.isConnected == true && connectedProfile == profile) return existing
+        disconnectLocked()
 
         val key = keyStore.ensure()
         val jsch = JSch().apply {
             addIdentity("dsassist", key.privateKey, null as ByteArray?, null as ByteArray?)
             hostKeyRepository = hostKeys
         }
-        var session: Session? = null
-        try {
-            session = jsch.getSession(profile.user, profile.host, profile.port)
-            session.setConfig(
-                "StrictHostKeyChecking",
-                if (hostKeys.currentFingerprint().isBlank()) "no" else "yes"
-            )
-            session.setConfig("PreferredAuthentications", "publickey")
-            session.setConfig("ServerAliveInterval", "30")
-            session.connect(10_000)
+        val fresh = jsch.getSession(profile.user, profile.host, profile.port)
+        fresh.setConfig(
+            "StrictHostKeyChecking",
+            if (hostKeys.currentFingerprint().isBlank()) "no" else "yes"
+        )
+        fresh.setConfig("PreferredAuthentications", "publickey")
+        fresh.setConfig("ServerAliveInterval", "30")
+        fresh.setConfig("ServerAliveCountMax", "3")
+        fresh.connect(10_000)
 
-            session.hostKey?.let { hostKey ->
-                val raw = Base64.getDecoder().decode(hostKey.key)
-                hostKeys.pinIfEmpty(raw)
-            }
-            return block(session)
-        } catch (t: ApiException) {
-            throw t
-        } catch (t: Throwable) {
-            Logs.add("SSH PC error: ${t.javaClass.simpleName}: ${t.message}")
-            throw ApiException("连接电脑失败：${t.message ?: t.javaClass.simpleName}", t)
-        } finally {
-            runCatching { session?.disconnect() }
+        fresh.hostKey?.let { hostKey ->
+            val raw = Base64.getDecoder().decode(hostKey.key)
+            hostKeys.pinIfEmpty(raw)
         }
+        session = fresh
+        connectedProfile = profile
+        return fresh
     }
 
-    private fun run(session: Session, command: String): String {
-        val channel = session.openChannel("exec") as ChannelExec
+    private fun disconnectLocked() {
+        runCatching { session?.disconnect() }
+        session = null
+        connectedProfile = null
+    }
+
+    private fun run(current: Session, command: String): String {
+        val channel = current.openChannel("exec") as ChannelExec
         val error = ByteArrayOutputStream()
         channel.setErrStream(error)
         channel.setCommand(command)

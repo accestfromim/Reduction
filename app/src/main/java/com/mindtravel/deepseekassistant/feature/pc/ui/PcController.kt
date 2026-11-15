@@ -48,6 +48,8 @@ class PcController(
 
     fun publicKey(): String = pcGateway.publicKey()
 
+    fun close() = pcGateway.close()
+
     private fun profile(): PcProfile {
         val settings = settingsRepository.load()
         return PcProfile(

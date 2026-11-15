@@ -4,4 +4,5 @@ interface PcGateway {
     fun info(profile: PcProfile): PcInfo
     fun exec(profile: PcProfile, command: String): String
     fun publicKey(): String
+    fun close()
 }
