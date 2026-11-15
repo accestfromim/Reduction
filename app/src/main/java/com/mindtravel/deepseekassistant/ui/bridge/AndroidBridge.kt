@@ -126,6 +126,15 @@ class AndroidBridge(
 
     fun onWakeWord() = system.onWakeWord()
 
+    @JavascriptInterface
+    fun playWakeAck(): Boolean = system.playWakeAck()
+
+    @JavascriptInterface
+    fun playAck(text: String): Boolean = system.playAck(text)
+
+    @JavascriptInterface
+    fun stopAck() = system.stopAck()
+
     fun onPause() = system.onPause()
 
     fun dispose() {
