@@ -1,6 +1,6 @@
 # DSAssist（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v0.9.13。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v0.9.14。
 
 ## 交互
 
@@ -15,8 +15,8 @@
 
 - 黑白平面图标：白底 + 黑色圆弧标志，无渐变
 - 全局黑白 UI：黑底白字、灰阶层次，无彩色强调
-- 响应优化：静音收尾 1.0 秒、唤醒拉起无额外延迟、TTS 首块提前、长按 320ms
-- ASR 预识别：500ms 短停顿先上传当前语音，1s 静音确认后直接用结果；继续说话则作废重发
+- 响应优化：滚动 ASR、唤醒拉起无额外延迟、TTS 首块提前、长按 320ms
+- 语音结束：说完说“完毕”；滚动 ASR 每轮返回后 1 秒再发，末尾“完毕”、文本无新增、或连续 2 次空且无语音时收尾；20 秒上限，可点“结束”手动收尾
 - DeepSeek 文字聊天、流式回复
 - DeepSeek ASR 语音输入、TTS 朗读
 - 流式朗读 + 连续 AudioTrack 播放 + 预合成下一句，减少短句停顿
@@ -33,7 +33,7 @@
 
 ## 安装
 
-1. 把 `DSAssist-v0.9.13.apk` 传到手机。
+1. 把 `DSAssist-v0.9.14.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -74,13 +74,13 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 
 - 播放中打断是实验功能，只在检测到耳机/蓝牙耳机输出时启用；手机扬声器播放时容易自触发，会自动跳过。
 - 打断检测触发后，当前回答可能只显示了一部分；这是预期行为。
-- ASR 在 500ms 短停顿时先发一版预识别；最终 1s 静音确认后直接用这版结果发 LLM。预识别失败或继续说话时回退到最终整段识别。
+- 语音结束后用最新滚动 ASR 结果发 LLM；手动“结束”或 20 秒上限会补一次最终整段 ASR。滚动 ASR 会重复识别增长中的整段音频，流量/费用高于流式接口。
 - 唤醒词使用**手机麦克风**常驻；设置里开启“耳机麦克风（实验）”后，唤醒后的录音会尝试走蓝牙耳机 SCO，失败自动回退手机麦克风。
 - 蓝牙耳机麦克风需要授予“附近的设备/Bluetooth”权限；不同荣耀/耳机组合的 SCO 行为可能不同。
 - 普通 App 无法做系统级锁屏热词；如果 App 进程被系统杀掉，唤醒会失效。
 - 荣耀 MagicOS 的后台策略比较激进，必须做电池白名单，仍可能需要真机调。
 - 唤醒词准确率受距离、噪声、口音影响；误唤醒可以在设置里关闭免按住模式。
-- DeepSeek ASR 不是流式接口，不能返回逐字结果；这里用短停顿预识别重叠网络耗时。
+- DeepSeek ASR 不是流式接口，不能返回逐字结果；这里用 1 秒间隔的滚动整段识别。
 - DeepSeek TTS 只有 `stella`、`tide` 两个音色。
 - 联网搜索和计算器默认开启；搜索会产生 DeepSeek Search API 的额外费用。
 - 音频缓存存在 App 缓存目录，系统可能在空间不足时清理。
@@ -96,7 +96,7 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 
 ## 代码结构
 
-v0.9.13 采用功能优先（feature-first）+ API 层分离结构：
+v0.9.14 采用功能优先（feature-first）+ API 层分离结构：
 
 ```text
 api/                   外部 API 实现层，顶层 Controller 不直接依赖
@@ -119,7 +119,7 @@ feature/chat/
   ui/                  ChatController
 
 feature/voice/
-  model/               TtsEngine、SpeculativeAsr
+  model/               TtsEngine、RollingAsr、TranscriptEndDetector
   data/                AndroidTtsEngine（适配 TtsPlayer + TtsCache）
   ui/                  RecordingController、TtsController
 
@@ -160,7 +160,7 @@ assets/js/ui/ui.js, markdown.js
 - 工具参数只接受字符串片段，缺 id/name 会直接失败。
 - 协议层不把 `JSONObject` 传给业务层。
 - 聊天、录音、TTS、电脑、更新各自独立 Controller。
-- ASR 短停顿预识别，最终静音后才发 LLM。
+- 滚动 ASR 收尾后，才发 LLM；支持“完毕”、文本无新增、空结果兜底和手动结束。
 - 设置升级会自动从旧版本迁移，不会丢 API Key。
 
 前端也拆成了 `assets/js` 下的模块，`index.html` 只保留 DOM，CSS 在 `assets/css`。
@@ -183,7 +183,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/DSAssist-v0.9.13.apk`
+产物：`dist/DSAssist-v0.9.14.apk`
 
 免按住模式依赖：
 

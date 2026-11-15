@@ -17,6 +17,7 @@ class HandsFreeRecorder {
 
     private var audioRecord: AudioRecord? = null
     private var worker: Thread? = null
+    private val pcm = ByteArrayOutputStream()
 
     @Volatile
     private var running = false
@@ -24,31 +25,33 @@ class HandsFreeRecorder {
     @Volatile
     private var canceled = false
 
+    @Volatile
+    private var speechStarted = false
+
+    @Volatile
+    private var lastVoiceAt = 0L
+
     fun start(
         followup: Boolean,
         useCommunicationSource: Boolean = false,
         onSpeechStart: () -> Unit,
-        onSpeechPause: (ByteArray) -> Unit = {},
-        onSpeechResume: () -> Unit = {},
-        onSpeechEnd: (ByteArray) -> Unit,
         onTimeout: () -> Unit,
         onError: (String) -> Unit
     ) {
         if (running) return
         running = true
         canceled = false
+        speechStarted = false
+        lastVoiceAt = 0L
+        synchronized(pcm) { pcm.reset() }
         Logs.add("Hands-free start followup=$followup")
 
         worker = Thread {
-            val pcm = ByteArrayOutputStream()
             val preRoll = ArrayDeque<ShortArray>()
             val vad = SpeechVad().apply { reset() }
             var recorder: AudioRecord? = null
-            var speechStarted = false
-            var pauseSent = false
             var timedOut = false
             var errorMessage: String? = null
-            var resultWav: ByteArray? = null
 
             try {
                 val minBuffer = AudioRecord.getMinBufferSize(
@@ -68,54 +71,32 @@ class HandsFreeRecorder {
                         val read = recorder.read(buffer, 0, buffer.size)
                         if (read <= 0) continue
                         val frame = buffer.copyOf(read)
+                        val event = vad.process(frame)
 
                         if (!speechStarted) {
                             preRoll.addLast(frame)
                             while (preRoll.size > 3) preRoll.removeFirst()
-                        }
-
-                        when (vad.process(frame)) {
-                            SpeechVad.Event.WAITING -> Unit
-                            SpeechVad.Event.SPEECH_START -> {
-                                speechStarted = true
-                                pauseSent = false
-                                Logs.add("VAD speech start threshold=${vad.threshold().toInt()}")
-                                onSpeechStart()
-                                for (item in preRoll) writeShortArray(pcm, item)
-                                preRoll.clear()
-                            }
-                            SpeechVad.Event.SPEECH_PAUSE -> {
-                                if (!pauseSent) {
-                                    pauseSent = true
-                                    val data = pcm.toByteArray()
-                                    if (data.isNotEmpty()) {
-                                        Logs.add("VAD short pause bytes=${data.size}")
-                                        onSpeechPause(WavEncoder.pcm16ToWav(data))
-                                    }
+                            when (event) {
+                                SpeechVad.Event.SPEECH_START -> {
+                                    speechStarted = true
+                                    lastVoiceAt = System.currentTimeMillis()
+                                    Logs.add("VAD speech start threshold=${vad.threshold().toInt()}")
+                                    onSpeechStart()
+                                    for (item in preRoll) writeShortArray(pcm, item)
+                                    preRoll.clear()
                                 }
-                            }
-                            SpeechVad.Event.SPEECH_CONTINUE -> {
-                                if (pauseSent) {
-                                    pauseSent = false
-                                    onSpeechResume()
+                                SpeechVad.Event.TIMEOUT -> {
+                                    Logs.add("VAD timeout")
+                                    timedOut = true
+                                    break
                                 }
-                                writeShortArray(pcm, frame)
+                                else -> Unit
                             }
-                            SpeechVad.Event.SPEECH_END -> {
-                                Logs.add("VAD speech end")
-                                break
-                            }
-                            SpeechVad.Event.TIMEOUT -> {
-                                Logs.add("VAD timeout")
-                                timedOut = true
-                                break
-                            }
+                        } else {
+                            // Continuous capture: silence frames stay in the WAV for rolling ASR.
+                            writeShortArray(pcm, frame)
+                            if (vad.lastFrameWasSpeech) lastVoiceAt = System.currentTimeMillis()
                         }
-                    }
-
-                    val data = pcm.toByteArray()
-                    if (speechStarted && data.isNotEmpty()) {
-                        resultWav = WavEncoder.pcm16ToWav(data)
                     }
                 }
             } catch (t: Throwable) {
@@ -132,14 +113,59 @@ class HandsFreeRecorder {
             }
 
             if (canceled) return@Thread
-
             when {
-                resultWav != null -> onSpeechEnd(resultWav)
                 errorMessage != null -> onError(errorMessage)
                 timedOut -> onTimeout()
             }
             Logs.add("Hands-free stopped")
         }.also { it.start() }
+    }
+
+    fun snapshotWav(): ByteArray? {
+        if (!speechStarted) return null
+        val data = synchronized(pcm) { pcm.toByteArray() }
+        if (data.isEmpty()) return null
+        return WavEncoder.pcm16ToWav(data)
+    }
+
+    fun stop(): ByteArray? {
+        running = false
+        audioRecord?.let { runCatching { it.stop() } }
+        worker?.let { runCatching { it.join(1_500) } }
+        worker = null
+        val data = synchronized(pcm) { pcm.toByteArray() }
+        val hadSpeech = speechStarted
+        speechStarted = false
+        lastVoiceAt = 0L
+        if (!hadSpeech || data.isEmpty()) return null
+        return WavEncoder.pcm16ToWav(data)
+    }
+
+    fun hasVoiceSince(timestampMs: Long): Boolean = lastVoiceAt > timestampMs
+
+    fun cancel() {
+        canceled = true
+        running = false
+        audioRecord?.let { runCatching { it.stop() } }
+        worker?.let { runCatching { it.join(1_000) } }
+        worker = null
+        audioRecord?.let {
+            runCatching { it.release() }
+        }
+        audioRecord = null
+        synchronized(pcm) { pcm.reset() }
+        speechStarted = false
+        lastVoiceAt = 0L
+    }
+
+    private fun writeShortArray(out: ByteArrayOutputStream, frame: ShortArray) {
+        synchronized(pcm) {
+            for (sample in frame) {
+                val value = sample.toInt()
+                out.write(value and 0xff)
+                out.write((value shr 8) and 0xff)
+            }
+        }
     }
 
     @SuppressLint("MissingPermission")
@@ -151,24 +177,4 @@ class HandsFreeRecorder {
         AudioFormat.ENCODING_PCM_16BIT,
         maxOf(minBuffer * 2, FRAME_SAMPLES * 4)
     )
-
-    fun cancel() {
-        canceled = true
-        running = false
-        worker?.let { runCatching { it.join(1_000) } }
-        worker = null
-        audioRecord?.let {
-            runCatching { it.stop() }
-            runCatching { it.release() }
-        }
-        audioRecord = null
-    }
-
-    private fun writeShortArray(out: ByteArrayOutputStream, frame: ShortArray) {
-        for (sample in frame) {
-            val value = sample.toInt()
-            out.write(value and 0xff)
-            out.write((value shr 8) and 0xff)
-        }
-    }
 }

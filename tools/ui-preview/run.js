@@ -82,6 +82,7 @@ await page.evaluateOnNewDocument(() => {
       else setTimeout(() => window.Native.onHandsFreeTimeout(id), 120);
     },
     cancelHandsFree: () => {},
+    finishHandsFree: () => {},
     resumeWakeWord: () => {},
     consumeWakePending: () => false,
     setWakeWordEnabled: () => true,

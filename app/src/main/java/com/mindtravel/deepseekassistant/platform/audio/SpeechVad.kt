@@ -30,6 +30,10 @@ class SpeechVad(
     private var waitStartedAt = 0L
     private var speechStartedAt = 0L
 
+    @Volatile
+    var lastFrameWasSpeech: Boolean = false
+        private set
+
     fun reset(nowMs: Long = System.currentTimeMillis()) {
         noise = 300.0
         speechStarted = false
@@ -45,6 +49,7 @@ class SpeechVad(
     fun process(frame: ShortArray, nowMs: Long = System.currentTimeMillis()): Event {
         val rms = rms(frame)
         val threshold = threshold()
+        lastFrameWasSpeech = rms > threshold
 
         if (!speechStarted) {
             if (nowMs - waitStartedAt >= waitTimeoutMs) return Event.TIMEOUT

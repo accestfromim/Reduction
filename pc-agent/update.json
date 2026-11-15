@@ -1,7 +1,7 @@
 {
-  "versionCode": 25,
-  "versionName": "0.9.13",
-  "apk": "DSAssist-v0.9.13.apk",
-  "sha256": "3bb5984e2274784e4651711b391be4e3d4e22fb5886bb7f966f6d84b875a8215",
-  "notes": "v0.9.13: API 层分离；SpeculativeAsr/TtsEngine/ChatToolFactory 组件化。"
+  "versionCode": 26,
+  "versionName": "0.9.14",
+  "apk": "DSAssist-v0.9.14.apk",
+  "sha256": "e141e1eea40ea82aa200fd27d4fbb427cf1ae5f7199b37359a8813972588a94d",
+  "notes": "v0.9.14: 滚动 ASR；说完说“完毕”结束；文本无新增/空结果兜底。"
 }

@@ -80,6 +80,9 @@ class AndroidBridge(
     fun startHandsFree(id: String, followup: Boolean) = recordingController.startHandsFree(id, followup)
 
     @JavascriptInterface
+    fun finishHandsFree() = recordingController.finishHandsFreeNow()
+
+    @JavascriptInterface
     fun cancelHandsFree() = recordingController.cancelHandsFree()
 
     @JavascriptInterface

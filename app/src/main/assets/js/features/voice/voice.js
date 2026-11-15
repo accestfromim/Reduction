@@ -160,7 +160,7 @@ export function onWakeWord() {
   state.followupActive = false;
   state.textMode = false;
   ui.showVoiceMode();
-  ui.showRecordingBar('我在听');
+  ui.showRecordingBar('说完请说：完毕');
   ui.setRecordingTime('听');
   ui.setStatus('我在听…');
   callBridge('vibrate', 30);
@@ -174,7 +174,7 @@ export function startListeningAfterBargeIn() {
   callBridge('pauseWakeWord');
   state.recId = uid();
   ui.showVoiceMode();
-  ui.showRecordingBar('我在听');
+  ui.showRecordingBar('说完请说：完毕');
   ui.setRecordingTime('听');
   ui.setStatus('我在听…');
   callBridge('vibrate', 20);
@@ -183,7 +183,7 @@ export function startListeningAfterBargeIn() {
 
 export function handleHandsFreeStart(id) {
   if (id !== state.recId) return;
-  ui.showRecordingBar('我在听');
+  ui.showRecordingBar('说完请说：完毕');
   ui.setRecordingTime('听');
   ui.setStatus('正在听…');
 }
@@ -209,7 +209,7 @@ export function startFollowup() {
   callBridge('pauseWakeWord');
   state.followupActive = true;
   state.recId = uid();
-  ui.showRecordingBar('继续说话');
+  ui.showRecordingBar('继续说话，完毕结束');
   ui.setRecordingTime('听');
   ui.setStatus('继续说话…');
   callBridge('startHandsFree', state.recId, true);

@@ -19,6 +19,7 @@ export const els = {
   recordingTime: byId('recordingTime'),
   recordingHint: byId('recordingHint'),
   cancelRecording: byId('cancelRecording'),
+  finishRecording: byId('finishRecording'),
   settingsBtn: byId('settingsBtn'),
   settingsBackdrop: byId('settingsBackdrop'),
   settingsSheet: byId('settingsSheet'),

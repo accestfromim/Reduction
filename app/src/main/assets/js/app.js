@@ -157,6 +157,16 @@ ui.els.micBtn.addEventListener('click', (event) => event.preventDefault());
 ui.els.micBtn.addEventListener('contextmenu', (event) => event.preventDefault());
 ui.els.voiceBtn.addEventListener('click', ui.showVoiceMode);
 
+ui.els.finishRecording.addEventListener('click', (event) => {
+  event.preventDefault();
+  if (state.wakeActive || state.followupActive) {
+    ui.setStatus('识别中…');
+    callBridge('finishHandsFree');
+  } else if (state.recording) {
+    voice.endRecording();
+  }
+});
+
 ui.els.cancelRecording.addEventListener('click', (event) => {
   event.preventDefault();
   voice.cancelRecording();

@@ -300,6 +300,8 @@
     padding: 4px 2px;
   }
 
+  .recording-bar .text-btn + .text-btn { margin-left: 8px; }
+
   .composer-hint:empty { display: none; }
 
   .composer-hint {

@@ -11,7 +11,7 @@ import com.mindtravel.deepseekassistant.feature.pc.ui.PcController
 import com.mindtravel.deepseekassistant.feature.pc.ui.UpdateController
 import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
 import com.mindtravel.deepseekassistant.feature.voice.data.AndroidTtsEngine
-import com.mindtravel.deepseekassistant.feature.voice.model.SpeculativeAsr
+import com.mindtravel.deepseekassistant.feature.voice.model.RollingAsr
 import com.mindtravel.deepseekassistant.feature.voice.model.TtsEngine
 import com.mindtravel.deepseekassistant.feature.voice.ui.RecordingController
 import com.mindtravel.deepseekassistant.feature.voice.ui.TtsController
@@ -40,7 +40,7 @@ class AppGraph(
     private val ttsCache = TtsCache(activity)
     private val ttsPlayer = TtsPlayer(activity, api.audioGateway, ttsCache, scope)
     private val ttsEngine: TtsEngine = AndroidTtsEngine(ttsPlayer, ttsCache)
-    private val speculativeAsr = SpeculativeAsr(api.audioGateway, scope)
+    private val rollingAsr = RollingAsr(api.audioGateway, scope)
     private val wavRecorder = WavRecorder()
     private val handsFreeRecorder = HandsFreeRecorder()
     private val headsetMic = HeadsetMicController(activity)
@@ -60,7 +60,7 @@ class AppGraph(
         wavRecorder = wavRecorder,
         handsFreeRecorder = handsFreeRecorder,
         headsetMic = headsetMic,
-        speculativeAsr = speculativeAsr,
+        rollingAsr = rollingAsr,
         emitter = emitter,
         scope = scope
     )
