@@ -191,6 +191,8 @@ function init() {
   if (!state.settings.apiKey) {
     setTimeout(settings.openSettings, 350);
   }
+
+  setTimeout(() => callBridge('checkUpdate'), 4000);
 }
 
 init();

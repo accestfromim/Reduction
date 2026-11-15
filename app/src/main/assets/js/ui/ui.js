@@ -34,6 +34,8 @@ export const els = {
   wakeWordInput: byId('wakeWordInput'),
   bargeInInput: byId('bargeInInput'),
   headsetMicInput: byId('headsetMicInput'),
+  opencodeEnabledInput: byId('opencodeEnabledInput'),
+  pcProjectInput: byId('pcProjectInput'),
   saveSettings: byId('saveSettings'),
   testTts: byId('testTts'),
   clearAudioCache: byId('clearAudioCache'),

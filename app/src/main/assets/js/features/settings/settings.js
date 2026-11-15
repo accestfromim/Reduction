@@ -18,6 +18,8 @@ export function openSettings() {
   ui.els.wakeWordInput.checked = !!state.settings.wakeWordEnabled;
   ui.els.bargeInInput.checked = state.settings.bargeInEnabled !== false;
   ui.els.headsetMicInput.checked = state.settings.headsetMicEnabled === true;
+  ui.els.opencodeEnabledInput.checked = state.settings.opencodeEnabled === true;
+  ui.els.pcProjectInput.value = state.settings.pcProject || '/home/user/dsassist-iterate';
 
   const raw = callBridge('getAppInfo');
   if (typeof raw === 'string' && raw) {
@@ -48,6 +50,8 @@ function currentSettingsFromForm() {
     wakeWordEnabled: ui.els.wakeWordInput.checked,
     bargeInEnabled: ui.els.bargeInInput.checked,
     headsetMicEnabled: ui.els.headsetMicInput.checked,
+    opencodeEnabled: ui.els.opencodeEnabledInput.checked,
+    pcProject: ui.els.pcProjectInput.value.trim() || '/home/user/dsassist-iterate',
     pcHost: state.settings.pcHost || '',
     pcPort: state.settings.pcPort || 22,
     pcUser: state.settings.pcUser || ''

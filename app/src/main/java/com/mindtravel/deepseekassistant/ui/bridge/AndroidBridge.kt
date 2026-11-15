@@ -7,6 +7,7 @@ class AndroidBridge(
     private val voice: VoiceBridge,
     private val chat: ChatBridge,
     private val pc: PcBridge,
+    private val update: UpdateBridge,
     private val system: SystemBridge
 ) {
     @JavascriptInterface
@@ -71,6 +72,9 @@ class AndroidBridge(
 
     @JavascriptInterface
     fun pcPublicKey(): String = pc.publicKey()
+
+    @JavascriptInterface
+    fun checkUpdate() = update.check()
 
     @JavascriptInterface
     fun vibrate(ms: Int) = system.vibrate(ms)

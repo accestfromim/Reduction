@@ -12,7 +12,9 @@ export const DEFAULT_SETTINGS = Object.freeze({
   calculatorEnabled: true,
   wakeWordEnabled: false,
   bargeInEnabled: true,
-  headsetMicEnabled: false
+  headsetMicEnabled: false,
+  opencodeEnabled: false,
+  pcProject: '/home/user/dsassist-iterate'
 });
 
 function string(value, fallback = '') {
@@ -32,7 +34,9 @@ export function normalizeSettings(raw) {
     calculatorEnabled: raw?.calculatorEnabled !== false,
     wakeWordEnabled: raw?.wakeWordEnabled === true,
     bargeInEnabled: raw?.bargeInEnabled !== false,
-    headsetMicEnabled: raw?.headsetMicEnabled === true
+    headsetMicEnabled: raw?.headsetMicEnabled === true,
+    opencodeEnabled: raw?.opencodeEnabled === true,
+    pcProject: string(raw?.pcProject, '/home/user/dsassist-iterate').trim() || '/home/user/dsassist-iterate'
   };
 }
 

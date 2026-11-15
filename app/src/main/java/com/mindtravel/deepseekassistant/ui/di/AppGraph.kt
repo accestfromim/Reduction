@@ -2,6 +2,7 @@ package com.mindtravel.deepseekassistant.ui.di
 
 import android.webkit.WebView
 import com.mindtravel.deepseekassistant.api.ApiGraph
+import com.mindtravel.deepseekassistant.api.update.UpdateClient
 import com.mindtravel.deepseekassistant.feature.chat.data.HistoryRepository
 import com.mindtravel.deepseekassistant.feature.chat.model.ChatEngine
 import com.mindtravel.deepseekassistant.feature.chat.model.ChatSession
@@ -9,6 +10,7 @@ import com.mindtravel.deepseekassistant.feature.chat.model.tools.ChatToolFactory
 import com.mindtravel.deepseekassistant.feature.chat.ui.ChatController
 import com.mindtravel.deepseekassistant.feature.pc.ui.PcController
 import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
+import com.mindtravel.deepseekassistant.feature.update.ui.UpdateController
 import com.mindtravel.deepseekassistant.feature.voice.data.AndroidTtsEngine
 import com.mindtravel.deepseekassistant.feature.voice.model.RollingAsr
 import com.mindtravel.deepseekassistant.feature.voice.model.TtsEngine
@@ -30,6 +32,7 @@ import com.mindtravel.deepseekassistant.ui.bridge.JsEmitter
 import com.mindtravel.deepseekassistant.ui.bridge.PcBridge
 import com.mindtravel.deepseekassistant.ui.bridge.SettingsBridge
 import com.mindtravel.deepseekassistant.ui.bridge.SystemBridge
+import com.mindtravel.deepseekassistant.ui.bridge.UpdateBridge
 import com.mindtravel.deepseekassistant.ui.bridge.VoiceBridge
 import kotlinx.coroutines.CoroutineScope
 
@@ -43,7 +46,7 @@ class AppGraph(
 
     private val api = ApiGraph(activity)
     private val chatEngine: ChatEngine = ChatSession(api.chatGateway)
-    private val toolFactory = ChatToolFactory(api.searchGateway)
+    private val toolFactory = ChatToolFactory(api.searchGateway, api.pcGateway)
 
     private val ttsCache = TtsCache(activity)
     private val ttsPipeline = TtsPipeline(
@@ -102,6 +105,13 @@ class AppGraph(
         scope = scope
     )
 
+    private val updateController = UpdateController(
+        host = activity,
+        client = UpdateClient(),
+        scope = scope
+    )
+    private val updateBridge = UpdateBridge(updateController)
+
     private val settingsBridge = SettingsBridge(settingsRepository, historyRepository)
     private val voiceBridge = VoiceBridge(recordingController, ttsController)
     private val chatBridge = ChatBridge(chatController)
@@ -113,6 +123,7 @@ class AppGraph(
         voice = voiceBridge,
         chat = chatBridge,
         pc = pcBridge,
+        update = updateBridge,
         system = systemBridge
     )
 }

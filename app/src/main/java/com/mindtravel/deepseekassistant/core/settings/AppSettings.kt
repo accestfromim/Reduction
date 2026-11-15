@@ -15,7 +15,9 @@ data class AppSettings(
     val calculatorEnabled: Boolean = true,
     val wakeWordEnabled: Boolean = false,
     val bargeInEnabled: Boolean = true,
-    val headsetMicEnabled: Boolean = false
+    val headsetMicEnabled: Boolean = false,
+    val opencodeEnabled: Boolean = false,
+    val pcProject: String = "/home/user/dsassist-iterate"
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("apiKey", apiKey)
@@ -30,6 +32,8 @@ data class AppSettings(
         put("wakeWordEnabled", wakeWordEnabled)
         put("bargeInEnabled", bargeInEnabled)
         put("headsetMicEnabled", headsetMicEnabled)
+        put("opencodeEnabled", opencodeEnabled)
+        put("pcProject", pcProject)
     }
 
     companion object {
@@ -47,7 +51,10 @@ data class AppSettings(
                 calculatorEnabled = json.optBoolean("calculatorEnabled", true),
                 wakeWordEnabled = json.optBoolean("wakeWordEnabled", false),
                 bargeInEnabled = json.optBoolean("bargeInEnabled", true),
-                headsetMicEnabled = json.optBoolean("headsetMicEnabled", false)
+                headsetMicEnabled = json.optBoolean("headsetMicEnabled", false),
+                opencodeEnabled = json.optBoolean("opencodeEnabled", false),
+                pcProject = json.stringOrEmpty("pcProject").trim()
+                    .ifBlank { "/home/user/dsassist-iterate" }
             )
         }
     }

@@ -50,7 +50,9 @@ class SettingsRepository(context: Context) : SettingsGateway {
             calculatorEnabled = prefs.getBoolean("calculatorEnabled", true),
             wakeWordEnabled = prefs.getBoolean("wakeWordEnabled", false),
             bargeInEnabled = prefs.getBoolean("bargeInEnabled", true),
-            headsetMicEnabled = prefs.getBoolean("headsetMicEnabled", false)
+            headsetMicEnabled = prefs.getBoolean("headsetMicEnabled", false),
+            opencodeEnabled = false,
+            pcProject = "/home/user/dsassist-iterate"
         )
         save(legacy)
         Logs.add("Settings migrated to v2")

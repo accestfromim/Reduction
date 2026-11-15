@@ -141,6 +141,16 @@
         <input id="headsetMicInput" type="checkbox" />
       </label>
 
+      <label class="switch-row">
+        <span>允许 LLM 调用 opencode（只读）</span>
+        <input id="opencodeEnabledInput" type="checkbox" />
+      </label>
+
+      <label class="field">
+        <span>opencode 项目目录</span>
+        <input id="pcProjectInput" placeholder="/home/user/dsassist-iterate" autocomplete="off" />
+      </label>
+
       <div class="actions">
         <button class="primary-btn" id="saveSettings">保存</button>
         <button class="secondary-btn" id="testTts">测试朗读</button>
