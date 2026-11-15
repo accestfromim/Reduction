@@ -24,6 +24,11 @@ class SshPcClient(context: Context) : PcGateway {
     private var session: Session? = null
     private var connectedProfile: PcProfile? = null
 
+    private val watchLock = Any()
+    private var watchSession: Session? = null
+    private var watchChannel: ChannelExec? = null
+    private var watchThread: Thread? = null
+
     override fun connect(profile: PcProfile) {
         synchronized(lock) { ensureSessionLocked(profile) }
     }
@@ -55,10 +60,54 @@ class SshPcClient(context: Context) : PcGateway {
         }
     }
 
+    override fun watchUpdates(
+        profile: PcProfile,
+        manifestUrl: String,
+        onLine: (String) -> Unit
+    ): AutoCloseable {
+        if (manifestUrl.isBlank()) throw ApiException("更新地址为空")
+        val fresh = openSession(profile)
+        val channel: ChannelExec
+        val input: java.io.InputStream
+        try {
+            channel = fresh.openChannel("exec") as ChannelExec
+            channel.setCommand(watchCommand(manifestUrl))
+            channel.setErrStream(ByteArrayOutputStream())
+            input = channel.inputStream
+            channel.connect(10_000)
+        } catch (t: Throwable) {
+            runCatching { fresh.disconnect() }
+            throw ApiException("更新监听失败：${t.message ?: t.javaClass.simpleName}", t)
+        }
+        synchronized(watchLock) {
+            stopWatchLocked()
+            watchSession = fresh
+            watchChannel = channel
+        }
+        val thread = Thread({
+            try {
+                input.bufferedReader().use { reader ->
+                    while (true) {
+                        val line = reader.readLine() ?: break
+                        if (line.isNotBlank()) onLine(line.trim())
+                    }
+                }
+            } catch (t: Throwable) {
+                Logs.add("PC update watcher stopped: ${t.message}")
+            }
+        }, "dsassist-update-watch").apply {
+            isDaemon = true
+            start()
+        }
+        synchronized(watchLock) { watchThread = thread }
+        return AutoCloseable { synchronized(watchLock) { stopWatchLocked() } }
+    }
+
     override fun publicKey(): String = keyStore.publicKey()
 
     override fun close() {
         synchronized(lock) { disconnectLocked() }
+        stopWatch()
     }
 
     private fun <T> withSessionLocked(profile: PcProfile, block: (Session) -> T): T {
@@ -75,12 +124,18 @@ class SshPcClient(context: Context) : PcGateway {
     }
 
     private fun ensureSessionLocked(profile: PcProfile): Session {
-        if (profile.host.isBlank()) throw ApiException("请先填写电脑主机")
-        if (profile.user.isBlank()) throw ApiException("请先填写 SSH 用户")
-
         val existing = session
         if (existing?.isConnected == true && connectedProfile == profile) return existing
         disconnectLocked()
+        val fresh = openSession(profile)
+        session = fresh
+        connectedProfile = profile
+        return fresh
+    }
+
+    private fun openSession(profile: PcProfile): Session {
+        if (profile.host.isBlank()) throw ApiException("请先填写电脑主机")
+        if (profile.user.isBlank()) throw ApiException("请先填写 SSH 用户")
 
         val key = keyStore.ensure()
         val jsch = JSch().apply {
@@ -101,8 +156,6 @@ class SshPcClient(context: Context) : PcGateway {
             val raw = Base64.getDecoder().decode(hostKey.key)
             hostKeys.pinIfEmpty(raw)
         }
-        session = fresh
-        connectedProfile = profile
         return fresh
     }
 
@@ -110,6 +163,38 @@ class SshPcClient(context: Context) : PcGateway {
         runCatching { session?.disconnect() }
         session = null
         connectedProfile = null
+    }
+
+    private fun stopWatch() {
+        synchronized(watchLock) { stopWatchLocked() }
+    }
+
+    private fun stopWatchLocked() {
+        val channel = watchChannel
+        val watch = watchSession
+        val thread = watchThread
+        watchChannel = null
+        watchSession = null
+        watchThread = null
+        runCatching { channel?.disconnect() }
+        runCatching { watch?.disconnect() }
+        thread?.interrupt()
+    }
+
+    private fun watchCommand(manifestUrl: String): String {
+        val script = """
+last=""
+while :; do
+  n=${'$'}(curl -fsS --max-time 10 "$manifestUrl" 2>/dev/null | sed -n 's/.*"versionCode"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' | head -n1)
+  if [ -n "${'$'}n" ] && [ "${'$'}n" != "${'$'}last" ]; then
+    if [ -n "${'$'}last" ]; then echo "UPDATE ${'$'}n"; fi
+    last="${'$'}n"
+  fi
+  sleep 60
+done
+""".trimIndent()
+        val encoded = Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_8))
+        return "echo $encoded | base64 -d | sh"
     }
 
     private fun run(current: Session, command: String): String {

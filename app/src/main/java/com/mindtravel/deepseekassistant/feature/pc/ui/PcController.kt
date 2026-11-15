@@ -13,7 +13,9 @@ class PcController(
     private val settingsRepository: SettingsGateway,
     private val pcGateway: PcGateway,
     private val emitter: EventSink,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val updateManifestUrl: String,
+    private val onUpdateSignal: () -> Unit
 ) {
 
     @Volatile
@@ -22,11 +24,25 @@ class PcController(
     @Volatile
     private var connectionState = "disconnected"
 
+    private val watchLock = Any()
+    private var watch: AutoCloseable? = null
+    private var watchStarting = false
+
     fun state(): String = connectionState
 
     private fun setState(next: String) {
-        if (connectionState == next) return
+        if (connectionState == next) {
+            if (next == "connected") startWatch(profile())
+            return
+        }
         connectionState = next
+        when (next) {
+            "connected" -> {
+                startWatch(profile())
+                onUpdateSignal()
+            }
+            "disconnected" -> stopWatch()
+        }
         emitter.emit("onPcConnection", next)
     }
 
@@ -104,8 +120,48 @@ class PcController(
     fun publicKey(): String = pcGateway.publicKey()
 
     fun close() {
+        stopWatch()
         setState("disconnected")
         pcGateway.close()
+    }
+
+    private fun startWatch(profile: PcProfile) {
+        if (profile.host.isBlank() || profile.user.isBlank()) return
+        synchronized(watchLock) {
+            if (watch != null || watchStarting) return
+            watchStarting = true
+        }
+        scope.launch(Dispatchers.IO) {
+            try {
+                val handle = pcGateway.watchUpdates(profile, updateManifestUrl) { line ->
+                    val code = line.removePrefix("UPDATE ").trim()
+                    if (line.startsWith("UPDATE ") && code.isNotEmpty()) {
+                        Logs.add("PC update signal: $code")
+                        onUpdateSignal()
+                    }
+                }
+                synchronized(watchLock) {
+                    if (connectionState == "connected") {
+                        watch = handle
+                    } else {
+                        runCatching { handle.close() }
+                    }
+                }
+            } catch (t: Throwable) {
+                Logs.add("PC update watch failed: ${t.message}")
+            } finally {
+                synchronized(watchLock) { watchStarting = false }
+            }
+        }
+    }
+
+    private fun stopWatch() {
+        val current = synchronized(watchLock) {
+            val active = watch
+            watch = null
+            active
+        }
+        runCatching { current?.close() }
     }
 
     private fun profile(): PcProfile {

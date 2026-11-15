@@ -1,6 +1,6 @@
 # DSAssist（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.14。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.15。
 
 ## 交互
 
@@ -23,8 +23,9 @@
 - 音频缓存，相同文本和音色复用 PCM
 - 联网搜索：DeepSeek Search API
 - 计算器：本地精确计算
-- 电脑连接：Tailscale + Windows OpenSSH，RSA 密钥登录，host key 固定，持久 SSH 会话
-- 自动更新：example-host 公开 manifest，APK SHA256 校验后在手机上弹安装确认
+- 电脑连接：example-host 反向 SSH + WSL OpenSSH，RSA 密钥登录，host key 固定，持久 SSH 会话
+- 自动更新：连接电脑时检查一次；连接期间电脑侧监听 manifest，版本变化后推送；APK SHA256 校验后在手机上弹安装确认
+- 更新推送依赖 App 与电脑 SSH 连接存活；App 被杀或断线时，下次连接补查
 - opencode 工具：只读分析；开启高风险写权限后可在 worktree 修改代码，system prompt 已包含项目目录与边界
 - 工具过程展示：工具名、参数摘要、状态、单次耗时
 - 免按住模式：
@@ -36,7 +37,7 @@
 
 ## 安装
 
-1. 把 `DSAssist-v1.0.14.apk` 传到手机。
+1. 把 `DSAssist-v1.0.15.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -89,25 +90,23 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 - 联网搜索和计算器默认开启；搜索会产生 DeepSeek Search API 的额外费用。
 - 音频缓存存在 App 缓存目录，系统可能在空间不足时清理。
 - API Key 存在手机本地，请使用单独的低额度 Key。
-- 电脑端使用 Tailscale + OpenSSH Server；手机必须保持 Tailscale 连接。
+- 电脑端通过 example-host 反向 SSH 暴露 WSL OpenSSH；手机不需要 Tailscale。
 - SSH 默认是公钥登录；首次连接会信任并固定 host key 指纹，未做人工指纹确认。
-- PC 命令默认是 raw shell，需要二次点击确认；自动更新尚未接入。
+- PC 命令默认是 raw shell，需要二次点击确认；自动更新只在连接电脑期间监听。
 
-## 电脑连接（Tailscale + OpenSSH）
+## 电脑连接（example-host 反向 SSH + OpenSSH）
 
-1. Windows 和手机安装 Tailscale，登录同一个 tailnet，确认手机能解析电脑的 MagicDNS 名称或 `100.x` 地址。
-2. Windows 可选功能里安装 OpenSSH Server，启动 `sshd` 服务，防火墙只放行 Tailscale/专用网络。
-3. 手机电脑页点“复制公钥”。
-   - 普通用户：追加到 `C:\Users\<用户>\.ssh\authorized_keys`。
-   - 管理员用户：追加到 `C:\ProgramData\ssh\administrators_authorized_keys`，并确保 ACL 只允许 Administrators 和 SYSTEM。
-4. 手机填电脑主机、端口 22、SSH 用户，点“连接测试”。
+1. WSL 安装并启动 OpenSSH Server，监听 `22`；example-host 开启 `GatewayPorts clientspecified`。
+2. WSL 建立反向隧道：`ssh -R 0.0.0.0:443:127.0.0.1:22 example-host`。
+3. 手机电脑页点“复制公钥”，追加到 WSL 的 `~/.ssh/authorized_keys`。
+4. 手机填 `example.com`、端口 `443`、SSH 用户 `mindtravel`，点“连接测试”。
 5. 首次连接会固定 host key 指纹；之后指纹变化会直接拒绝。
 
 命令执行是 SSH raw shell，LLM 调用前仍需在手机上二次确认。连接测试成功后保持 SSH 会话，后续命令复用；连接异常会断开，下次自动重连。
 
 ## 代码结构
 
-v1.0.14 采用功能优先（feature-first）+ API 层分离结构：
+v1.0.15 采用功能优先（feature-first）+ API 层分离结构：
 
 ```text
 api/                   外部 API 实现层，顶层 Controller 不直接依赖
@@ -197,7 +196,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/DSAssist-v1.0.14.apk`
+产物：`dist/DSAssist-v1.0.15.apk`
 
 免按住模式依赖：
 
@@ -209,7 +208,6 @@ export ANDROID_HOME=/path/to/android-sdk
 
 ## 下一步
 
-- 自动更新：GitHub Releases + APK 校验
 - 蓝牙耳机麦克风常驻唤醒
 - 更低延迟：TTS WebSocket 流式合成
 - 唤醒词误唤醒/功耗调优

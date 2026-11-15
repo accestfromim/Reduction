@@ -98,13 +98,6 @@ class AppGraph(
         ttsEngine = ttsEngine,
         emitter = emitter
     )
-    private val pcController = PcController(
-        settingsRepository = settingsRepository,
-        pcGateway = api.pcGateway,
-        emitter = emitter,
-        scope = scope
-    )
-
     private val updateController = UpdateController(
         host = activity,
         client = UpdateClient(),
@@ -112,6 +105,15 @@ class AppGraph(
         scope = scope
     )
     private val updateBridge = UpdateBridge(updateController)
+
+    private val pcController = PcController(
+        settingsRepository = settingsRepository,
+        pcGateway = api.pcGateway,
+        emitter = emitter,
+        scope = scope,
+        updateManifestUrl = UpdateController.MANIFEST_URL,
+        onUpdateSignal = { updateController.check() }
+    )
 
     private val settingsBridge = SettingsBridge(settingsRepository, historyRepository)
     private val voiceBridge = VoiceBridge(recordingController, ttsController)
@@ -130,7 +132,6 @@ class AppGraph(
 
     fun onStartup() {
         pcController.connect()
-        updateController.check()
     }
 
     fun onResume() {
