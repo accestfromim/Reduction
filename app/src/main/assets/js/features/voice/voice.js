@@ -139,6 +139,18 @@ export function handleAsrResult(id, ok, text) {
   }
 }
 
+function startWakeListening() {
+  state.awaitWakeAck = false;
+  clearTimeout(state.wakeAckTimer);
+  state.wakeAckTimer = null;
+  state.recId = uid();
+  ui.showVoiceMode();
+  ui.showRecordingBar('说完请说：over');
+  ui.setRecordingTime('听');
+  ui.setStatus('我在听…');
+  callBridge('startHandsFree', state.recId, false);
+}
+
 export function onWakeWord() {
   callBridge('consumeWakePending');
   if (!state.settings.wakeWordEnabled) return;
@@ -156,13 +168,34 @@ export function onWakeWord() {
   state.wakeActive = true;
   state.followupActive = false;
   state.textMode = false;
+  state.awaitWakeAck = true;
   ui.showVoiceMode();
   ui.showRecordingBar('说完请说：over');
   ui.setRecordingTime('听');
-  ui.setStatus('我在听…');
+  ui.setStatus('我在…');
   callBridge('vibrate', 30);
-  state.recId = uid();
-  callBridge('startHandsFree', state.recId, false);
+  const ackStarted = callBridge('playWakeAck');
+  if (ackStarted !== true) {
+    startWakeListening();
+    return;
+  }
+  clearTimeout(state.wakeAckTimer);
+  state.wakeAckTimer = setTimeout(() => {
+    if (state.awaitWakeAck) {
+      callBridge('stopAck');
+      startWakeListening();
+    }
+  }, 2000);
+}
+
+export function onWakeAckDone() {
+  if (!state.awaitWakeAck) return;
+  startWakeListening();
+}
+
+export function onTurnEnd(id) {
+  if (id !== state.recId) return;
+  callBridge('playAck', '好的');
 }
 
 export function handleHandsFreeStart(id) {
@@ -202,6 +235,10 @@ export function startFollowup() {
 export function endWakeConversation() {
   state.wakeActive = false;
   state.followupActive = false;
+  state.awaitWakeAck = false;
+  clearTimeout(state.wakeAckTimer);
+  state.wakeAckTimer = null;
+  callBridge('stopAck');
   ui.hideRecordingBar();
   callBridge('cancelHandsFree');
   callBridge('resumeWakeWord');

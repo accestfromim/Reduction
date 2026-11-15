@@ -25,6 +25,7 @@ import com.mindtravel.deepseekassistant.platform.audio.TtsPipeline
 import com.mindtravel.deepseekassistant.platform.audio.TtsPlayback
 import com.mindtravel.deepseekassistant.platform.audio.TtsSynthesizer
 import com.mindtravel.deepseekassistant.platform.audio.WavRecorder
+import com.mindtravel.deepseekassistant.platform.audio.QuickAckPlayer
 import com.mindtravel.deepseekassistant.ui.activity.MainActivity
 import com.mindtravel.deepseekassistant.ui.bridge.AndroidBridge
 import com.mindtravel.deepseekassistant.ui.bridge.ChatBridge
@@ -60,6 +61,7 @@ class AppGraph(
     private val wavRecorder = WavRecorder()
     private val handsFreeRecorder = HandsFreeRecorder()
     private val headsetMic = HeadsetMicController(activity)
+    private val wakeAck = QuickAckPlayer(activity, emitter)
 
     private val chatController = ChatController(
         settingsRepository = settingsRepository,
@@ -117,7 +119,7 @@ class AppGraph(
     private val voiceBridge = VoiceBridge(recordingController, ttsController)
     private val chatBridge = ChatBridge(chatController)
     private val pcBridge = PcBridge(pcController)
-    private val systemBridge = SystemBridge(activity, settingsRepository, voiceBridge, emitter)
+    private val systemBridge = SystemBridge(activity, settingsRepository, voiceBridge, emitter, wakeAck)
 
     val bridge = AndroidBridge(
         settings = settingsBridge,

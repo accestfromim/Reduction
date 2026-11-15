@@ -27,7 +27,9 @@ export const state = {
   ttsSuppressed: false,
   ttsStopIgnore: 0,
   wakeActive: false,
-  followupActive: false
+  followupActive: false,
+  awaitWakeAck: false,
+  wakeAckTimer: null
 };
 
 export function uid() {

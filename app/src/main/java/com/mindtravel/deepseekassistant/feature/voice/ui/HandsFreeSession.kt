@@ -119,7 +119,12 @@ class HandsFreeSession(
         val hasVoice = handsFreeRecorder.hasVoiceSince(snapshotAt)
         when (val decision = endDetector.evaluate(text, hasVoice)) {
             TranscriptEndDetector.Decision.Continue -> Unit
-            is TranscriptEndDetector.Decision.End -> finish(id, token, decision.text)
+            is TranscriptEndDetector.Decision.End -> {
+                if (!text.isNullOrBlank() && endDetector.stripEndWord(text) != null) {
+                    emitter.emit("onTurnEnd", id)
+                }
+                finish(id, token, decision.text)
+            }
         }
     }
 

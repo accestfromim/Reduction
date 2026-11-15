@@ -42,6 +42,14 @@ window.Native = {
     voice.onWakeWord();
   },
 
+  onWakeAckDone() {
+    voice.onWakeAckDone();
+  },
+
+  onTurnEnd(id) {
+    voice.onTurnEnd(id);
+  },
+
   onStatus(id, status) {
     if (status === '识别中') ui.setStatus('识别中…');
     else if (status === '思考中') ui.setStatus('思考中…');

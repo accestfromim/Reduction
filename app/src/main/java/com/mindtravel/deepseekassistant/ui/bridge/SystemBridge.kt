@@ -12,6 +12,7 @@ import com.mindtravel.deepseekassistant.BuildConfig
 import com.mindtravel.deepseekassistant.core.Logs
 import com.mindtravel.deepseekassistant.core.events.EventSink
 import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
+import com.mindtravel.deepseekassistant.platform.audio.QuickAckPlayer
 import com.mindtravel.deepseekassistant.ui.activity.MainActivity
 import org.json.JSONObject
 
@@ -19,7 +20,8 @@ class SystemBridge(
     private val activity: MainActivity,
     private val settings: SettingsRepository,
     private val voice: VoiceBridge,
-    private val emitter: EventSink
+    private val emitter: EventSink,
+    private val wakeAck: QuickAckPlayer
 ) {
     fun vibrate(ms: Int) {
         activity.runOnUiThread {
@@ -110,10 +112,17 @@ class SystemBridge(
         emitter.emit("onWakeWord", "")
     }
 
+    fun playWakeAck(): Boolean = wakeAck.playWakeAck()
+
+    fun playAck(text: String): Boolean = wakeAck.playAck(text)
+
+    fun stopAck() = wakeAck.stop()
+
     fun onPause() = voice.cancelActiveRecording()
 
     fun dispose() {
         voice.disposeRecording()
         voice.disposeTts()
+        wakeAck.shutdown()
     }
 }
