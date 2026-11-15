@@ -92,8 +92,6 @@ class AppGraph(
         emitter = emitter
     )
     private val ttsController = TtsController(
-        permissionHost = activity,
-        audioOutputHost = activity,
         settingsRepository = settingsRepository,
         ttsEngine = ttsEngine,
         emitter = emitter

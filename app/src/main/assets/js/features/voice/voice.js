@@ -165,19 +165,6 @@ export function onWakeWord() {
   callBridge('startHandsFree', state.recId, false);
 }
 
-export function startListeningAfterBargeIn() {
-  state.wakeActive = state.settings.wakeWordEnabled;
-  state.followupActive = false;
-  callBridge('pauseWakeWord');
-  state.recId = uid();
-  ui.showVoiceMode();
-  ui.showRecordingBar('说完请说：over');
-  ui.setRecordingTime('听');
-  ui.setStatus('我在听…');
-  callBridge('vibrate', 20);
-  callBridge('startHandsFree', state.recId, false);
-}
-
 export function handleHandsFreeStart(id) {
   if (id !== state.recId) return;
   ui.showRecordingBar('说完请说：over');
@@ -224,6 +211,7 @@ export function endWakeConversation() {
 export function onChatFinished() {
   if (!state.wakeActive) return;
   if (
+    state.settings.bargeInEnabled &&
     state.settings.wakeWordEnabled &&
     state.ttsStarted &&
     !state.ttsSuppressed &&

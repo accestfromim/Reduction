@@ -83,11 +83,6 @@ window.Native = {
     if (chat.handleTtsStopped()) voice.onTtsFinished();
   },
 
-  onBargeIn() {
-    chat.abandonResponseForBargeIn();
-    voice.startListeningAfterBargeIn();
-  },
-
   onUpdateState(state, version, progress) {
     ui.setUpdateState(state, version, progress);
   },
