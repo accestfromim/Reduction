@@ -28,6 +28,8 @@ class HandsFreeRecorder {
         followup: Boolean,
         useCommunicationSource: Boolean = false,
         onSpeechStart: () -> Unit,
+        onSpeechPause: (ByteArray) -> Unit = {},
+        onSpeechResume: () -> Unit = {},
         onSpeechEnd: (ByteArray) -> Unit,
         onTimeout: () -> Unit,
         onError: (String) -> Unit
@@ -43,6 +45,7 @@ class HandsFreeRecorder {
             val vad = SpeechVad().apply { reset() }
             var recorder: AudioRecord? = null
             var speechStarted = false
+            var pauseSent = false
             var timedOut = false
             var errorMessage: String? = null
             var resultWav: ByteArray? = null
@@ -75,12 +78,29 @@ class HandsFreeRecorder {
                             SpeechVad.Event.WAITING -> Unit
                             SpeechVad.Event.SPEECH_START -> {
                                 speechStarted = true
+                                pauseSent = false
                                 Logs.add("VAD speech start threshold=${vad.threshold().toInt()}")
                                 onSpeechStart()
                                 for (item in preRoll) writeShortArray(pcm, item)
                                 preRoll.clear()
                             }
-                            SpeechVad.Event.SPEECH_CONTINUE -> writeShortArray(pcm, frame)
+                            SpeechVad.Event.SPEECH_PAUSE -> {
+                                if (!pauseSent) {
+                                    pauseSent = true
+                                    val data = pcm.toByteArray()
+                                    if (data.isNotEmpty()) {
+                                        Logs.add("VAD short pause bytes=${data.size}")
+                                        onSpeechPause(WavEncoder.pcm16ToWav(data))
+                                    }
+                                }
+                            }
+                            SpeechVad.Event.SPEECH_CONTINUE -> {
+                                if (pauseSent) {
+                                    pauseSent = false
+                                    onSpeechResume()
+                                }
+                                writeShortArray(pcm, frame)
+                            }
                             SpeechVad.Event.SPEECH_END -> {
                                 Logs.add("VAD speech end")
                                 break

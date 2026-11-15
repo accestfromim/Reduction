@@ -7,6 +7,7 @@ class SpeechVad(
     private val minThreshold: Double = 450.0,
     private val noiseMultiplier: Double = 2.2,
     private val speechFramesToStart: Int = 2,
+    private val silenceFramesToPause: Int = 5,
     private val silenceFramesToEnd: Int = 10,
     private val maxSpeechMs: Long = 30_000L,
     private val waitTimeoutMs: Long = 12_000L
@@ -15,6 +16,7 @@ class SpeechVad(
     enum class Event {
         WAITING,
         SPEECH_START,
+        SPEECH_PAUSE,
         SPEECH_CONTINUE,
         SPEECH_END,
         TIMEOUT
@@ -24,6 +26,7 @@ class SpeechVad(
     private var speechStarted = false
     private var speechFrames = 0
     private var silenceFrames = 0
+    private var pauseReported = false
     private var waitStartedAt = 0L
     private var speechStartedAt = 0L
 
@@ -32,6 +35,7 @@ class SpeechVad(
         speechStarted = false
         speechFrames = 0
         silenceFrames = 0
+        pauseReported = false
         waitStartedAt = nowMs
         speechStartedAt = 0L
     }
@@ -64,9 +68,14 @@ class SpeechVad(
             silenceFrames++
         } else {
             silenceFrames = 0
+            pauseReported = false
         }
 
         if (silenceFrames >= silenceFramesToEnd) return Event.SPEECH_END
+        if (!pauseReported && silenceFrames >= silenceFramesToPause) {
+            pauseReported = true
+            return Event.SPEECH_PAUSE
+        }
         if (nowMs - speechStartedAt > maxSpeechMs) return Event.SPEECH_END
         return Event.SPEECH_CONTINUE
     }

@@ -1,7 +1,7 @@
 {
-  "versionCode": 23,
-  "versionName": "0.9.11",
-  "apk": "DSAssist-v0.9.11.apk",
-  "sha256": "c33bc94a8a15edf6ff810fc40fbd0053eb1138de927dbd7200056c28ad8c0fe1",
-  "notes": "v0.9.11: 你好助手可打断；长按菜单跟手并可上滑选择；响应速度优化。"
+  "versionCode": 24,
+  "versionName": "0.9.12",
+  "apk": "DSAssist-v0.9.12.apk",
+  "sha256": "0f617b3c6cc73a0b85e987512e5f93cf906b984128314b2a47d0925f0c3d510e",
+  "notes": "v0.9.12: ASR 短停顿预识别；最终静音后再发 LLM。"
 }
