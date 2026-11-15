@@ -53,6 +53,7 @@ class SettingsRepository(context: Context) : SettingsGateway {
             headsetMicEnabled = prefs.getBoolean("headsetMicEnabled", false),
             opencodeEnabled = false,
             opencodeWriteEnabled = false,
+            opencodeSessionId = "",
             pcProject = "/home/user/DSAssist-iterate"
         )
         save(legacy)

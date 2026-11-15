@@ -45,8 +45,9 @@ class AppGraph(
     val historyRepository = HistoryRepository(activity)
 
     private val api = ApiGraph(activity)
+    private val emitter = JsEmitter(webView)
     private val chatEngine: ChatEngine = ChatSession(api.chatGateway)
-    private val toolFactory = ChatToolFactory(api.searchGateway, api.pcGateway)
+    private val toolFactory = ChatToolFactory(api.searchGateway, api.pcGateway, activity, emitter)
 
     private val ttsCache = TtsCache(activity)
     private val ttsPipeline = TtsPipeline(
@@ -59,7 +60,6 @@ class AppGraph(
     private val wavRecorder = WavRecorder()
     private val handsFreeRecorder = HandsFreeRecorder()
     private val headsetMic = HeadsetMicController(activity)
-    private val emitter = JsEmitter(webView)
 
     private val chatController = ChatController(
         settingsRepository = settingsRepository,

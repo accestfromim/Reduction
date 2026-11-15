@@ -1,6 +1,6 @@
 # DSAssist（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.17。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.19。
 
 ## 交互
 
@@ -27,8 +27,9 @@
 - 自动更新：连接电脑时检查一次；连接期间电脑侧监听 manifest，版本变化后推送；APK SHA256 校验后在手机上弹安装确认
 - 更新推送依赖 App 与电脑 SSH 连接存活；App 被杀或断线时，下次连接补查
 - 播放中打断只认唤醒词“你好助手”，不再被任意语音触发；需要耳机输出
-- opencode 工具：只读分析；开启高风险写权限后可在 worktree 修改代码，system prompt 已包含项目目录与边界
+- opencode 工具：只读分析；开启高风险写权限后可在 worktree 修改代码，每次修改前手机弹窗确认；可填写已有 opencode 会话 ID 复用上下文
 - 工具过程展示：工具名、参数摘要、状态、单次耗时
+- 指令整理：用户说“整理一下/更新指令”时，update_brief 维护一个可复制、可编辑的指令框
 - 免按住模式：
   - 前台服务 + 常驻通知
   - 手机麦克风常驻监听“你好助手”
@@ -38,7 +39,7 @@
 
 ## 安装
 
-1. 把 `DSAssist-v1.0.17.apk` 传到手机。
+1. 把 `DSAssist-v1.0.19.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -94,6 +95,7 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 - 电脑端通过 example-host 反向 SSH 暴露 WSL OpenSSH；手机不需要 Tailscale。
 - SSH 默认是公钥登录；首次连接会信任并固定 host key 指纹，未做人工指纹确认。
 - PC 命令默认是 raw shell，需要二次点击确认；自动更新只在连接电脑期间监听。
+- opencode 写入当前是任务级确认；严格 per-tool 审批还需要 opencode 权限客户端支持。
 
 ## 电脑连接（example-host 反向 SSH + OpenSSH）
 
@@ -107,7 +109,7 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 
 ## 代码结构
 
-v1.0.17 采用功能优先（feature-first）+ API 层分离结构：
+v1.0.19 采用功能优先（feature-first）+ API 层分离结构：
 
 ```text
 api/                   外部 API 实现层，顶层 Controller 不直接依赖
@@ -197,7 +199,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/DSAssist-v1.0.17.apk`
+产物：`dist/DSAssist-v1.0.19.apk`
 
 免按住模式依赖：
 

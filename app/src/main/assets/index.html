@@ -45,6 +45,16 @@
       </div>
     </header>
 
+    <section class="brief-card hidden" id="briefCard">
+      <div class="brief-head">
+        <span class="brief-title">指令</span>
+        <div class="brief-actions">
+          <button class="text-btn" id="briefCopy">复制</button>
+          <button class="text-btn" id="briefOpen">展开</button>
+        </div>
+      </div>
+      <div class="brief-preview" id="briefPreview"></div>
+    </section>
 
     <main class="messages" id="messages"></main>
 
@@ -163,6 +173,11 @@
       </label>
 
       <label class="field">
+        <span>opencode 会话 ID（可留空）</span>
+        <input id="opencodeSessionInput" placeholder="ses_..." autocomplete="off" />
+      </label>
+
+      <label class="field">
         <span>opencode 项目目录</span>
         <input id="pcProjectInput" placeholder="/home/user/DSAssist-iterate" autocomplete="off" />
       </label>
@@ -180,6 +195,23 @@
   </div>
 
   <div class="backdrop hidden" id="pcBackdrop"></div>
+  <div class="backdrop hidden" id="briefBackdrop"></div>
+  <div class="sheet hidden" id="briefSheet">
+    <div class="sheet-header">
+      <div class="sheet-title">指令整理</div>
+      <button class="icon-btn" id="closeBrief" aria-label="关闭">×</button>
+    </div>
+    <div class="sheet-body">
+      <div class="app-info">让助手把想法压缩成完整、可执行的指令。每次说“整理一下”或“更新指令”，这里会覆盖成最新版本。</div>
+      <textarea class="brief-text" id="briefText" placeholder="还没有指令。对助手说：把这个想法整理到指令框。" spellcheck="false"></textarea>
+      <div class="actions">
+        <button class="secondary-btn" id="briefCopySheet">复制</button>
+        <button class="primary-btn" id="briefSave">保存</button>
+        <button class="secondary-btn" id="briefClear">清空</button>
+      </div>
+    </div>
+  </div>
+
   <div class="sheet hidden" id="pcSheet">
     <div class="sheet-header">
       <div class="sheet-title">电脑</div>

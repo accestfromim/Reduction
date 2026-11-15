@@ -1,4 +1,5 @@
 import { callBridge } from './core/bridge.js';
+import * as brief from './features/brief/brief.js';
 import * as chat from './features/chat/chat.js';
 import * as pc from './features/pc/pc.js';
 import * as settings from './features/settings/settings.js';
@@ -87,6 +88,10 @@ window.Native = {
     ui.setUpdateState(state, version, progress);
   },
 
+  onBriefUpdated(text) {
+    brief.updateFromTool(text);
+  },
+
   onPcConnection(state) {
     ui.setPcConnection(state);
   },
@@ -120,7 +125,8 @@ window.Native = {
 
 window.onAndroidBack = function () {
   if (!ui.els.pcSheet.classList.contains('hidden') ||
-      !ui.els.settingsSheet.classList.contains('hidden')) {
+      !ui.els.settingsSheet.classList.contains('hidden') ||
+      !ui.els.briefSheet.classList.contains('hidden')) {
     ui.closeSheets();
     return true;
   }
@@ -185,10 +191,18 @@ ui.els.pcBackdrop.addEventListener('click', ui.closeSheets);
 ui.els.pcTest.addEventListener('click', pc.testPc);
 ui.els.pcCopyKey.addEventListener('click', pc.copyPublicKey);
 ui.els.pcRunCommand.addEventListener('click', pc.runPcCommand);
+ui.els.briefOpen.addEventListener('click', brief.openBrief);
+ui.els.briefCopy.addEventListener('click', brief.copyBrief);
+ui.els.briefCopySheet.addEventListener('click', brief.copyBrief);
+ui.els.briefSave.addEventListener('click', brief.saveBrief);
+ui.els.briefClear.addEventListener('click', brief.clearBrief);
+ui.els.closeBrief.addEventListener('click', ui.closeSheets);
+ui.els.briefBackdrop.addEventListener('click', ui.closeSheets);
 
 function init() {
   state.settings = loadSettings();
   state.messages = loadHistory();
+  brief.loadBrief();
   ui.setReadHandler((text) => chat.speakText(text, true));
   ui.renderAll();
   ui.updateHint();

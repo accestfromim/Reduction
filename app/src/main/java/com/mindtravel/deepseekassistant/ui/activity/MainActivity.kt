@@ -22,6 +22,7 @@ import androidx.webkit.WebViewClientCompat
 import com.mindtravel.deepseekassistant.BuildConfig
 import com.mindtravel.deepseekassistant.core.host.AudioOutputHost
 import com.mindtravel.deepseekassistant.core.host.PermissionHost
+import com.mindtravel.deepseekassistant.core.host.ToolApprovalHost
 import com.mindtravel.deepseekassistant.core.host.UpdateHost
 import com.mindtravel.deepseekassistant.platform.update.UpdateInstaller
 import com.mindtravel.deepseekassistant.ui.di.AppGraph
@@ -34,8 +35,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import java.io.File
+import java.util.concurrent.atomic.AtomicBoolean
 
-class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, UpdateHost {
+class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, UpdateHost, ToolApprovalHost {
 
     private lateinit var webView: WebView
     private lateinit var graph: AppGraph
@@ -187,6 +189,33 @@ class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, Updat
                 }
                 .setNegativeButton("稍后", null)
                 .show()
+        }
+    }
+
+    override fun requestToolApproval(title: String, message: String, callback: (Boolean) -> Unit) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) {
+                callback(false)
+                return@runOnUiThread
+            }
+            val answered = AtomicBoolean(false)
+            val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle(title)
+                .setMessage(message.take(2_000))
+                .setPositiveButton("允许本次") { _, _ ->
+                    if (answered.compareAndSet(false, true)) callback(true)
+                }
+                .setNegativeButton("拒绝") { _, _ ->
+                    if (answered.compareAndSet(false, true)) callback(false)
+                }
+                .setOnCancelListener {
+                    if (answered.compareAndSet(false, true)) callback(false)
+                }
+                .create()
+            dialog.setOnDismissListener {
+                if (answered.compareAndSet(false, true)) callback(false)
+            }
+            dialog.show()
         }
     }
 

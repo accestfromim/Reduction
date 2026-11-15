@@ -36,6 +36,7 @@ export const els = {
   headsetMicInput: byId('headsetMicInput'),
   opencodeEnabledInput: byId('opencodeEnabledInput'),
   opencodeWriteInput: byId('opencodeWriteInput'),
+  opencodeSessionInput: byId('opencodeSessionInput'),
   pcProjectInput: byId('pcProjectInput'),
   saveSettings: byId('saveSettings'),
   testTts: byId('testTts'),
@@ -48,6 +49,17 @@ export const els = {
   pcPillText: byId('pcPillText'),
   updatePill: byId('updatePill'),
   updatePillText: byId('updatePillText'),
+  briefCard: byId('briefCard'),
+  briefPreview: byId('briefPreview'),
+  briefCopy: byId('briefCopy'),
+  briefOpen: byId('briefOpen'),
+  briefBackdrop: byId('briefBackdrop'),
+  briefSheet: byId('briefSheet'),
+  closeBrief: byId('closeBrief'),
+  briefText: byId('briefText'),
+  briefCopySheet: byId('briefCopySheet'),
+  briefSave: byId('briefSave'),
+  briefClear: byId('briefClear'),
   pcBackdrop: byId('pcBackdrop'),
   pcSheet: byId('pcSheet'),
   closePc: byId('closePc'),
@@ -173,7 +185,14 @@ export function openSheet(sheet, backdrop) {
 }
 
 export function closeSheets() {
-  for (const element of [els.settingsSheet, els.pcSheet, els.settingsBackdrop, els.pcBackdrop]) {
+  for (const element of [
+    els.settingsSheet,
+    els.pcSheet,
+    els.briefSheet,
+    els.settingsBackdrop,
+    els.pcBackdrop,
+    els.briefBackdrop
+  ]) {
     element.classList.add('hidden');
   }
 }

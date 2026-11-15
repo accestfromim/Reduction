@@ -15,6 +15,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   headsetMicEnabled: false,
   opencodeEnabled: false,
   opencodeWriteEnabled: false,
+  opencodeSessionId: '',
   pcProject: '/home/user/DSAssist-iterate'
 });
 
@@ -38,6 +39,7 @@ export function normalizeSettings(raw) {
     headsetMicEnabled: raw?.headsetMicEnabled === true,
     opencodeEnabled: raw?.opencodeEnabled === true,
     opencodeWriteEnabled: raw?.opencodeWriteEnabled === true,
+    opencodeSessionId: string(raw?.opencodeSessionId).trim(),
     pcProject: string(raw?.pcProject, '/home/user/DSAssist-iterate').trim() || '/home/user/DSAssist-iterate'
   };
 }

@@ -44,6 +44,7 @@ function buildMessages() {
     String(now.getMonth() + 1).padStart(2, '0') + '-' +
     String(now.getDate()).padStart(2, '0');
   const hints = [];
+  hints.push('用户要求记录想法、整理指令、更新指令框时，调用 update_brief，传入完整的精简指令；每次覆盖旧版本，不要只在聊天里复述');
   if (state.settings.webSearchEnabled) {
     hints.push('需要实时信息时调用 web_search 工具，并在回答里保留来源网址');
   }

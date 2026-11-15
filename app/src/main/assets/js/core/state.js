@@ -5,6 +5,7 @@ export const LONG_PRESS_MS = 360;
 export const state = {
   settings: { ...DEFAULT_SETTINGS },
   messages: [],
+  brief: '',
   busy: false,
   recording: false,
   speaking: false,

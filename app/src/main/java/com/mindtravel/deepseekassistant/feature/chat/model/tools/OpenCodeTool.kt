@@ -9,7 +9,8 @@ import org.json.JSONObject
 class OpenCodeTool(
     private val pcGateway: PcGateway,
     private val profile: PcProfile,
-    private val project: String
+    private val project: String,
+    private val sessionId: String
 ) : ChatTool {
 
     override val spec = ToolSpec(
@@ -26,9 +27,14 @@ class OpenCodeTool(
             return "opencode 调用失败：请先配置电脑 SSH"
         }
         if (project.isBlank()) return "opencode 调用失败：项目目录为空"
+        if (sessionId.isNotBlank() && !sessionId.matches(SESSION_ID)) {
+            return "opencode 调用失败：会话 ID 格式无效"
+        }
 
         val command = "timeout 180 /home/user/.opencode/bin/opencode run " +
-            "--format json --agent plan --auto --dir ${quote(project)} ${quote(prompt)}"
+            "--format json --agent plan --auto --dir ${quote(project)}" +
+            (if (sessionId.isBlank()) "" else " --session ${quote(sessionId)}") +
+            " " + quote(prompt)
         val output = pcGateway.exec(profile, command)
         val text = extractText(output)
         return (text.ifBlank { output }).take(12_000)
@@ -46,4 +52,8 @@ class OpenCodeTool(
         .joinToString("\n")
 
     private fun quote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
+
+    private companion object {
+        val SESSION_ID = Regex("^[A-Za-z0-9_-]+$")
+    }
 }

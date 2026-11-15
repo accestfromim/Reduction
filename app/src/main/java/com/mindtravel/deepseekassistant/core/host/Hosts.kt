@@ -17,3 +17,7 @@ interface UpdateHost {
     fun installApk(file: File)
     fun showUpdateReady(version: String, apk: File)
 }
+
+interface ToolApprovalHost {
+    fun requestToolApproval(title: String, message: String, callback: (Boolean) -> Unit)
+}

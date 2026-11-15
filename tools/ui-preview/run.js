@@ -155,6 +155,14 @@ async function shot(name) {
 
 await shot('01-empty.png');
 
+await page.evaluate(() => window.Native.onBriefUpdated('目标：给 DSAssist 增加指令整理。\n要求：语音说出想法，助手精简后更新指令框；每次覆盖完整版本；最后可复制。\n验收：卡片可见、可展开编辑、可复制。'));
+await new Promise((resolve) => setTimeout(resolve, 120));
+await shot('12-brief.png');
+await page.evaluate(() => {
+  const text = document.getElementById('briefPreview').textContent;
+  if (!text.includes('目标')) throw new Error('brief card did not render');
+});
+
 await page.evaluate(() => window.Native.onUpdateState('available', '1.0.13', 0));
 await shot('09-update-available.png');
 await page.evaluate(() => window.Native.onUpdateState('downloading', '1.0.13', 42));
