@@ -31,7 +31,7 @@ class RecordingController(
 ) {
 
     private val finishingPushToTalk = AtomicBoolean(false)
-    private val endDetector = TranscriptEndDetector("完毕")
+    private val endDetector = TranscriptEndDetector()
 
     @Volatile
     private var captureToken = 0
