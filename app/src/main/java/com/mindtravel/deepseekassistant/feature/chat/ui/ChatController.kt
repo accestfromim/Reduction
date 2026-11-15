@@ -3,15 +3,12 @@ package com.mindtravel.deepseekassistant.feature.chat.ui
 import com.mindtravel.deepseekassistant.core.ApiException
 import com.mindtravel.deepseekassistant.core.Logs
 import com.mindtravel.deepseekassistant.core.settings.SettingsGateway
-import com.mindtravel.deepseekassistant.feature.chat.model.tools.CalculatorTool
 import com.mindtravel.deepseekassistant.feature.chat.model.ChatCallbacks
+import com.mindtravel.deepseekassistant.feature.chat.model.ChatEngine
 import com.mindtravel.deepseekassistant.feature.chat.model.ChatMessage
 import com.mindtravel.deepseekassistant.feature.chat.model.ChatRequest
-import com.mindtravel.deepseekassistant.feature.chat.model.ChatSession
+import com.mindtravel.deepseekassistant.feature.chat.model.tools.ChatToolFactory
 import com.mindtravel.deepseekassistant.feature.chat.model.Role
-import com.mindtravel.deepseekassistant.feature.chat.model.tools.ToolRegistry
-import com.mindtravel.deepseekassistant.feature.chat.model.tools.WebSearchTool
-import com.mindtravel.deepseekassistant.feature.chat.model.SearchGateway
 import com.mindtravel.deepseekassistant.core.events.EventSink
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,8 +16,8 @@ import kotlinx.coroutines.launch
 
 class ChatController(
     private val settingsRepository: SettingsGateway,
-    private val chatSession: ChatSession,
-    private val searchApi: SearchGateway,
+    private val chatEngine: ChatEngine,
+    private val toolFactory: ChatToolFactory,
     private val emitter: EventSink,
     private val scope: CoroutineScope
 ) {
@@ -46,24 +43,20 @@ class ChatController(
             listOfNotNull(system) + messages.filter { it.role != Role.SYSTEM }.takeLast(MAX_MESSAGES - 1)
         }
 
-        val tools = buildList {
-            if (settings.webSearchEnabled) add(WebSearchTool(searchApi, settings.apiKey))
-            if (settings.calculatorEnabled) add(CalculatorTool())
-        }
-        val registry = ToolRegistry(tools)
+        val registry = toolFactory.create(settings)
         val request = ChatRequest(
             apiKey = settings.apiKey,
             model = settings.model,
             messages = boundedMessages,
-            tools = tools.map { it.spec }
+            tools = registry.specs()
         )
 
-        Logs.add("chat request model=${settings.model} tools=${tools.size}")
+        Logs.add("chat request model=${settings.model} tools=${registry.specs().size}")
         emitter.emit("onStatus", requestId, "思考中")
 
         scope.launch(Dispatchers.IO) {
             try {
-                chatSession.run(
+                chatEngine.run(
                     request = request,
                     tools = registry,
                     callbacks = object : ChatCallbacks {

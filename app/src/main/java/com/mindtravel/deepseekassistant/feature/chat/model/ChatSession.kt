@@ -3,19 +3,18 @@ package com.mindtravel.deepseekassistant.feature.chat.model
 import com.mindtravel.deepseekassistant.core.ApiException
 import com.mindtravel.deepseekassistant.core.Logs
 import com.mindtravel.deepseekassistant.core.TextSanitizer
-import com.mindtravel.deepseekassistant.feature.chat.data.ToolCallAccumulator
 import com.mindtravel.deepseekassistant.feature.chat.model.tools.ToolRegistry
 
 class ChatSession(
     private val gateway: ChatGateway,
     private val maxToolRounds: Int = DEFAULT_MAX_TOOL_ROUNDS
-) {
+) : ChatEngine {
 
     companion object {
         private const val DEFAULT_MAX_TOOL_ROUNDS = 4
     }
 
-    fun run(
+    override fun run(
         request: ChatRequest,
         tools: ToolRegistry,
         callbacks: ChatCallbacks

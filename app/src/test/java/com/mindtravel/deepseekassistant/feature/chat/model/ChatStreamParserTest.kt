@@ -1,8 +1,8 @@
 package com.mindtravel.deepseekassistant.feature.chat.model
 
 import com.mindtravel.deepseekassistant.core.ApiException
-import com.mindtravel.deepseekassistant.feature.chat.data.ChatStreamParser
-import com.mindtravel.deepseekassistant.feature.chat.data.ToolCallAccumulator
+import com.mindtravel.deepseekassistant.api.chat.ChatStreamParser
+import com.mindtravel.deepseekassistant.feature.chat.model.ToolCallAccumulator
 import com.mindtravel.deepseekassistant.feature.chat.model.tools.CalculatorTool
 import com.mindtravel.deepseekassistant.feature.chat.model.tools.ToolRegistry
 import org.junit.Assert.assertEquals

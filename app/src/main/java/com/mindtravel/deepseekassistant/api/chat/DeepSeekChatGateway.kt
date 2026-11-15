@@ -1,9 +1,9 @@
-package com.mindtravel.deepseekassistant.feature.chat.data
+package com.mindtravel.deepseekassistant.api.chat
 
 import com.mindtravel.deepseekassistant.feature.chat.model.ChatGateway
 import com.mindtravel.deepseekassistant.feature.chat.model.ChatRequest
 import com.mindtravel.deepseekassistant.feature.chat.model.ChatStreamEvent
-import com.mindtravel.deepseekassistant.network.DeepSeekHttp
+import com.mindtravel.deepseekassistant.api.DeepSeekHttp
 import org.json.JSONArray
 import org.json.JSONObject
 

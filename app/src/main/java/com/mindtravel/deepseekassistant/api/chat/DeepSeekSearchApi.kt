@@ -1,11 +1,11 @@
-package com.mindtravel.deepseekassistant.feature.chat.data
+package com.mindtravel.deepseekassistant.api.chat
 
 import com.mindtravel.deepseekassistant.core.arrayOrEmpty
 import com.mindtravel.deepseekassistant.core.objects
 import com.mindtravel.deepseekassistant.core.stringOrNull
 import com.mindtravel.deepseekassistant.feature.chat.model.SearchGateway
 import com.mindtravel.deepseekassistant.feature.chat.model.SearchResult
-import com.mindtravel.deepseekassistant.network.DeepSeekHttp
+import com.mindtravel.deepseekassistant.api.DeepSeekHttp
 import org.json.JSONObject
 
 class DeepSeekSearchApi(private val http: DeepSeekHttp) : SearchGateway {

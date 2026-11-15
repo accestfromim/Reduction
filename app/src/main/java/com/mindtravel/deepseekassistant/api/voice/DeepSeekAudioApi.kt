@@ -1,10 +1,10 @@
-package com.mindtravel.deepseekassistant.feature.voice.data
+package com.mindtravel.deepseekassistant.api.voice
 
 import com.mindtravel.deepseekassistant.core.ApiException
 import com.mindtravel.deepseekassistant.core.Logs
 import com.mindtravel.deepseekassistant.core.stringOrNull
 import com.mindtravel.deepseekassistant.core.audio.AudioGateway
-import com.mindtravel.deepseekassistant.network.DeepSeekHttp
+import com.mindtravel.deepseekassistant.api.DeepSeekHttp
 import org.json.JSONObject
 
 class DeepSeekAudioApi(private val http: DeepSeekHttp) : AudioGateway {

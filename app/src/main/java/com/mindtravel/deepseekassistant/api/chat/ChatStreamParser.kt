@@ -1,4 +1,4 @@
-package com.mindtravel.deepseekassistant.feature.chat.data
+package com.mindtravel.deepseekassistant.api.chat
 
 import com.mindtravel.deepseekassistant.core.arrayOrEmpty
 import com.mindtravel.deepseekassistant.core.objectOrNull

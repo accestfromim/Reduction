@@ -1,8 +1,6 @@
-package com.mindtravel.deepseekassistant.feature.chat.data
+package com.mindtravel.deepseekassistant.feature.chat.model
 
 import com.mindtravel.deepseekassistant.core.ApiException
-import com.mindtravel.deepseekassistant.feature.chat.model.ChatStreamEvent
-import com.mindtravel.deepseekassistant.feature.chat.model.ToolCall
 import java.util.TreeMap
 
 class ToolCallAccumulator {

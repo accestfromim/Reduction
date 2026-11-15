@@ -2,9 +2,8 @@ package com.mindtravel.deepseekassistant.feature.voice.ui
 
 import com.mindtravel.deepseekassistant.core.Logs
 import com.mindtravel.deepseekassistant.core.settings.SettingsGateway
-import com.mindtravel.deepseekassistant.platform.audio.TtsCache
 import com.mindtravel.deepseekassistant.platform.audio.BargeInDetector
-import com.mindtravel.deepseekassistant.platform.audio.TtsPlayer
+import com.mindtravel.deepseekassistant.feature.voice.model.TtsEngine
 import com.mindtravel.deepseekassistant.core.host.AudioOutputHost
 import com.mindtravel.deepseekassistant.core.host.PermissionHost
 import com.mindtravel.deepseekassistant.core.events.EventSink
@@ -13,8 +12,7 @@ class TtsController(
     private val permissionHost: PermissionHost,
     private val audioOutputHost: AudioOutputHost,
     private val settingsRepository: SettingsGateway,
-    private val ttsPlayer: TtsPlayer,
-    private val ttsCache: TtsCache,
+    private val ttsEngine: TtsEngine,
     private val emitter: EventSink
 ) {
 
@@ -32,7 +30,7 @@ class TtsController(
         Logs.add("TTS stream start voice=${settings.voice}")
         stopBargeIn()
         activeTtsId = id
-        ttsPlayer.startSession(
+        ttsEngine.startSession(
             apiKey = settings.apiKey,
             voice = settings.voice,
             onStart = {
@@ -52,35 +50,30 @@ class TtsController(
 
     fun ttsAppend(id: String, text: String) {
         if (id != activeTtsId || text.isBlank()) return
-        ttsPlayer.append(text)
+        ttsEngine.append(text)
     }
 
     fun ttsFinish(id: String, text: String) {
         if (id != activeTtsId) return
-        if (text.isNotBlank()) ttsPlayer.append(text)
-        ttsPlayer.finish()
+        if (text.isNotBlank()) ttsEngine.append(text)
+        ttsEngine.finish()
         activeTtsId = null
     }
 
     fun stopSpeaking() {
         stopBargeIn()
         activeTtsId = null
-        ttsPlayer.stop()
+        ttsEngine.stop()
         emitter.emit("onTtsStopped", "")
     }
 
-    fun clearAudioCache(): String {
-        val bytes = ttsCache.clear()
-        val mb = bytes / 1024.0 / 1024.0
-        Logs.add("TTS cache cleared bytes=$bytes")
-        return "已清理 %.1f MB 音频缓存".format(mb)
-    }
+    fun clearAudioCache(): String = ttsEngine.clearCache()
 
-    fun cacheSizeMb(): Double = ttsCache.size() / 1024.0 / 1024.0
+    fun cacheSizeMb(): Double = ttsEngine.cacheSizeMb()
 
     fun dispose() {
         stopBargeIn()
-        ttsPlayer.stop()
+        ttsEngine.stop()
     }
 
     private fun maybeStartBargeIn(id: String) {
@@ -96,7 +89,7 @@ class TtsController(
             onBargeIn = {
                 bargeInDetector = null
                 activeTtsId = null
-                ttsPlayer.stop()
+                ttsEngine.stop()
                 emitter.emit("onBargeIn", id)
             },
             onError = { message -> Logs.add("Barge-in error: $message") }

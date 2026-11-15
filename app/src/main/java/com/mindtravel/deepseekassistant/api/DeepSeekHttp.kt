@@ -1,4 +1,4 @@
-package com.mindtravel.deepseekassistant.network
+package com.mindtravel.deepseekassistant.api
 
 import com.mindtravel.deepseekassistant.core.ApiException
 import com.mindtravel.deepseekassistant.core.Logs

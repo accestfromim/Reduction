@@ -1,7 +1,7 @@
 {
-  "versionCode": 24,
-  "versionName": "0.9.12",
-  "apk": "DSAssist-v0.9.12.apk",
-  "sha256": "0f617b3c6cc73a0b85e987512e5f93cf906b984128314b2a47d0925f0c3d510e",
-  "notes": "v0.9.12: ASR 短停顿预识别；最终静音后再发 LLM。"
+  "versionCode": 25,
+  "versionName": "0.9.13",
+  "apk": "DSAssist-v0.9.13.apk",
+  "sha256": "3bb5984e2274784e4651711b391be4e3d4e22fb5886bb7f966f6d84b875a8215",
+  "notes": "v0.9.13: API 层分离；SpeculativeAsr/TtsEngine/ChatToolFactory 组件化。"
 }

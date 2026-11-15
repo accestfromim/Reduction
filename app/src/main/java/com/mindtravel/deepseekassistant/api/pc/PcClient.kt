@@ -1,6 +1,7 @@
-package com.mindtravel.deepseekassistant.feature.pc.data
+package com.mindtravel.deepseekassistant.api.pc
 
 import com.mindtravel.deepseekassistant.core.ApiException
+import com.mindtravel.deepseekassistant.feature.pc.model.PcGateway
 import com.mindtravel.deepseekassistant.core.Logs
 import com.mindtravel.deepseekassistant.core.stringOrNull
 import okhttp3.MediaType.Companion.toMediaType
@@ -11,7 +12,7 @@ import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.TimeUnit
 
-class PcClient {
+class PcClient : PcGateway {
 
     private val client = OkHttpClient.Builder()
         .connectTimeout(6, TimeUnit.SECONDS)
@@ -21,12 +22,12 @@ class PcClient {
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
-    fun info(base: String, token: String): JSONObject {
+    override fun info(base: String, token: String): JSONObject {
         val request = request("${normalize(base)}/api/info", token).get().build()
         return executeJson(request)
     }
 
-    fun exec(base: String, token: String, command: String): String {
+    override fun exec(base: String, token: String, command: String): String {
         val payload = JSONObject().put("command", command).toString()
         val request = request("${normalize(base)}/api/exec", token)
             .header("Content-Type", "application/json")
@@ -42,12 +43,12 @@ class PcClient {
         }
     }
 
-    fun updateManifest(base: String, token: String): JSONObject {
+    override fun updateManifest(base: String, token: String): JSONObject {
         val request = request("${normalize(base)}/api/update/manifest", token).get().build()
         return executeJson(request)
     }
 
-    fun downloadApk(base: String, token: String, destination: File): File {
+    override fun downloadApk(base: String, token: String, destination: File): File {
         val request = request("${normalize(base)}/api/update/apk", token).get().build()
         client.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {

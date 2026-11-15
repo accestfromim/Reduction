@@ -1,22 +1,23 @@
 package com.mindtravel.deepseekassistant.ui.di
 
 import android.webkit.WebView
-import com.mindtravel.deepseekassistant.feature.chat.data.DeepSeekChatGateway
-import com.mindtravel.deepseekassistant.feature.chat.data.DeepSeekSearchApi
+import com.mindtravel.deepseekassistant.api.ApiGraph
 import com.mindtravel.deepseekassistant.feature.chat.data.HistoryRepository
+import com.mindtravel.deepseekassistant.feature.chat.model.ChatEngine
 import com.mindtravel.deepseekassistant.feature.chat.model.ChatSession
+import com.mindtravel.deepseekassistant.feature.chat.model.tools.ChatToolFactory
 import com.mindtravel.deepseekassistant.feature.chat.ui.ChatController
-import com.mindtravel.deepseekassistant.feature.pc.data.PcClient
 import com.mindtravel.deepseekassistant.feature.pc.ui.PcController
 import com.mindtravel.deepseekassistant.feature.pc.ui.UpdateController
 import com.mindtravel.deepseekassistant.feature.settings.data.SettingsRepository
-import com.mindtravel.deepseekassistant.feature.voice.data.DeepSeekAudioApi
-import com.mindtravel.deepseekassistant.platform.audio.TtsCache
+import com.mindtravel.deepseekassistant.feature.voice.data.AndroidTtsEngine
+import com.mindtravel.deepseekassistant.feature.voice.model.SpeculativeAsr
+import com.mindtravel.deepseekassistant.feature.voice.model.TtsEngine
 import com.mindtravel.deepseekassistant.feature.voice.ui.RecordingController
 import com.mindtravel.deepseekassistant.feature.voice.ui.TtsController
-import com.mindtravel.deepseekassistant.network.DeepSeekHttp
 import com.mindtravel.deepseekassistant.platform.audio.HandsFreeRecorder
 import com.mindtravel.deepseekassistant.platform.audio.HeadsetMicController
+import com.mindtravel.deepseekassistant.platform.audio.TtsCache
 import com.mindtravel.deepseekassistant.platform.audio.TtsPlayer
 import com.mindtravel.deepseekassistant.platform.audio.WavRecorder
 import com.mindtravel.deepseekassistant.ui.activity.MainActivity
@@ -32,33 +33,34 @@ class AppGraph(
     val settingsRepository = SettingsRepository(activity)
     val historyRepository = HistoryRepository(activity)
 
-    private val http = DeepSeekHttp()
-    private val chatSession = ChatSession(DeepSeekChatGateway(http))
-    private val searchApi = DeepSeekSearchApi(http)
-    private val audioApi = DeepSeekAudioApi(http)
+    private val api = ApiGraph()
+    private val chatEngine: ChatEngine = ChatSession(api.chatGateway)
+    private val toolFactory = ChatToolFactory(api.searchGateway)
 
     private val ttsCache = TtsCache(activity)
-    private val ttsPlayer = TtsPlayer(activity, audioApi, ttsCache, scope)
+    private val ttsPlayer = TtsPlayer(activity, api.audioGateway, ttsCache, scope)
+    private val ttsEngine: TtsEngine = AndroidTtsEngine(ttsPlayer, ttsCache)
+    private val speculativeAsr = SpeculativeAsr(api.audioGateway, scope)
     private val wavRecorder = WavRecorder()
     private val handsFreeRecorder = HandsFreeRecorder()
     private val headsetMic = HeadsetMicController(activity)
     private val emitter = JsEmitter(webView)
-    private val pcClient = PcClient()
 
     private val chatController = ChatController(
         settingsRepository = settingsRepository,
-        chatSession = chatSession,
-        searchApi = searchApi,
+        chatEngine = chatEngine,
+        toolFactory = toolFactory,
         emitter = emitter,
         scope = scope
     )
     private val recordingController = RecordingController(
         host = activity,
         settingsRepository = settingsRepository,
-        audioGateway = audioApi,
+        audioGateway = api.audioGateway,
         wavRecorder = wavRecorder,
         handsFreeRecorder = handsFreeRecorder,
         headsetMic = headsetMic,
+        speculativeAsr = speculativeAsr,
         emitter = emitter,
         scope = scope
     )
@@ -66,20 +68,19 @@ class AppGraph(
         permissionHost = activity,
         audioOutputHost = activity,
         settingsRepository = settingsRepository,
-        ttsPlayer = ttsPlayer,
-        ttsCache = ttsCache,
+        ttsEngine = ttsEngine,
         emitter = emitter
     )
     private val pcController = PcController(
         settingsRepository = settingsRepository,
-        pcClient = pcClient,
+        pcGateway = api.pcGateway,
         emitter = emitter,
         scope = scope
     )
     private val updateController = UpdateController(
         host = activity,
         settingsRepository = settingsRepository,
-        pcClient = pcClient,
+        pcGateway = api.pcGateway,
         emitter = emitter,
         scope = scope
     )

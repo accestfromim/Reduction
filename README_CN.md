@@ -1,6 +1,6 @@
 # DSAssist（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v0.9.12。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v0.9.13。
 
 ## 交互
 
@@ -33,7 +33,7 @@
 
 ## 安装
 
-1. 把 `DSAssist-v0.9.12.apk` 传到手机。
+1. 把 `DSAssist-v0.9.13.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -96,32 +96,50 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 
 ## 代码结构
 
-v0.9.8 采用功能优先（feature-first）结构：
+v0.9.13 采用功能优先（feature-first）+ API 层分离结构：
 
 ```text
-core/                  纯 Kotlin：JSON、文本、日志、错误、事件接口、Host 接口、设置模型
-network/DeepSeekHttp   HTTP/SSE 传输与错误映射
+api/                   外部 API 实现层，顶层 Controller 不直接依赖
+  DeepSeekHttp         HTTP / SSE 传输与错误映射
+  ApiGraph             API 实现组装点
+  chat/                DeepSeekChatGateway、ChatStreamParser、DeepSeekSearchApi
+  voice/               DeepSeekAudioApi
+  pc/                  PcClient
+
+core/                  纯 Kotlin 基础能力
+  audio/AudioGateway   平台音频接口
+  events/EventSink     事件出口接口
+  host/Hosts           权限 / 音频输出 / 更新 Host 接口
+  settings/            AppSettings、SettingsGateway
+
 feature/chat/
-  model/               消息、工具、ChatSession、ChatGateway
-  data/                DeepSeekChatGateway、SSE 解析、搜索、历史
+  model/               ChatSession、ChatEngine、ToolCallAccumulator、ChatGateway、SearchGateway
+  model/tools/         ToolRegistry、Calculator、WebSearch、ChatToolFactory
+  data/                HistoryRepository（本地历史）
   ui/                  ChatController
-core/audio/            AudioGateway（平台接口）
+
 feature/voice/
-  data/                DeepSeekAudioApi
+  model/               TtsEngine、SpeculativeAsr
+  data/                AndroidTtsEngine（适配 TtsPlayer + TtsCache）
   ui/                  RecordingController、TtsController
+
 feature/pc/
-  data/                PcClient
+  model/               PcGateway
   ui/                  PcController、UpdateController
+
 feature/settings/
   data/                SettingsRepository
+
 platform/
-  audio/               WavEncoder、WavRecorder、SpeechVad、HandsFreeRecorder、BargeInDetector、HeadsetMicController、TtsCache、TtsPlayer
+  audio/               WavEncoder、WavRecorder、SpeechVad、HandsFreeRecorder
+                       BargeInDetector、HeadsetMicController、TtsCache、TtsPlayer
   wake/                WakeWordBus、WakeWordDetector、WakeWordService
   update/              UpdateInstaller
+
 ui/
   activity/            MainActivity
   bridge/              AndroidBridge、JsEmitter
-  di/                  AppGraph
+  di/                  AppGraph（唯一对象组装点）
 ```
 
 前端按功能拆分：
@@ -147,14 +165,6 @@ assets/js/ui/ui.js, markdown.js
 
 前端也拆成了 `assets/js` 下的模块，`index.html` 只保留 DOM，CSS 在 `assets/css`。
 
-关键约束：
-
-- SSE 中 `content: null` 不会变成字符串 `"null"`。
-- 工具参数只接受字符串片段，缺 id/name 会直接失败。
-- 协议层不把 `JSONObject` 传给业务层。
-- 聊天、音频、电脑、更新各自独立 Controller，不再集中在一个 NativeBridge。
-- 设置升级会自动从旧版本迁移，不会丢 API Key。
-
 测试：
 
 ```bash
@@ -173,7 +183,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/DSAssist-v0.9.12.apk`
+产物：`dist/DSAssist-v0.9.13.apk`
 
 免按住模式依赖：
 
