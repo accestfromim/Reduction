@@ -76,7 +76,7 @@ class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, Updat
                 javaScriptCanOpenWindowsAutomatically = false
                 setSupportZoom(false)
                 textZoom = 100
-                cacheMode = WebSettings.LOAD_DEFAULT
+                cacheMode = WebSettings.LOAD_NO_CACHE
             }
         }
         setContentView(webView)
@@ -168,6 +168,26 @@ class MainActivity : AppCompatActivity(), PermissionHost, AudioOutputHost, Updat
 
     override fun installApk(file: File) {
         UpdateInstaller.installApk(this, file)
+    }
+
+    override fun showUpdateReady(version: String, apk: File) {
+        runOnUiThread {
+            androidx.appcompat.app.AlertDialog.Builder(this)
+                .setTitle("DSAssist $version")
+                .setMessage("新版本已下载，是否现在安装？")
+                .setPositiveButton("安装") { _, _ ->
+                    runCatching { UpdateInstaller.installApk(this, apk) }
+                        .onFailure {
+                            android.widget.Toast.makeText(
+                                this,
+                                it.message ?: "无法打开安装窗口",
+                                android.widget.Toast.LENGTH_LONG
+                            ).show()
+                        }
+                }
+                .setNegativeButton("稍后", null)
+                .show()
+        }
     }
 
     fun setWakeWordEnabled(enabled: Boolean) {

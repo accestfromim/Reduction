@@ -15,4 +15,5 @@ interface AudioOutputHost {
 interface UpdateHost {
     fun cacheDirectory(): File
     fun installApk(file: File)
+    fun showUpdateReady(version: String, apk: File)
 }

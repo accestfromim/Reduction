@@ -63,6 +63,9 @@ class UpdateController(
                 readyApk = apk
                 readyVersion = manifest.versionName
                 setStatus("ready", manifest.versionName)
+                withContext(Dispatchers.Main) {
+                    host.showUpdateReady(manifest.versionName, apk)
+                }
             } catch (t: Throwable) {
                 Logs.add("Update check failed: ${t.message}")
                 readyApk = null
