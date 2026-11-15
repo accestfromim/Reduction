@@ -25,18 +25,32 @@ class UpdateController(
     @Volatile
     private var checking = false
 
+    @Volatile
+    private var status = "idle"
+
+    @Volatile
+    private var readyVersion = ""
+
+    @Volatile
+    private var readyApk: File? = null
+
+    fun state(): String = status
+    fun version(): String = readyVersion
+
     fun check() {
-        if (checking) return
+        if (checking || status == "ready") return
         checking = true
+        setStatus("checking", "")
         scope.launch(Dispatchers.IO) {
             try {
                 val manifest = client.fetch(MANIFEST_URL)
                 if (manifest.versionCode <= BuildConfig.VERSION_CODE) {
                     Logs.add("Update check: current ${BuildConfig.VERSION_NAME}")
+                    setStatus("idle", "")
                     return@launch
                 }
                 Logs.add("Update available ${manifest.versionName} (${manifest.versionCode})")
-                emitter.emit("onUpdateStatus", "发现新版本 ${manifest.versionName}，下载中…")
+                setStatus("downloading", manifest.versionName)
                 val dir = File(host.cacheDirectory(), "updates").apply { mkdirs() }
                 val apk = File(dir, "DSAssist-${manifest.versionName}.apk")
                 client.download(MANIFEST_URL, manifest, apk)
@@ -46,16 +60,38 @@ class UpdateController(
                     apk.delete()
                     throw IllegalStateException("更新包校验失败")
                 }
-                withContext(Dispatchers.Main) {
-                    emitter.emit("onUpdateStatus", "更新已下载，请确认安装")
-                    host.installApk(apk)
-                }
+                readyApk = apk
+                readyVersion = manifest.versionName
+                setStatus("ready", manifest.versionName)
             } catch (t: Throwable) {
                 Logs.add("Update check failed: ${t.message}")
+                readyApk = null
+                setStatus("error", "")
                 emitter.emit("onUpdateError", t.message ?: "自动更新失败")
             } finally {
                 checking = false
             }
         }
+    }
+
+    fun install() {
+        val apk = readyApk ?: return
+        if (status != "ready") return
+        scope.launch(Dispatchers.Main) {
+            try {
+                setStatus("installing", readyVersion)
+                host.installApk(apk)
+            } catch (t: Throwable) {
+                Logs.add("Update install failed: ${t.message}")
+                setStatus("ready", readyVersion)
+                emitter.emit("onUpdateError", t.message ?: "无法打开安装窗口")
+            }
+        }
+    }
+
+    private fun setStatus(next: String, version: String) {
+        status = next
+        if (version.isNotBlank()) readyVersion = version
+        emitter.emit("onUpdateState", next, readyVersion)
     }
 }

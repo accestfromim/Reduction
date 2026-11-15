@@ -71,6 +71,9 @@ class AndroidBridge(
     fun pcConnected(): Boolean = pc.isConnected()
 
     @JavascriptInterface
+    fun pcState(): String = pc.state()
+
+    @JavascriptInterface
     fun pcInfo(id: String) = pc.info(id)
 
     @JavascriptInterface
@@ -81,6 +84,15 @@ class AndroidBridge(
 
     @JavascriptInterface
     fun checkUpdate() = update.check()
+
+    @JavascriptInterface
+    fun installUpdate() = update.install()
+
+    @JavascriptInterface
+    fun updateState(): String = update.state()
+
+    @JavascriptInterface
+    fun updateVersion(): String = update.version()
 
     @JavascriptInterface
     fun vibrate(ms: Int) = system.vibrate(ms)

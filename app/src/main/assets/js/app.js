@@ -84,8 +84,12 @@ window.Native = {
     voice.startListeningAfterBargeIn();
   },
 
-  onUpdateStatus(text) {
-    ui.toast(text || '更新中…');
+  onUpdateState(state, version) {
+    ui.setUpdateState(state, version);
+  },
+
+  onPcConnection(state) {
+    ui.setPcConnection(state);
   },
 
   onUpdateError(message) {
@@ -175,6 +179,8 @@ ui.els.clearHistory.addEventListener('click', settings.clearChatHistory);
 ui.els.shareDiagnostics.addEventListener('click', settings.shareDiagnostics);
 
 ui.els.pcBtn.addEventListener('click', pc.openPc);
+ui.els.pcPill.addEventListener('click', pc.openPc);
+ui.els.updatePill.addEventListener('click', () => callBridge('installUpdate'));
 ui.els.closePc.addEventListener('click', ui.closeSheets);
 ui.els.pcBackdrop.addEventListener('click', ui.closeSheets);
 ui.els.pcTest.addEventListener('click', pc.testPc);
@@ -200,6 +206,8 @@ function init() {
     setTimeout(settings.openSettings, 350);
   }
 
+  ui.setPcConnection(callBridge('pcState'));
+  ui.setUpdateState(callBridge('updateState'), callBridge('updateVersion'));
 }
 
 init();

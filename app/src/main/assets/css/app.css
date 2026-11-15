@@ -77,7 +77,47 @@
 
   .icon-btn:active { background: var(--panel-2); }
 
+  .topbar-right { display: flex; align-items: center; gap: 6px; min-width: 0; }
+
   .header-actions { display: flex; align-items: center; gap: 2px; }
+
+  .pc-pill {
+    height: 32px;
+    padding: 0 9px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .pc-pill .pc-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .pc-pill.offline { color: #8A8A8A; }
+  .pc-pill.connecting { color: #B07A4A; }
+  .pc-pill.online { color: #4CAF50; }
+
+  .update-banner {
+    margin: 0 16px 8px;
+    height: 40px;
+    border-radius: 12px;
+    border: 0;
+    background: var(--text);
+    color: var(--bg);
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .update-banner.hidden { display: none; }
+  .update-banner:disabled { opacity: 0.65; }
 
   .messages {
     flex: 1;

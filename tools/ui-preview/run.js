@@ -134,7 +134,10 @@ await page.evaluateOnNewDocument(() => {
     pcExec: (id, command) => setTimeout(() => window.Native.onPcExec(id, `ok: ${command}`), 10),
     pcPublicKey: () => 'ssh-rsa AAAAB3NzaC1yc2E preview dsassist@android',
     pcConnect: () => {},
-    pcConnected: () => true
+    pcConnected: () => true,
+    pcState: () => 'connected',
+    updateState: () => 'idle',
+    updateVersion: () => ''
   };
 });
 

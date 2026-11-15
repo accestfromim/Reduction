@@ -19,12 +19,27 @@ class PcController(
     @Volatile
     private var connecting = false
 
+    @Volatile
+    private var connectionState = "disconnected"
+
+    fun state(): String = connectionState
+
+    private fun setState(next: String) {
+        if (connectionState == next) return
+        connectionState = next
+        emitter.emit("onPcConnection", next)
+    }
+
     fun connect() {
         val profile = profile()
         if (profile.host.isBlank() || profile.user.isBlank()) return
-        if (pcGateway.isConnected()) return
+        if (pcGateway.isConnected()) {
+            setState("connected")
+            return
+        }
         if (connecting) return
         connecting = true
+        setState("connecting")
         scope.launch(Dispatchers.IO) {
             try {
                 var last: Throwable? = null
@@ -32,12 +47,14 @@ class PcController(
                     val result = runCatching { pcGateway.connect(profile) }
                     if (result.isSuccess) {
                         Logs.add("PC SSH auto-connected")
+                        setState("connected")
                         return@launch
                     }
                     last = result.exceptionOrNull()
                     if (attempt < 2) kotlinx.coroutines.delay(2_000L)
                 }
                 Logs.add("PC SSH auto-connect failed: ${last?.message}")
+                setState("disconnected")
             } finally {
                 connecting = false
             }
@@ -52,10 +69,12 @@ class PcController(
             runCatching { pcGateway.info(profile) }
                 .onSuccess {
                     Logs.add("PC SSH info ok")
+                    setState("connected")
                     emitter.emit("onPcInfo", requestId, it.toJson().toString())
                 }
                 .onFailure {
                     Logs.add("PC SSH info failed: ${it.message}")
+                    setState("disconnected")
                     emitter.emit("onPcError", requestId, it.message ?: "连接电脑失败")
                 }
         }
@@ -71,14 +90,23 @@ class PcController(
         emitter.emit("onPcStatus", requestId, "执行中…")
         scope.launch(Dispatchers.IO) {
             runCatching { pcGateway.exec(profile, command) }
-                .onSuccess { emitter.emit("onPcExec", requestId, it) }
-                .onFailure { emitter.emit("onPcError", requestId, it.message ?: "命令执行失败") }
+                .onSuccess {
+                    setState("connected")
+                    emitter.emit("onPcExec", requestId, it)
+                }
+                .onFailure {
+                    setState("disconnected")
+                    emitter.emit("onPcError", requestId, it.message ?: "命令执行失败")
+                }
         }
     }
 
     fun publicKey(): String = pcGateway.publicKey()
 
-    fun close() = pcGateway.close()
+    fun close() {
+        setState("disconnected")
+        pcGateway.close()
+    }
 
     private fun profile(): PcProfile {
         val settings = settingsRepository.load()

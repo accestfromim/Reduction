@@ -43,6 +43,10 @@ export const els = {
   shareDiagnostics: byId('shareDiagnostics'),
   appInfo: byId('appInfo'),
   pcBtn: byId('pcBtn'),
+  pcPill: byId('pcPill'),
+  pcPillText: byId('pcPillText'),
+  updatePill: byId('updatePill'),
+  updateVersion: byId('updateVersion'),
   pcBackdrop: byId('pcBackdrop'),
   pcSheet: byId('pcSheet'),
   closePc: byId('closePc'),
@@ -91,6 +95,26 @@ const messageMenu = createMessageMenu({
 
 export function setStatus(text) {
   els.status.textContent = text;
+}
+
+export function setPcConnection(state) {
+  const next = state === 'connected' ? 'online' : state === 'connecting' ? 'connecting' : 'offline';
+  els.pcPill.classList.remove('offline', 'connecting', 'online');
+  els.pcPill.classList.add(next);
+  els.pcPillText.textContent = next === 'online' ? '已连接' : next === 'connecting' ? '连接中' : '未连接';
+}
+
+export function setUpdateState(state, version) {
+  const known = state === 'ready' || state === 'downloading' || state === 'checking';
+  els.updatePill.classList.toggle('hidden', !known);
+  if (!known) return;
+  els.updateVersion.textContent = version || '';
+  els.updatePill.disabled = state !== 'ready';
+  els.updatePill.textContent = state === 'checking'
+    ? '检查更新…'
+    : state === 'downloading'
+      ? `新版本 ${version || ''} 下载中…`
+      : `新版本 ${version || ''} · 点击安装`;
 }
 
 export function scrollToBottom(force = false) {
