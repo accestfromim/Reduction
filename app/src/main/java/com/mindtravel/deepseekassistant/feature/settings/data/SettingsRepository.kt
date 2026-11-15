@@ -52,6 +52,7 @@ class SettingsRepository(context: Context) : SettingsGateway {
             bargeInEnabled = prefs.getBoolean("bargeInEnabled", true),
             headsetMicEnabled = prefs.getBoolean("headsetMicEnabled", false),
             opencodeEnabled = false,
+            opencodeWriteEnabled = false,
             pcProject = "/home/user/dsassist-iterate"
         )
         save(legacy)

@@ -26,6 +26,18 @@ class ChatToolFactory(
                     )
                 )
             }
+            if (settings.opencodeWriteEnabled &&
+                settings.pcHost.isNotBlank() &&
+                settings.pcUser.isNotBlank()
+            ) {
+                add(
+                    OpenCodeEditTool(
+                        pcGateway = pcGateway,
+                        profile = PcProfile(settings.pcHost, settings.pcPort, settings.pcUser),
+                        project = settings.pcProject
+                    )
+                )
+            }
         }
         return ToolRegistry(tools)
     }

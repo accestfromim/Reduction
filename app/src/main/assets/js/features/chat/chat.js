@@ -50,6 +50,12 @@ function buildMessages() {
   if (state.settings.calculatorEnabled) {
     hints.push('需要精确计算时调用 calculator 工具');
   }
+  if (state.settings.opencodeEnabled) {
+    hints.push('需要分析代码时调用 ask_opencode，让电脑上的 opencode 只读分析项目 /home/user/dsassist-iterate');
+  }
+  if (state.settings.opencodeWriteEnabled) {
+    hints.push('需要修改代码时调用 edit_opencode，只允许修改 /home/user/dsassist-iterate；修改前说明计划，修改后说明 diff 和验证结果，禁止访问项目外目录和密钥文件');
+  }
   const system = {
     role: 'system',
     content: '你是一个运行在安卓手机上的个人 AI 助手。今天是 ' + date +

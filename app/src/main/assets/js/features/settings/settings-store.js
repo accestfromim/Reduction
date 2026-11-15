@@ -14,6 +14,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   bargeInEnabled: true,
   headsetMicEnabled: false,
   opencodeEnabled: false,
+  opencodeWriteEnabled: false,
   pcProject: '/home/user/dsassist-iterate'
 });
 
@@ -36,6 +37,7 @@ export function normalizeSettings(raw) {
     bargeInEnabled: raw?.bargeInEnabled !== false,
     headsetMicEnabled: raw?.headsetMicEnabled === true,
     opencodeEnabled: raw?.opencodeEnabled === true,
+    opencodeWriteEnabled: raw?.opencodeWriteEnabled === true,
     pcProject: string(raw?.pcProject, '/home/user/dsassist-iterate').trim() || '/home/user/dsassist-iterate'
   };
 }

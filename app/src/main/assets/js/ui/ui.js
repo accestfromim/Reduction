@@ -35,6 +35,7 @@ export const els = {
   bargeInInput: byId('bargeInInput'),
   headsetMicInput: byId('headsetMicInput'),
   opencodeEnabledInput: byId('opencodeEnabledInput'),
+  opencodeWriteInput: byId('opencodeWriteInput'),
   pcProjectInput: byId('pcProjectInput'),
   saveSettings: byId('saveSettings'),
   testTts: byId('testTts'),

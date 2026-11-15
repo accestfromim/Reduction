@@ -19,6 +19,7 @@ export function openSettings() {
   ui.els.bargeInInput.checked = state.settings.bargeInEnabled !== false;
   ui.els.headsetMicInput.checked = state.settings.headsetMicEnabled === true;
   ui.els.opencodeEnabledInput.checked = state.settings.opencodeEnabled === true;
+  ui.els.opencodeWriteInput.checked = state.settings.opencodeWriteEnabled === true;
   ui.els.pcProjectInput.value = state.settings.pcProject || '/home/user/dsassist-iterate';
 
   const raw = callBridge('getAppInfo');
@@ -51,6 +52,7 @@ function currentSettingsFromForm() {
     bargeInEnabled: ui.els.bargeInInput.checked,
     headsetMicEnabled: ui.els.headsetMicInput.checked,
     opencodeEnabled: ui.els.opencodeEnabledInput.checked,
+    opencodeWriteEnabled: ui.els.opencodeWriteInput.checked,
     pcProject: ui.els.pcProjectInput.value.trim() || '/home/user/dsassist-iterate',
     pcHost: state.settings.pcHost || '',
     pcPort: state.settings.pcPort || 22,

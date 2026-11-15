@@ -17,6 +17,7 @@ data class AppSettings(
     val bargeInEnabled: Boolean = true,
     val headsetMicEnabled: Boolean = false,
     val opencodeEnabled: Boolean = false,
+    val opencodeWriteEnabled: Boolean = false,
     val pcProject: String = "/home/user/dsassist-iterate"
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
@@ -33,6 +34,7 @@ data class AppSettings(
         put("bargeInEnabled", bargeInEnabled)
         put("headsetMicEnabled", headsetMicEnabled)
         put("opencodeEnabled", opencodeEnabled)
+        put("opencodeWriteEnabled", opencodeWriteEnabled)
         put("pcProject", pcProject)
     }
 
@@ -53,6 +55,7 @@ data class AppSettings(
                 bargeInEnabled = json.optBoolean("bargeInEnabled", true),
                 headsetMicEnabled = json.optBoolean("headsetMicEnabled", false),
                 opencodeEnabled = json.optBoolean("opencodeEnabled", false),
+                opencodeWriteEnabled = json.optBoolean("opencodeWriteEnabled", false),
                 pcProject = json.stringOrEmpty("pcProject").trim()
                     .ifBlank { "/home/user/dsassist-iterate" }
             )
