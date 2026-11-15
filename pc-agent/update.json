@@ -1,7 +1,7 @@
 {
-  "versionCode": 28,
-  "versionName": "0.9.16",
-  "apk": "DSAssist-v0.9.16.apk",
-  "sha256": "04c8604e8278b023243edd9f912826406ee62b2d41987f7befafb23397610a98",
-  "notes": "v0.9.16: 全组件化：PcmCapture、语音会话拆分、TTS 合成/播放拆分、PC DTO、Bridge facade、MessageMenu。"
+  "versionCode": 29,
+  "versionName": "0.9.17",
+  "apk": "DSAssist-v0.9.17.apk",
+  "sha256": "eef27eb88159dd306ef0a7db01ca0423ddfcd2ee8957bf8bea62a3b6f1617daa",
+  "notes": "v0.9.17: 修复 TTS 播放时自唤醒；手机扬声器暂停唤醒词，耳机输出可打断。"
 }

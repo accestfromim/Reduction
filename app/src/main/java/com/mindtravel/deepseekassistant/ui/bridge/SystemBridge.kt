@@ -39,6 +39,8 @@ class SystemBridge(
 
     fun requestBluetoothPermission() = activity.requestBluetoothPermission()
 
+    fun hasHeadsetOutput(): Boolean = activity.hasHeadsetOutput()
+
     fun copyText(text: String) {
         activity.runOnUiThread {
             val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

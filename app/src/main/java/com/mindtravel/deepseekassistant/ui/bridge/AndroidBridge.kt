@@ -79,6 +79,9 @@ class AndroidBridge(
     fun requestBluetoothPermission() = system.requestBluetoothPermission()
 
     @JavascriptInterface
+    fun hasHeadsetOutput(): Boolean = system.hasHeadsetOutput()
+
+    @JavascriptInterface
     fun copyText(text: String) = system.copyText(text)
 
     @JavascriptInterface

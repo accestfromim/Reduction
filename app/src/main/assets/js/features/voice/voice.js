@@ -142,10 +142,7 @@ export function handleAsrResult(id, ok, text) {
 export function onWakeWord() {
   callBridge('consumeWakePending');
   if (!state.settings.wakeWordEnabled) return;
-  if (state.recording) {
-    callBridge('resumeWakeWord');
-    return;
-  }
+  if (state.recording) return;
 
   if (state.busy || state.speaking) {
     chat.abandonResponseForBargeIn();
@@ -226,7 +223,14 @@ export function endWakeConversation() {
 
 export function onChatFinished() {
   if (!state.wakeActive) return;
-  if (state.settings.wakeWordEnabled) callBridge('resumeWakeWord');
+  if (
+    state.settings.wakeWordEnabled &&
+    state.ttsStarted &&
+    !state.ttsSuppressed &&
+    callBridge('hasHeadsetOutput') === true
+  ) {
+    callBridge('resumeWakeWord');
+  }
   if (!state.settings.autoSpeak || state.ttsSuppressed || !state.ttsStarted) {
     setTimeout(startFollowup, 400);
   }
