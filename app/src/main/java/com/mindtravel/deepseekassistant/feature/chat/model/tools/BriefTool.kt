@@ -9,9 +9,9 @@ class BriefTool(private val emitter: EventSink) : ChatTool {
 
     override val spec = ToolSpec(
         name = "update_brief",
-        description = "把用户的想法整理成完整、精简、可执行的指令全文，并更新手机上的指令框。每次调用都传入更新后的完整版本，不要传增量。",
+        description = "更新手机上的指令卡。每次传入完整、精简、分段的版本并整份覆盖，不要传增量；聊天里不要复述卡片全文。",
         parameterName = "brief",
-        parameterDescription = "整理后的完整指令，包含目标、要求、约束和验收标准；保持精简"
+        parameterDescription = "完整任务卡：目标、约束、验收标准，必要时补要求；保持精简、分段、可整段复制"
     )
 
     override fun execute(argumentsJson: String): String {

@@ -14,7 +14,7 @@ class TtsPipeline(
 ) {
     companion object {
         private const val END = "\u0000END\u0000"
-        private const val MAX_CHUNK_CHARS = 500
+        private const val MAX_CHUNK_CHARS = 200
     }
 
     private var job: Job? = null
@@ -116,11 +116,19 @@ class TtsPipeline(
         while (start < clean.length) {
             var end = minOf(start + MAX_CHUNK_CHARS, clean.length)
             if (end < clean.length) {
-                val punctuation = clean.lastIndexOfAny(
+                val sentence = clean.lastIndexOfAny(
                     charArrayOf('。', '！', '？', '；', '\n', '.', '!', '?', ';'),
                     end
                 )
-                if (punctuation > start + 80) end = punctuation + 1
+                val clause = clean.lastIndexOfAny(
+                    charArrayOf('，', ',', '、', '：', ':'),
+                    end
+                )
+                if (sentence > start + 40) {
+                    end = sentence + 1
+                } else if (clause > start + 40) {
+                    end = clause + 1
+                }
             }
             val piece = clean.substring(start, end).trim()
             if (piece.isNotEmpty()) result.add(piece)

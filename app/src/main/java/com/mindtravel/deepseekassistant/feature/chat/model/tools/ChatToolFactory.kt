@@ -32,6 +32,18 @@ class ChatToolFactory(
                     )
                 )
             }
+            if (settings.opencodeEnabled &&
+                settings.pcHost.isNotBlank() &&
+                settings.pcUser.isNotBlank()
+            ) {
+                add(
+                    OpenCodeVerifyTool(
+                        pcGateway = pcGateway,
+                        profile = PcProfile(settings.pcHost, settings.pcPort, settings.pcUser),
+                        project = settings.pcProject
+                    )
+                )
+            }
             if (settings.opencodeWriteEnabled &&
                 settings.pcHost.isNotBlank() &&
                 settings.pcUser.isNotBlank()
