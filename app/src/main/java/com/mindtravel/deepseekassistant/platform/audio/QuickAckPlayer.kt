@@ -1,99 +1,82 @@
 package com.mindtravel.deepseekassistant.platform.audio
 
 import android.content.Context
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
+import android.media.AudioAttributes
+import android.media.MediaPlayer
+import com.mindtravel.deepseekassistant.R
 import com.mindtravel.deepseekassistant.core.Logs
 import com.mindtravel.deepseekassistant.core.events.EventSink
-import java.util.Locale
 
 class QuickAckPlayer(
-    context: Context,
+    private val context: Context,
     private val emitter: EventSink
-) : TextToSpeech.OnInitListener {
+) {
 
-    private val tts = TextToSpeech(context.applicationContext, this)
+    private var current: MediaPlayer? = null
 
-    @Volatile
-    private var ready = false
+    fun playWakeAck(): Boolean = play(R.raw.ack_wake, notifyWake = true)
 
-    @Volatile
-    private var failed = false
-
-    @Volatile
-    private var pendingText: String? = null
-
-    @Volatile
-    private var notifyWakeDone = false
-
-    init {
-        tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-            override fun onStart(utteranceId: String?) = Unit
-            override fun onDone(utteranceId: String?) = finish()
-            @Deprecated("Deprecated in Java")
-            override fun onError(utteranceId: String?) = finish()
-            override fun onError(utteranceId: String?, errorCode: Int) = finish()
-            override fun onStop(utteranceId: String?, interrupted: Boolean) = finish()
-        })
-    }
-
-    override fun onInit(status: Int) {
-        if (status != TextToSpeech.SUCCESS) {
-            failed = true
-            Logs.add("Quick ack TTS init failed status=$status")
-            if (pendingText != null) finish()
-            return
-        }
-        val language = tts.setLanguage(Locale.SIMPLIFIED_CHINESE)
-        if (language == TextToSpeech.LANG_MISSING_DATA ||
-            language == TextToSpeech.LANG_NOT_SUPPORTED
-        ) {
-            failed = true
-            Logs.add("Quick ack Chinese TTS unavailable language=$language")
-            if (pendingText != null) finish()
-            return
-        }
-        ready = true
-        if (pendingText != null) speak()
-    }
-
-    fun playWakeAck(): Boolean = play("我在", notifyWake = true)
-
-    fun playAck(text: String): Boolean = play(text, notifyWake = false)
-
-    private fun play(text: String, notifyWake: Boolean): Boolean {
-        if (failed) {
-            if (notifyWake) emitter.emit("onWakeAckDone", "")
-            return false
-        }
-        pendingText = text
-        notifyWakeDone = notifyWake
-        if (ready) speak()
-        return true
+    fun playAck(text: String): Boolean {
+        if (text.trim() != "好的") return false
+        return play(R.raw.ack_done, notifyWake = false)
     }
 
     fun stop() {
-        pendingText = null
-        runCatching { tts.stop() }
-    }
-
-    fun shutdown() {
-        pendingText = null
-        runCatching { tts.stop() }
-        runCatching { tts.shutdown() }
-    }
-
-    private fun speak() {
-        val text = pendingText ?: return
-        pendingText = null
-        val result = tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "quick_ack")
-        if (result != TextToSpeech.SUCCESS) finish()
-    }
-
-    private fun finish() {
-        if (notifyWakeDone) {
-            notifyWakeDone = false
-            emitter.emit("onWakeAckDone", "")
+        val player = synchronized(this) {
+            val active = current
+            current = null
+            active
         }
+        release(player)
+    }
+
+    fun shutdown() = stop()
+
+    private fun play(resId: Int, notifyWake: Boolean): Boolean {
+        stop()
+        val player = try {
+            MediaPlayer.create(context, resId)
+        } catch (t: Throwable) {
+            Logs.add("Quick ack create failed: ${t.message}")
+            null
+        }
+        if (player == null) {
+            if (notifyWake) emitter.emit("onWakeAckDone", "")
+            return false
+        }
+        player.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build()
+        )
+        player.setOnCompletionListener { finish(player, notifyWake) }
+        player.setOnErrorListener { _, _, _ ->
+            finish(player, notifyWake)
+            true
+        }
+        synchronized(this) { current = player }
+        return try {
+            player.start()
+            true
+        } catch (t: Throwable) {
+            Logs.add("Quick ack start failed: ${t.message}")
+            finish(player, notifyWake)
+            false
+        }
+    }
+
+    private fun finish(player: MediaPlayer, notifyWake: Boolean) {
+        synchronized(this) {
+            if (current === player) current = null
+        }
+        release(player)
+        if (notifyWake) emitter.emit("onWakeAckDone", "")
+    }
+
+    private fun release(player: MediaPlayer?) {
+        if (player == null) return
+        runCatching { player.stop() }
+        runCatching { player.release() }
     }
 }
