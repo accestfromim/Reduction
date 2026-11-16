@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Entropy 四层架构</title>
+<title>Reduction 四层架构</title>
 <style>
   :root {
     --bg:#080808; --panel:#111; --line:#2b2b2b; --text:#f2f2f2; --muted:#8a8a8a;
@@ -71,7 +71,7 @@
 </head>
 <body>
 <div class="page">
-  <h1>Entropy 四层架构</h1>
+  <h1>Reduction 四层架构</h1>
   <div class="sub">
     两条设计主线：<b class="q">流式 TTS</b> 把“首句出声”的延迟压到最低；<b class="q">乐音和“好的”</b>包住每一次录音：乐音响起就是开麦，乐音持续就是仍在录，“好的”就是关麦。<br/>
     四层只允许向下调用、向上发事件。对话核心随进程存活，不依赖界面：熄屏、界面被系统回收，唤醒和对话照常。语音状态机是一个纯函数 <code>VoiceMachine.next(状态, 事件)</code>。
@@ -124,7 +124,7 @@
           <code class="layer-pkg">model/</code>
         </div>
         <div class="mods">
-          <div class="mod"><div class="mod-t">KeywordSpotterModel</div><div class="mod-d">本地 sherpa-onnx：英文模型认唤醒词 Hi Entropy，中文模型认结束词“完毕”</div></div>
+          <div class="mod"><div class="mod-t">KeywordSpotterModel</div><div class="mod-d">本地 sherpa-onnx：英文模型认唤醒词 Hi Reduction（连读，或中间停顿），中文模型认结束词“完毕”</div></div>
           <div class="mod"><div class="mod-t">VoiceDetector</div><div class="mod-d">本地 Silero VAD，逐帧判断有无人声</div></div>
           <div class="mod"><div class="mod-t">RollingAsr</div><div class="mod-d">每秒识别一次增长中的整段音频</div></div>
           <div class="mod"><div class="mod-t">ChatGateway</div><div class="mod-d">流式对话 + 工具调用（SSE）</div></div>
@@ -179,7 +179,7 @@
 stateDiagram-v2
     direction TB
     [*] --> IDLE
-    IDLE --> PREPARING: Hi Entropy
+    IDLE --> PREPARING: Hi Reduction
     state "录音" as REC {
         PREPARING --> LISTENING: 麦克风就绪，乐音响起
         LISTENING --> TURN_ACK: 听到“完毕” / 云端识别到 over / 静音 3s / 点结束 / 满 60s / 12s 没人说话 / 取消 / 出错
@@ -187,14 +187,14 @@ stateDiagram-v2
     PREPARING --> IDLE: 取消 / 麦克风打不开（无声）
     TURN_ACK --> REPLYING: 识别到文本
     TURN_ACK --> IDLE: 没人说话 / 没听清 / 取消 / 出错
-    REPLYING --> PREPARING: Hi Entropy（打断）
+    REPLYING --> PREPARING: Hi Reduction（打断）
     REPLYING --> IDLE: 回复播完 / 回复失败
       </pre>
       <div class="cues">
         <div class="cue">
           <div class="cue-t">乐音</div>
           <div class="cue-m">含义：麦克风开着，正在录，可以说。</div>
-          <div class="cue-d">进入录音状态的唯一信号。录音只由唤醒词“Hi Entropy”开启：待唤醒时说，或在回复播放中说来打断。先把麦克风准备好（用耳机麦克风时先让蓝牙切到通话模式），就绪的那一刻开始录音，同时响起一个微弱的和弦，各音以不同的慢速率起伏。它靠麦克风送来的音频帧续命，每半秒一次：麦克风不出声音或录音中断，1.5 秒内自己停下。耳机和外放音量相同。</div>
+          <div class="cue-d">进入录音状态的唯一信号。录音只由唤醒词“Hi Reduction”开启：待唤醒时说，或在回复播放中说来打断。先把麦克风准备好（用耳机麦克风时先让蓝牙切到通话模式），就绪的那一刻开始录音，同时响起一个微弱的和弦，各音以不同的慢速率起伏。它靠麦克风送来的音频帧续命，每半秒一次：麦克风不出声音或录音中断，1.5 秒内自己停下。耳机和外放音量相同。</div>
         </div>
         <div class="cue">
           <div class="cue-t">“好的”</div>

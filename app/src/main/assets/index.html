@@ -4,15 +4,25 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#000000" />
-<title>Entropy</title>
+<title>Reduction</title>
 <link rel="icon" href="data:," />
 <link rel="stylesheet" href="./css/app.css" />
 <link rel="stylesheet" href="./vendor/katex/katex.min.css" />
 </head>
 <body>
-  <!-- Opening animation: three equal circles. One waits in the middle; the other two fly in
-       from the sides and slide behind it, where a ring of background hides all but an arc. -->
-  <div class="splash" aria-hidden="true">
+  <!-- The logo: three equal circles, one in the middle and two behind it of which only an arc shows. -->
+  <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="glyph" viewBox="100 150 312 212">
+      <circle cx="256" cy="256" r="82"></circle>
+      <path d="M188.26,174.47A82,82 0 1,0 188.26,337.53A106,106 0 0,1 188.26,174.47Z"></path>
+      <path d="M323.74,174.47A82,82 0 1,1 323.74,337.53A106,106 0 0,0 323.74,174.47Z"></path>
+    </symbol>
+  </svg>
+
+  <!-- Opening animation: the logo assembles itself, then shrinks into its box in the top bar.
+       The middle circle waits; the other two fly in from the sides and slide behind it, where
+       a ring of background hides all but an arc. -->
+  <div class="splash" id="splash" aria-hidden="true">
     <svg viewBox="0 0 512 512">
       <circle class="splash-side from-left" cx="197" cy="256" r="82"></circle>
       <circle class="splash-side from-right" cx="315" cy="256" r="82"></circle>
@@ -24,9 +34,9 @@
   <div class="app">
     <header class="topbar">
       <div class="brand">
-        <img class="logo" src="./img/app-logo.png" alt="" />
+        <div class="logo"><svg class="glyph" id="logoGlyph" aria-hidden="true"><use href="#glyph"></use></svg></div>
         <div class="brand-text">
-          <div class="app-title">Entropy</div>
+          <div class="app-title">Reduction</div>
           <div class="status" id="status"></div>
         </div>
       </div>
@@ -66,7 +76,7 @@
 
     <section class="empty-state" id="emptyState">
       <div class="empty-icon">
-        <img src="./img/app-logo.png" width="52" height="52" alt="" />
+        <svg class="glyph" aria-hidden="true"><use href="#glyph"></use></svg>
       </div>
       <div class="empty-title">你的随身语音助手</div>
     </section>
@@ -194,7 +204,7 @@
       </label>
 
       <label class="switch-row">
-        <span>播放中允许“Hi Entropy”打断（需耳机）</span>
+        <span>播放中允许“Hi Reduction”打断（需耳机）</span>
         <input id="bargeInInput" type="checkbox" />
       </label>
 

@@ -37,7 +37,7 @@ locate() {
     *) say "harness：文件夹解析后不在 $home 之下：$dir" ;;
   esac
   name=$(printf '%s' "${dir#"$home"/}" | tr -c 'A-Za-z0-9._-' '_')
-  state=$home/.local/share/entropy-agents/$name
+  state=$home/.local/share/reduction-agents/$name
 }
 
 run_dir() {

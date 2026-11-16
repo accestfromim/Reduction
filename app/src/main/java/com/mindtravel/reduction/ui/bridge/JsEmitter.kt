@@ -1,0 +1,21 @@
+package com.mindtravel.reduction.ui.bridge
+
+import android.webkit.WebView
+import com.mindtravel.reduction.core.events.EventSink
+import org.json.JSONObject
+
+class JsEmitter(private val webView: WebView) : EventSink {
+
+    override fun emit(function: String, vararg args: Any?) {
+        val arguments = args.joinToString(",") { encode(it) }
+        val script = "window.Native && window.Native.$function($arguments);"
+        webView.post { webView.evaluateJavascript(script, null) }
+    }
+
+    private fun encode(value: Any?): String = when (value) {
+        null -> "null"
+        is Boolean -> value.toString()
+        is Number -> value.toString()
+        else -> JSONObject.quote(value.toString())
+    }
+}

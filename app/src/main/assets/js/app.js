@@ -8,6 +8,7 @@ import { loadHistory } from './features/chat/history-store.js';
 import { loadSettings } from './features/settings/settings-store.js';
 import * as ui from './ui/ui.js';
 import * as voice from './features/voice/voice.js';
+import { playSplash } from './ui/splash.js';
 
 window.Native = {
   onMicPermission(granted) {
@@ -210,6 +211,8 @@ ui.els.cardEdit.addEventListener('click', cards.editCard);
 ui.els.cardSave.addEventListener('click', cards.saveCard);
 ui.els.cardCopy.addEventListener('click', cards.copyCard);
 ui.els.cardDelete.addEventListener('click', cards.deleteCard);
+
+playSplash();
 
 function init() {
   state.settings = loadSettings();

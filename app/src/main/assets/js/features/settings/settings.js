@@ -86,7 +86,7 @@ export function testTts() {
   }
   state.settings = result.settings;
   ui.updateHint();
-  speakText('你好，我是 Entropy，现在正在测试朗读。');
+  speakText('你好，我是 Reduction，现在正在测试朗读。');
   ui.toast('正在测试朗读，请确认媒体音量已打开');
 }
 

@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Entropy"
+rootProject.name = "Reduction"
 include(":app")

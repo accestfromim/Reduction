@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Three equal circles: one in the middle, and the two behind it of which only an arc shows. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <group
+        android:pivotX="0"
+        android:pivotY="0"
+        android:scaleX="0.2"
+        android:scaleY="0.2"
+        android:translateX="2.8"
+        android:translateY="2.8">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M256,256m-82,0a82,82 0 1,0 164,0a82,82 0 1,0 -164,0" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M188.26,174.47A82,82 0 1,0 188.26,337.53A106,106 0 0,1 188.26,174.47Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M323.74,174.47A82,82 0 1,1 323.74,337.53A106,106 0 0,0 323.74,174.47Z" />
+    </group>
+</vector>

@@ -143,7 +143,7 @@ export function setUpdateState(state, version, progress) {
   if (!visible) return;
   els.updatePill.classList.add(state);
   els.updatePill.disabled = state !== 'ready';
-  els.updatePill.title = version ? `Entropy ${version}` : '软件更新';
+  els.updatePill.title = version ? `Reduction ${version}` : '软件更新';
   els.updatePillText.textContent = state === 'available'
     ? '有新版本'
     : state === 'downloading'

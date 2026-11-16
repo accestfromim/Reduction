@@ -42,12 +42,20 @@
 
   .brand { display: flex; align-items: center; gap: 11px; min-width: 0; }
 
+  /* The logo's box. The opening animation ends with the logo settling into it. */
   .logo {
+    flex: none;
     width: 38px;
     height: 38px;
-    object-fit: contain;
-    filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.22));
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 11px;
+    background: var(--bg);
   }
+  .glyph { fill: var(--text); }
+  .logo .glyph { width: 26px; height: 17.67px; }
+  .empty-icon .glyph { width: 64px; height: 43.5px; }
 
   .brand-text { min-width: 0; }
 
@@ -842,7 +850,9 @@
 
 .hidden { display: none !important; }
 
-/* The opening animation. It covers the app for a little over a second and never takes a touch. */
+/* The opening animation. It covers the app while the logo assembles, never takes a touch, and
+   leaves by shrinking the logo into its box (see splash.js). The last rule here is the way out
+   should that script not run. */
 .splash {
   position: fixed;
   inset: 0;
@@ -852,9 +862,9 @@
   justify-content: center;
   background: var(--bg);
   pointer-events: none;
-  animation: splash-leave 0.32s ease-in 1.15s forwards;
+  animation: splash-leave 0.3s ease-in 3s forwards;
 }
-.splash svg { width: min(62vw, 300px); height: auto; overflow: visible; }
+.splash svg { width: min(62vw, 300px); height: auto; overflow: visible; transform-origin: center; }
 .splash-core, .splash-side { fill: var(--text); }
 .splash-gap { fill: var(--bg); }
 .splash-core { transform-origin: 256px 256px; animation: splash-core 0.5s ease-out both; }

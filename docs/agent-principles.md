@@ -1,4 +1,4 @@
-# Entropy Agent 工作原则
+# Reduction Agent 工作原则
 
 助手里的 super agent、sub agent 和人如何分工，以及做判断时遵守的准则。
 语音交互与代码分层见 `interaction-states-simple.html`。
@@ -64,7 +64,7 @@ super agent 调遣 sub agent 只有一个接口 `run_agent`。sub agent 在电�
 
 | 参数 | 取值 |
 | --- | --- |
-| `folder` | `project` 是项目代码目录；其它名字是 `~/entropy-agents/` 下它自己的独立文件夹 |
+| `folder` | `project` 是项目代码目录；其它名字是 `~/reduction-agents/` 下它自己的独立文件夹 |
 | `access` | `read` 只读，用于分析和独立验收；`write` 可以改文件、落盘保存 |
 
 对项目目录的写操作在执行前由手机确认；其余组合直接执行。

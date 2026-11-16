@@ -154,22 +154,35 @@ await page.evaluateOnNewDocument(() => {
 
 await page.goto('http://127.0.0.1:8766/index.html', { waitUntil: 'networkidle0' });
 
-// The opening animation covers the app without taking touches, ends as the logo, then gets out of the way.
+// The opening animation: the logo assembles without taking touches, then shrinks into its box in the top bar.
 const splash = await page.evaluate(async () => {
-  const el = document.querySelector('.splash');
-  const style = () => getComputedStyle(el);
-  const during = { pointer: style().pointerEvents, circles: el.querySelectorAll('circle').length };
-  // Jump to the moment the circles have settled: the two side ones sit where the logo's arcs are.
-  const fly = document.getAnimations().filter((a) => a.animationName === 'splash-fly');
-  fly.forEach((a) => a.finish());
-  const settled = Array.from(el.querySelectorAll('.splash-side')).map((c) => getComputedStyle(c).transform);
-  await new Promise((resolve) => setTimeout(resolve, 1700));
-  return { during, settled, flying: fly.length, after: { visibility: style().visibility, opacity: style().opacity } };
+  const el = document.getElementById('splash');
+  const logo = document.getElementById('logoGlyph');
+  const during = { pointer: getComputedStyle(el).pointerEvents, circles: el.querySelectorAll('circle').length, logoHidden: logo.style.opacity === '0' };
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  // Just before it lands, the drawing must be over the logo's box, at the logo's size.
+  let landing = null;
+  for (let i = 0; i < 40 && !landing; i++) {
+    await wait(50);
+    landing = el.querySelector('svg').getAnimations().find((a) => !(a.animationName));
+  }
+  landing.pause();
+  landing.currentTime = landing.effect.getTiming().duration;
+  const drawn = el.querySelector('.splash-core').getBoundingClientRect();
+  const target = logo.getBoundingClientRect();
+  // The middle circle is 164 of the logo's 312 units wide.
+  const fit = {
+    dx: Math.abs((drawn.left + drawn.width / 2) - (target.left + target.width / 2)),
+    dy: Math.abs((drawn.top + drawn.height / 2) - (target.top + target.height / 2)),
+    size: Math.abs(drawn.width - target.width * 164 / 312)
+  };
+  landing.finish();
+  await wait(100);
+  return { during, fit, gone: !document.getElementById('splash'), logoShown: logo.style.opacity === '', logoWidth: target.width };
 });
 console.log('splash:', JSON.stringify(splash));
-if (splash.during.pointer !== 'none' || splash.during.circles !== 4 || splash.flying !== 2 ||
-    splash.settled.some((t) => t !== 'none' && t !== 'matrix(1, 0, 0, 1, 0, 0)') ||
-    splash.after.visibility !== 'hidden' || splash.after.opacity !== '0') {
+if (splash.during.pointer !== 'none' || splash.during.circles !== 4 || !splash.during.logoHidden ||
+    splash.fit.dx > 0.6 || splash.fit.dy > 0.6 || splash.fit.size > 0.6 || !splash.gone || !splash.logoShown || splash.logoWidth < 20) {
   throw new Error('opening animation did not behave: ' + JSON.stringify(splash));
 }
 

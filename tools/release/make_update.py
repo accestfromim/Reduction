@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Prepare the files the in-app updater downloads.
 
-    tools/release/make_update.py --from dist/Entropy-v1.0.25.apk --from-code 55 \
-        --to dist/Entropy-v1.0.26.apk --to-code 56 --to-name 1.0.26
+    tools/release/make_update.py --from dist/Reduction-v1.0.25.apk --from-code 55 \
+        --to dist/Reduction-v1.0.26.apk --to-code 56 --to-name 1.0.26
 
 Writes next to the new APK:
     patch-<from>-<to>.bin   BSDIFF40 patch, applied on the phone by BsPatch.kt
