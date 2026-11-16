@@ -27,6 +27,7 @@
 
 ```bash
 cp local.env.example local.env     # 填 JDK 17 和 Android SDK 的位置
+tools/models/fetch-models.sh       # 取语音运行库和唤醒词模型（有几十 MB，不入库）
 ./build.sh                         # 得到 dist/Reduction-v<版本>.apk
 ```
 
