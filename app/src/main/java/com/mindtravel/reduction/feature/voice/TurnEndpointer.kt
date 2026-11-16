@@ -8,7 +8,7 @@ package com.mindtravel.reduction.feature.voice
  */
 class TurnEndpointer(
     private val noSpeechTimeoutMs: Long = 12_000,
-    private val trailingSilenceMs: Long = 3_000
+    private val trailingSilenceMs: Long = 5_000
 ) {
     enum class Decision { CONTINUE, SPEECH_STARTED, NO_SPEECH, END_BY_WORD, END_BY_SILENCE }
 

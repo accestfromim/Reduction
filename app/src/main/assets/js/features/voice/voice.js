@@ -6,7 +6,7 @@ import * as ui from '../../ui/ui.js';
 
 // ── Hands-free: the app owns the state machine; this only draws it. ─────────
 
-const LISTENING_HINT = '说完请说：over';
+const LISTENING_HINT = '说完请说：完毕';
 
 export function isHandsFree() {
   return state.voice !== 'IDLE';

@@ -33,14 +33,21 @@ class TurnEndpointerTest {
 
     @Test
     fun aThinkingPauseDoesNotEndTheTurn() {
-        val decisions = run("sss" + ".".repeat(25) + "sss")
+        // 4.9 seconds of looking for the next word, then the sentence goes on.
+        val decisions = run("sss" + ".".repeat(48) + "sss")
         assertEquals(listOf(Decision.SPEECH_STARTED), decisions.map { it.second })
     }
 
     @Test
-    fun aLongSilenceAfterSpeechEndsTheTurn() {
-        val decisions = run("sss" + ".".repeat(30))
-        assertEquals(3300L to Decision.END_BY_SILENCE, decisions.last())
+    fun fiveSecondsOfSilenceAfterSpeechEndTheTurn() {
+        val decisions = run("sss" + ".".repeat(50))
+        assertEquals(5300L to Decision.END_BY_SILENCE, decisions.last())
+    }
+
+    @Test
+    fun everyPauseIsMeasuredFromTheLastSpeech() {
+        val decisions = run("sss" + ".".repeat(40) + "s" + ".".repeat(40) + "s" + ".".repeat(50))
+        assertEquals(13_500L to Decision.END_BY_SILENCE, decisions.last())
     }
 
     @Test

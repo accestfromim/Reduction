@@ -135,8 +135,6 @@ class TurnRecorder(
         return WavEncoder.pcm16ToWav(data)
     }
 
-    fun hasVoiceSince(timestampMs: Long): Boolean = endpointer.lastVoiceAt > timestampMs
-
     fun cancel() {
         turn = null
         capture.cancel()

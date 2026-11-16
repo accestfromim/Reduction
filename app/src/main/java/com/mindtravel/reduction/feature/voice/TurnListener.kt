@@ -12,9 +12,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Captures one user turn. The recorder decides on the device when the turn starts and
- * ends; the growing audio is also transcribed every second for the live caption, and
- * an end word seen there ends the turn too. Events arrive on the main thread.
+ * Captures one user turn. The recorder decides on the device, from the audio alone, when
+ * the turn starts and ends. The growing audio is also transcribed every second, but only
+ * for the live caption: a transcript never ends a turn. Events arrive on the main thread.
  */
 class TurnListener(
     private val audioGateway: AudioGateway,
@@ -43,11 +43,11 @@ class TurnListener(
     class Turn(
         val text: String,
         val wav: ByteArray?,
-        internal val apiKey: String,
-        internal val trustText: Boolean
+        internal val apiKey: String
     )
 
-    private val detector = TurnDetector()
+    /** The latest live caption: what is kept if the final transcription fails. */
+    private var caption = ""
     private var token = 0
     private var apiKey = ""
     private var events: Events? = null
@@ -93,7 +93,7 @@ class TurnListener(
             onEnd = { reason ->
                 onMain(current) {
                     Logs.add("Turn ended locally: $reason")
-                    end(events, detector.currentText(), trustText = false)
+                    end(events)
                 }
             },
             onTimeout = {
@@ -110,7 +110,7 @@ class TurnListener(
     /** Ends the turn now and reports it through [Events.onTurnEnd]. */
     override fun finishNow() {
         val current = events ?: return
-        end(current, detector.currentText(), trustText = false)
+        end(current)
     }
 
     override fun cancel() {
@@ -139,7 +139,6 @@ class TurnListener(
     }
 
     private suspend fun finalText(turn: Turn): String {
-        if (turn.trustText && turn.text.isNotBlank()) return turn.text
         val wav = turn.wav ?: return turn.text
         return try {
             val raw = withContext(Dispatchers.IO) { audioGateway.transcribe(turn.apiKey, wav) }
@@ -156,8 +155,8 @@ class TurnListener(
         rollingAsr.start(
             apiKey = apiKey,
             snapshot = { recorder.snapshotWav() },
-            onResult = { text, snapshotAt ->
-                if (current == token) onRollingResult(events, text, snapshotAt)
+            onResult = { text, _ ->
+                if (current == token) onRollingResult(events, text)
             },
             onError = { message -> Logs.add("Rolling ASR error: $message") }
         )
@@ -166,24 +165,24 @@ class TurnListener(
             delay(MAX_TURN_MS)
             if (current == token) {
                 Logs.add("Turn reached the ${MAX_TURN_MS / 1000}s cap")
-                end(events, detector.currentText(), trustText = false)
+                end(events)
             }
         }
     }
 
-    private fun onRollingResult(events: Events, text: String?, snapshotAt: Long) {
-        val hasVoice = recorder.hasVoiceSince(snapshotAt)
-        val decision = detector.evaluate(text, hasVoice)
-        if (!text.isNullOrBlank()) events.onPartial(stripEndWord(text))
-        if (decision is TurnDetector.Decision.End) end(events, decision.text, trustText = true)
+    private fun onRollingResult(events: Events, text: String?) {
+        if (text.isNullOrBlank()) return
+        caption = text
+        events.onPartial(stripEndWord(text))
     }
 
-    private fun end(events: Events, text: String, trustText: Boolean) {
+    private fun end(events: Events) {
         val key = apiKey
+        val heard = caption
         events.onTurnEnding(heard = speechStarted)
         reset(cancelRecorder = false)
         val wav = recorder.stop()
-        events.onTurnEnd(Turn(stripEndWord(text), wav, key, trustText))
+        events.onTurnEnd(Turn(stripEndWord(heard), wav, key))
     }
 
     private fun fail(events: Events, message: String) {
@@ -196,7 +195,7 @@ class TurnListener(
         rollingAsr.stop()
         capJob?.cancel()
         capJob = null
-        detector.reset()
+        caption = ""
         speechStarted = false
         apiKey = ""
         events = null
@@ -207,7 +206,7 @@ class TurnListener(
         scope.launch(Dispatchers.Main) { if (current == token) block() }
     }
 
-    private fun stripEndWord(raw: String): String = (detector.stripEndWord(raw) ?: raw).trim()
+    private fun stripEndWord(raw: String): String = (EndWords.strip(raw) ?: raw).trim()
 
     companion object {
         /** Longest a single turn may run before it is ended automatically. */

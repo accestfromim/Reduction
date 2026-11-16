@@ -178,6 +178,7 @@ class PcController(
      * While connected, appends the app's log to a file on the computer every few seconds,
      * so what happened on the phone can be read there.
      */
+    @Synchronized
     private fun startLogShipping(profile: PcProfile) {
         if (logJob?.isActive == true) return
         logJob = scope.launch(Dispatchers.IO) {
@@ -205,6 +206,7 @@ class PcController(
      * While connected, hands every kept recording over to the computer, oldest first. A
      * recording leaves the phone only after the computer holds all of it.
      */
+    @Synchronized
     private fun startRecordingShipping(profile: PcProfile) {
         if (recordingJob?.isActive == true) return
         recordingJob = scope.launch(Dispatchers.IO) {

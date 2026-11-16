@@ -23,7 +23,6 @@ class PushToTalkSession(
     private val scope: CoroutineScope
 ) {
     private val finishing = AtomicBoolean(false)
-    private val endDetector = TurnDetector()
 
     fun start(id: String) {
         if (wavRecorder.isRecording() || finishing.get()) {
@@ -37,7 +36,6 @@ class PushToTalkSession(
             return
         }
 
-        endDetector.reset()
         val useHeadset = settings.headsetMicEnabled && headsetMic.start()
         val started = wavRecorder.start(useCommunicationSource = useHeadset) {
             emitter.emit("onRecordingLimit", id)
@@ -106,7 +104,7 @@ class PushToTalkSession(
     }
 
     private fun clean(raw: String): String {
-        val body = endDetector.stripEndWord(raw)
+        val body = EndWords.strip(raw)
         return (body ?: raw).trim()
     }
 }

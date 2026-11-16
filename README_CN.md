@@ -1,6 +1,6 @@
 # Reduction（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.45。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.46。
 
 ## 交互
 
@@ -16,7 +16,7 @@
 - 黑白平面图标：白底 + 黑色圆弧标志，无渐变
 - 全局黑白 UI：黑底白字、灰阶层次，无彩色强调
 - 响应优化：滚动 ASR、唤醒拉起无额外延迟、TTS 首块提前、长按 320ms
-- 语音起止在手机本地逐帧判定：神经网络人声检测（Silero VAD）判断有没有人说话；听到“完毕”立刻结束（本地关键词检测，不经网络），说“over”由云端识别后结束；说完后静音 3 秒也会结束；12 秒没人说话则退出；单轮 60 秒上限，可点“结束”手动收尾
+- 语音起止在手机本地逐帧判定：神经网络人声检测（Silero VAD）判断有没有人说话；听到“完毕”立刻结束（本地关键词检测，不经网络）；说话中途停顿不超过 5 秒不会结束，静音满 5 秒才结束；12 秒没人说话则退出；单轮 60 秒上限，可点“结束”手动收尾。录音何时结束只由这些本地信号决定，云端的实时字幕只用来显示
 - DeepSeek 文字聊天、流式回复
 - DeepSeek ASR 语音输入、TTS 朗读
 - 流式朗读 + 连续 AudioTrack 播放 + 预合成下一句，减少短句停顿
@@ -42,7 +42,7 @@
 - 免按住模式：
   - 前台服务 + 常驻通知
   - 手机麦克风常驻监听“Hi Reduction”
-  - 唤醒后自动录音，说 over、点“结束”或到 60 秒上限时结束
+  - 唤醒后自动录音，说“完毕”、静音 5 秒、点“结束”或到 60 秒上限时结束
   - 麦克风只由唤醒词开启：回答播完、没听清、取消之后都回到待唤醒
   - 通知栏可停止监听
   - 开启时弹出系统的“忽略电池优化”授权；允许后锁屏也不会被系统休眠
@@ -50,7 +50,7 @@
 
 ## 安装
 
-1. 把 `Reduction-v1.0.45.apk` 传到手机。
+1. 把 `Reduction-v1.0.46.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -92,7 +92,7 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 - 播放中打断只在检测到耳机/蓝牙耳机输出时启用；手机扬声器播放时唤醒词会暂停，避免 TTS 自触发，可点麦克风或使用耳机打断。
 - 打断检测触发后，当前回答可能只显示了一部分；这是预期行为。
 - 语音结束后用最新滚动 ASR 结果发 LLM；手动“结束”或 60 秒上限会补一次最终整段 ASR。滚动 ASR 会重复识别增长中的整段音频，流量/费用高于流式接口。
-- 忘记说 over 时，在静音、60 秒上限或手动“结束”时收尾。
+- 没说“完毕”时，在静音 5 秒、60 秒上限或手动“结束”时收尾。
 - 唤醒词使用**手机麦克风**常驻；设置里开启“耳机麦克风（实验）”后，唤醒后的录音会尝试走蓝牙耳机 SCO，失败自动回退手机麦克风。
 - 蓝牙耳机麦克风需要授予“附近的设备/Bluetooth”权限；不同荣耀/耳机组合的 SCO 行为可能不同。
 - 普通 App 无法做系统级锁屏热词；如果 App 进程被系统杀掉，唤醒会失效。
@@ -138,7 +138,7 @@ feature/               功能层：决定什么时候做什么；状态机在这
   voice/               VoiceMachine（免按住状态机，纯函数：状态 + 事件 → 新状态 + 要做的事）
                        VoiceRuntime（执行器：照清单办事，把结果作为事件送回）、VoiceState
                        AckCue（提示音播放与超时）
-                       TurnListener、TurnRecorder、TurnEndpointer、TurnDetector（一轮用户语音）
+                       TurnListener、TurnRecorder、TurnEndpointer、EndWords（一轮用户语音）
                        ReplyStreamer、SentenceSplitter、SpeechTextExtractor（流式朗读）
                        SpeechController、PushToTalkSession、RecordingController
   voice/wake/          WakeWordService、WakeWordDetector、PausedPhrase（带停顿的唤醒词）、WakeWordBus
@@ -217,7 +217,7 @@ assets/js/ui/ui.js, markdown.js, splash.js（启动动画落进图标框）
 - SSE 中 `content: null` 不会变成字符串 `"null"`。
 - 工具参数只接受字符串片段，缺 id/name 会直接失败。
 - 协议层不把 `JSONObject` 传给业务层。
-- 资源热更新包的 `assetsMinVersionCode` 必须不低于 75（当前桥接协议的起始版本），否则不会被使用。
+- 资源热更新包的 `assetsMinVersionCode` 必须不低于 76（当前桥接协议的起始版本），否则不会被使用。
 - 设置升级会自动从旧版本迁移，不会丢 API Key。
 
 测试：
@@ -253,7 +253,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/Reduction-v1.0.45.apk`
+产物：`dist/Reduction-v1.0.46.apk`
 
 免按住模式依赖：
 

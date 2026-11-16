@@ -182,7 +182,7 @@ stateDiagram-v2
     IDLE --> PREPARING: Hi Reduction
     state "录音" as REC {
         PREPARING --> LISTENING: 麦克风就绪，乐音响起
-        LISTENING --> TURN_ACK: 听到“完毕” / 云端识别到 over / 静音 3s / 点结束 / 满 60s / 12s 没人说话 / 取消 / 出错
+        LISTENING --> TURN_ACK: 听到“完毕” / 静音 5s / 点结束 / 满 60s / 12s 没人说话 / 取消 / 出错
     }
     PREPARING --> IDLE: 取消 / 麦克风打不开（无声）
     TURN_ACK --> REPLYING: 识别到文本
@@ -241,7 +241,7 @@ stateDiagram-v2
           <th class="row" style="--c:var(--fn)">功能层</th>
           <td>等唤醒词事件</td>
           <td class="ack">准备麦克风；就绪即开始录音</td>
-          <td>TurnEndpointer 逐帧判定起止：听到“完毕”立刻结束、或静音 3s、或 12s 没人说话；满 60s 强制结束；每半秒音频为蜂鸣续命一次</td>
+          <td>TurnEndpointer 逐帧判定起止：听到“完毕”立刻结束、或静音 5s、或 12s 没人说话；满 60s 强制结束；每半秒音频为蜂鸣续命一次</td>
           <td class="ack">播“好的”；同时定稿文本，文本一到就交给 Conversation</td>
           <td>ReplyStreamer：整条回复都念；首段在第一个逗号（≥ 6 字）切出去合成；之后按句切，单段 ≤ 200 字；播放时预合成后续 3 段</td>
         </tr>
@@ -249,7 +249,7 @@ stateDiagram-v2
           <th class="row" style="--c:var(--md)">模型层</th>
           <td>KWS 持续跑</td>
           <td class="ack">无模型调用</td>
-          <td>Silero VAD（人声）+ KWS（结束词“完毕”）在本地逐帧运行；滚动 ASR 出实时字幕并识别“over”</td>
+          <td>Silero VAD（人声）+ KWS（结束词“完毕”）在本地逐帧运行；滚动 ASR 只出实时字幕，不参与结束判定</td>
           <td class="ack">滚动结果直接定稿，或整段识别；随后 LLM 首 token</td>
           <td>LLM token 流；TTS 逐段合成，命中缓存直接返回</td>
         </tr>
