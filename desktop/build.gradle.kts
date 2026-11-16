@@ -56,4 +56,6 @@ kotlin {
 application {
     mainClass.set("com.mindtravel.reduction.desktop.MainKt")
     applicationName = "reduction"
+    // A plain IPv4 listener: the only kind Windows forwards "localhost" to when this runs inside WSL.
+    applicationDefaultJvmArgs = listOf("-Djava.net.preferIPv4Stack=true")
 }

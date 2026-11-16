@@ -36,7 +36,7 @@ const model = http.createServer((req, res) => {
     } else if (req.url === '/v1/tools/tts') {
       asked.tts.push(JSON.parse(body.toString()).text);
       const pcm = Buffer.alloc(24000 * 2 * 0.3);
-      for (let i = 0; i < pcm.length / 2; i++) pcm.writeInt16LE(Math.round(6000 * Math.sin(i * 0.11)), i * 2);
+      for (let i = 0; i < pcm.length / 2; i++) pcm.writeInt16LE(Math.round(900 * Math.sin(i * 0.11)), i * 2);
       res.writeHead(200, { 'content-type': 'application/octet-stream' });
       res.end(pcm);
     } else if (req.url === '/v1/tools/asr') {
@@ -143,5 +143,40 @@ try {
 }
 await browser.close();
 app.kill();
+
+// ── with the computer's own loudspeakers and microphone ───────────────────
+// Only where the audio tools are installed (desktop/install.sh). A short, quiet tone is really played.
+const tools = process.env.REDUCTION_AUDIO_DIR || path.join(os.homedir(), '.local/share/reduction/audio');
+if (fs.existsSync(path.join(tools, 'usr/bin/pacat'))) {
+  log = '';
+  const own = spawn(path.join(root, 'desktop/build/install/reduction/bin/reduction'), ['8793'], {
+    env: { ...process.env, JAVA_OPTS: '-Duser.home=' + home, REDUCTION_AUDIO_DIR: tools, REDUCTION_API_BASE: 'http://127.0.0.1:8791', DEEPSEEK_API_KEY: 'sk-test' }
+  });
+  own.stdout.on('data', (d) => { log += d; });
+  await new Promise((resolve) => { const t = setInterval(() => { if (log.includes('已启动')) { clearInterval(t); resolve(); } }, 100); setTimeout(resolve, 20000); });
+  check('the computer\'s own sound devices are used', log.includes('这台电脑自己的设备'), log);
+  const seen = [];
+  const stream = await fetch('http://127.0.0.1:8793/events');
+  (async () => { const reader = stream.body.getReader(); const text = new TextDecoder(); for (;;) { const { done, value } = await reader.read(); if (done) break; for (const line of text.decode(value).split('\n')) if (line.startsWith('data: ')) seen.push({ at: Date.now(), ...JSON.parse(line.slice(6)) }); } })().catch(() => {});
+  const order = (method, args) => fetch('http://127.0.0.1:8793/bridge/' + method, { method: 'POST', headers: { 'X-Reduction': '1' }, body: JSON.stringify(args) }).then((r) => r.json());
+  check('the page is told not to use its own', (await order('nativeAudio', [])).result === true);
+  const ttsBefore = asked.tts.length;
+  await order('speak', ['s1', '第一句话。第二句话。']);
+  await wait(2500);
+  const names = seen.map((e) => e.fn || e.signal);
+  const begin = seen.find((e) => e.fn === 'onTtsStart'); const end = seen.find((e) => e.fn === 'onTtsDone');
+  check('speech goes to the loudspeakers, not to the page', !!begin && !!end && !names.includes('audio') && asked.tts.length > ttsBefore, names);
+  check('it is reported finished when it has been heard', !!begin && !!end && end.at - begin.at > 300 && end.at - begin.at < 2000, begin && end && end.at - begin.at);
+  await order('startRecording', ['r1']);
+  await wait(1200);
+  await order('stopAndTranscribe', ['r1']);
+  await wait(1500);
+  const heard = seen.find((e) => e.fn === 'onAsrResult');
+  check('the microphone is recorded and recognised', seen.some((e) => e.fn === 'onRecordingStart') && !!heard && heard.args[1] === true && heard.args[2] === '这是说出来的话', heard);
+  own.kill();
+} else {
+  console.log('skip  own sound devices: audio tools not installed');
+}
 model.close();
 if (errors.length) { console.log('errors:', errors); console.log(log.slice(-1500)); process.exitCode = 1; } else console.log('all checks passed');
+process.exit();

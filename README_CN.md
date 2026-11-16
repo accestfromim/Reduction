@@ -260,18 +260,24 @@ REDUCTION_INSTALLED_APK=dist/Reduction-v1.0.25.apk \
 电脑上的 Reduction 是同一个对话核心：对话、提示词、工具、卡片、sub agent、朗读，编译的就是手机端那份代码（`desktop/build.gradle.kts` 直接引用 `app` 里不依赖安卓的源文件）。它在本机起一个只听 `127.0.0.1` 的小服务，界面是手机端那套网页，在浏览器里打开。
 
 ```bash
-./desktop.sh          # 构建并启动，默认 http://localhost:8780 ；可在后面加端口号
+desktop/install.sh           # 装成应用：构建、取音频工具、放桌面图标、设开机自启
+desktop/install.sh --remove  # 去掉桌面图标和开机自启（数据保留）
+./desktop.sh                 # 不安装，只在终端里构建并启动：http://localhost:8780
 ```
 
+- **独立窗口**：双击桌面上的 Reduction，出来的是它自己的窗口，没有地址栏和标签页，任务栏上是单独一项。登录 Windows 后服务在后台自己启动，开窗口时不用等。
+- **声音和麦克风是电脑自己的**：朗读从系统扬声器出来，按住麦克风按钮时录的是系统默认麦克风，都由服务直接接音频系统（`pacat`），不经过窗口。在 WSL 里，这就是 Windows 的默认播放和录音设备。
 - 第一次打开在设置里填 DeepSeek API Key；也可以用环境变量 `DEEPSEEK_API_KEY`。设置存在 `~/.config/reduction/settings.json`，只有本人可读。
-- 打字提问，回答由浏览器念出来；按住麦克风按钮说话，松开发送。
-- 卡片、对话历史、任务记录存在 `~/.local/share/reduction/`，和手机上的是两份。
+- 打字提问，或按住麦克风按钮说话，松开发送。
+- 卡片、对话历史、任务记录存在 `~/.local/share/reduction/`，和手机上的是两份；运行日志在同一处的 `desktop.log`。
 - sub agent 直接在这台电脑上运行，沙箱和手机派发时是同一个脚本。
 - 唤醒词、耳机手势、悬浮卡片是手机才有的，电脑端不提供。
 
+安装做了什么：音频工具从系统的软件源下载后解到 `~/.local/share/reduction/audio/`，不装进系统；Windows 这边在 `%LOCALAPPDATA%\Reduction\` 放一个图标和一个启动器，在桌面和“启动”文件夹各放一个快捷方式。窗口由 Edge（或 Chrome）的应用模式来画，用它自己的一份配置，不动平时的浏览器。找不到音频工具时，声音和录音退回由窗口代劳。
+
 页面和服务之间只有两条通路：页面对服务的调用（`POST /bridge/<方法>`，就是手机页面对 App 的那些调用），和服务发给页面的事件流（`GET /events`，包括要播放的语音）。带不上页面专用请求头的请求一律拒绝，别的网站指挥不了它。
 
-`node tools/desktop-check/run.mjs` 用一个假的模型服务把电脑端从头到尾走一遍：填 Key、打字提问、朗读、工具调用、卡片、按住说话、刷新后历史还在。不花钱，不需要 Key。
+`node tools/desktop-check/run.mjs` 用一个假的模型服务把电脑端从头到尾走一遍：填 Key、打字提问、朗读、工具调用、卡片、按住说话、刷新后历史还在；装了音频工具时再走一遍系统扬声器和麦克风（会真的放出一声很轻的短音）。不花钱，不需要 Key。
 
 ## 从源码构建
 

@@ -31,6 +31,7 @@ import com.mindtravel.reduction.model.voice.TtsSynthesizer
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
@@ -73,6 +74,7 @@ fun main(args: Array<String>) {
     server.createContext("/") { exchange -> runCatching { desktop.handle(exchange) }.onFailure { exchange.close() } }
     server.start()
     println("Reduction 已启动：http://localhost:$port")
+    println(if (desktop.usesSystemAudio) "声音和麦克风：这台电脑自己的设备" else "声音和麦克风：没找到系统音频工具，由打开页面的浏览器代劳（运行 desktop/install.sh 可装上）")
     println("数据在 ${data.path}，设置在 ${desktop.settingsFile.path}")
     Thread.currentThread().join()
 }
@@ -235,8 +237,15 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     private val models = ModelGraph(System.getenv("REDUCTION_API_BASE")?.takeIf { it.isNotBlank() }?.let { DeepSeekHttp(baseUrl = it) } ?: DeepSeekHttp())
     private val ttsCache = TtsCache(File(data, "tts_cache"))
     private val synthesizer = TtsSynthesizer(models.audioGateway, ttsCache)
-    private val pageSpeech = PageSpeech(page) { block -> scope.launch { block() } }
-    private val speech = SpeechController(settings, ReplyStreamer(synthesizer, pageSpeech, scope), ttsCache, page)
+    private val onMain: (() -> Unit) -> Unit = { block -> scope.launch { block() } }
+
+    /** The machine's own loudspeakers and microphone; null when they cannot be reached, and the page stands in. */
+    private val audio = SystemAudio.find(data)
+    val usesSystemAudio: Boolean get() = audio != null
+    private val pageSpeech = PageSpeech(page, onMain)
+    private val speech = SpeechController(
+        settings, ReplyStreamer(synthesizer, audio?.Speech(onMain) ?: pageSpeech, scope), ttsCache, page
+    )
     private val cues = SpokenCues(
         settingsRepository = settings,
         synthesizer = synthesizer,
@@ -264,7 +273,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         chatEngine = ChatSession(models.chatGateway),
         toolFactory = toolFactory,
         speech = speech,
-        say = { cue -> pageSpeech.play(0, cues.sound(cue)) },
+        say = { cue -> audio?.play(cues.sound(cue)) ?: pageSpeech.play(0, cues.sound(cue)) },
         emitter = page,
         scope = scope
     )
@@ -359,6 +368,19 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         "stopSpeaking" -> speech.stop(notify = true)
         "clearAudioCache" -> speech.clearCache()
         "getAppInfo" -> "Reduction 电脑端 · 朗读缓存 %.1f MB".format(speech.cacheSizeMb())
+        // Sound and microphone belong to this machine when it has them; the page asks before using its own.
+        "nativeAudio" -> audio != null
+        "requestMicPermission" -> page.emit("onMicPermission", true)
+        "startRecording" -> {
+            val id = args.getString(0)
+            if (audio?.startRecording() == true) page.emit("onRecordingStart", id) else page.emit("onAsrResult", id, false, "用不了麦克风")
+        }
+        "stopAndTranscribe" -> {
+            val id = args.getString(0)
+            val wav = audio?.stopRecording()
+            if (wav == null) page.emit("onAsrResult", id, false, "没有录到声音，请再试一次") else scope.launch(Dispatchers.IO) { transcribe(id, wav) }
+        }
+        "cancelRecording" -> audio?.cancelRecording()
         "pcState" -> "connected"
         "pcConnected" -> true
         "voiceState" -> """{"state":"IDLE"}"""
@@ -389,7 +411,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         val content = if (name == "index.html") {
             // The phone's page, with the computer's stand-in for the app loaded ahead of it.
             String(bytes, Charsets.UTF_8).replace(
-                "</head>", "<link rel=\"stylesheet\" href=\"./desktop.css\" />\n<script src=\"./desktop.js\"></script>\n</head>"
+                "</head>", "<link rel=\"icon\" href=\"./icon.png\" />\n<link rel=\"stylesheet\" href=\"./desktop.css\" />\n<script src=\"./desktop.js\"></script>\n</head>"
             ).toByteArray(Charsets.UTF_8)
         } else {
             bytes

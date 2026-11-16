@@ -117,16 +117,20 @@
   }
 
   // ── what this browser does itself, instead of asking the server ─────────
+  // When the computer has its own loudspeakers and microphone in hand, they are the server's business.
+  const ownAudio = call('nativeAudio', []) !== true;
   const here = {
-    requestMicPermission: () => setTimeout(() => native('onMicPermission', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)), 0),
-    startRecording: (id) => { startRecording(id); },
-    stopAndTranscribe: (id) => {
-      const done = endRecording();
-      if (!done || done.wav.byteLength < 44 + 3200) return native('onAsrResult', id, false, '没有录到声音，请再试一次');
-      post('/asr?id=' + encodeURIComponent(id), done.wav, 'audio/wav');
-    },
-    cancelRecording: () => { endRecording(); },
-    stopSpeaking: () => { stopSound(); call('stopSpeaking', []); },
+    ...(ownAudio ? {
+      requestMicPermission: () => setTimeout(() => native('onMicPermission', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)), 0),
+      startRecording: (id) => { startRecording(id); },
+      stopAndTranscribe: (id) => {
+        const done = endRecording();
+        if (!done || done.wav.byteLength < 44 + 3200) return native('onAsrResult', id, false, '没有录到声音，请再试一次');
+        post('/asr?id=' + encodeURIComponent(id), done.wav, 'audio/wav');
+      },
+      cancelRecording: () => { endRecording(); },
+      stopSpeaking: () => { stopSound(); call('stopSpeaking', []); }
+    } : {}),
     copyText: (text) => { if (navigator.clipboard) navigator.clipboard.writeText(String(text)); },
     vibrate: () => {},
     requestBluetoothPermission: () => {},
