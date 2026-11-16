@@ -173,7 +173,7 @@ class RunAgentTool(
             }
             AgentHarness.State.DONE -> {
                 val diff = if (!run.changesProject) "" else {
-                    runCatching { harness.exec("git -C ${AgentHarness.quote(run.folder)} diff --stat") }.getOrDefault("").trim()
+                    runCatching { harness.exec("git -C ${AgentHarness.path(run.folder)} diff --stat") }.getOrDefault("").trim()
                 }
                 val said = (progress.errors.map { "错误：$it" } + listOf(progress.said).filter { it.isNotBlank() }).joinToString("\n")
                 runs.end(run, if (progress.succeeded) AgentRuns.DONE else AgentRuns.FAILED, said, diff)

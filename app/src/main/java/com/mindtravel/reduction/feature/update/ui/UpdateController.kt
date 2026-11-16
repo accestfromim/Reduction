@@ -23,7 +23,8 @@ class UpdateController(
     private val scope: CoroutineScope
 ) {
     companion object {
-        const val MANIFEST_URL = "http://example.com/dsassist/manifest.json"
+        /** Where updates are looked for; blank in a build that was not given one, which then never looks. */
+        val MANIFEST_URL: String = BuildConfig.UPDATE_MANIFEST_URL
     }
 
     @Volatile
@@ -42,7 +43,7 @@ class UpdateController(
     fun version(): String = readyVersion
 
     fun check() {
-        if (checking || status == "ready") return
+        if (MANIFEST_URL.isBlank() || checking || status == "ready") return
         checking = true
         setStatus("checking", "")
         scope.launch(Dispatchers.IO) {

@@ -1,6 +1,6 @@
-# Reduction（Android）
+# Reduction 开发说明
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.57。
+给读代码和改代码的人：功能细节、代码结构、构建、测试和发版。产品介绍见根目录的 `README.md`。当前版本 v1.0.57。
 
 ## 交互
 
@@ -23,7 +23,7 @@
 - 音频缓存，相同文本和音色复用 PCM
 - 联网搜索：DeepSeek Search API
 - 计算器：本地精确计算
-- 电脑连接：example-host 反向 SSH + WSL OpenSSH，RSA 密钥登录，host key 固定，持久 SSH 会话
+- 电脑连接：SSH，RSA 密钥登录，host key 固定，持久会话
 - 自动更新：连接电脑时检查一次；连接期间电脑侧监听 manifest，版本变化后推送；优先应用 APK 补丁，失败回退完整 APK
 - 资源热更新：JS/CSS/HTML 可下载小资源包更新，不重装 APK
 - 更新推送依赖 App 与电脑 SSH 连接存活；App 被杀或断线时，下次连接补查
@@ -64,7 +64,7 @@
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
-APK 约 38MB，只包含 `arm64-v8a`，适用于荣耀 500 Pro 等现代安卓手机。最低 Android 8.0（API 26）。
+APK 约 38MB，只包含 `arm64-v8a`，适用于现代安卓手机。最低 Android 8.0（API 26）。
 
 ## 免按住模式怎么用
 
@@ -76,7 +76,7 @@ APK 约 38MB，只包含 `arm64-v8a`，适用于荣耀 500 Pro 等现代安卓�
 6. 回答完自动回到唤醒词监听；继续说话先说“Hi Reduction”。回答播放中说“Hi Reduction”可以打断并开始新的一轮。
 7. 通知栏“停止监听”可以关闭常驻监听，同时在设置里会关闭该开关。
 
-荣耀 500 Pro / MagicOS 需要设置：
+国产系统的后台策略普遍激进，需要设置（以荣耀 MagicOS 为例）：
 
 - 设置 → 应用 → 应用启动管理 → Reduction → 关闭自动管理 → 允许自启动、关联启动、后台活动
 - 设置 → 电池 → 耗电管理 → 允许后台高耗电/不限制
@@ -86,7 +86,6 @@ APK 约 38MB，只包含 `arm64-v8a`，适用于荣耀 500 Pro 等现代安卓�
 
 ## TTS 连续播放
 
-v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面的句子；播放缓冲约 0.3 秒。短句之间不再每句新建播放器，停顿会明显减少。日志里有 `TTS track done ... underruns=`，如果还断，可以据此判断是不是播放缓冲被掏空。
 
 ## Markdown 与数学
 
@@ -94,7 +93,6 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 - 裸网址会显示为域名/短路径链接，完整 URL 放在 href/title 中，不直接展示。
 - 数学公式使用 KaTeX 渲染，支持 `$...$`、`$$...$$`、`\(...\)`、`\[...\]`。
 - TTS 会先剥离 Markdown 标记、代码块、数学块和网址，再朗读纯文本。
-- v0.9.8 增加服务端/历史记录双重 null 清洗：回复开头不再出现 null，旧聊天记录里的重复 null 前缀也会自动清理。
 - UI 预览和模拟测试：`tools/ui-preview/README.md`。
 
 ## 已知限制
@@ -113,20 +111,17 @@ v0.9.8 使用单个 AudioTrack 连续播放整段回复，并提前合成后面�
 - 联网搜索和计算器默认开启；搜索会产生 DeepSeek Search API 的额外费用。
 - 音频缓存存在 App 缓存目录，系统可能在空间不足时清理。
 - API Key 存在手机本地，请使用单独的低额度 Key。
-- 电脑端通过 example-host 反向 SSH 暴露 WSL OpenSSH；手机不需要 Tailscale。
 - SSH 默认是公钥登录；首次连接会信任并固定 host key 指纹，未做人工指纹确认。
 - PC 命令默认是 raw shell，需要二次点击确认；自动更新只在连接电脑期间监听。
 - opencode 写入当前是任务级确认；严格 per-tool 审批还需要 opencode 权限客户端支持。
 
-## 电脑连接（example-host 反向 SSH + OpenSSH）
+## 电脑连接
 
-1. WSL 安装并启动 OpenSSH Server，监听 `22`；example-host 开启 `GatewayPorts clientspecified`。
-2. WSL 建立反向隧道：`ssh -R 0.0.0.0:443:127.0.0.1:22 example-host`。
-3. 手机电脑页点“复制公钥”，追加到 WSL 的 `~/.ssh/authorized_keys`。
-4. 手机填 `example.com`、端口 `443`、SSH 用户 `mindtravel`，点“连接测试”。
-5. 首次连接会固定 host key 指纹；之后指纹变化会直接拒绝。
+手机通过 SSH 连到你自己的电脑：派发 sub agent、回传日志和录音都走这条连接。
 
-命令执行是 SSH raw shell，LLM 调用前仍需在手机上二次确认。连接测试成功后保持 SSH 会话，后续命令复用；连接异常会断开，下次自动重连。
+1. 电脑上运行 OpenSSH Server。手机和电脑不在同一个网络时，自己解决可达性：内网穿透、反向隧道或组网工具都可以。
+2. App 里点右上角电脑图标，“复制公钥”，把公钥加入电脑上 `~/.ssh/authorized_keys`。
+3. 填电脑的地址、端口和 SSH 用户，点“连接测试”。首次连接会固定电脑的 host key，之后对不上就拒绝连接。
 
 ## 代码结构
 
@@ -241,19 +236,13 @@ assets/js/ui/ui.js, markdown.js, splash.js（启动动画落进图标框）
 cd tools/ui-preview && node run.js     # 前端截图 + 免按住状态渲染检查
 ```
 
-发版：
+发版（需要在 `local.env` 里填好更新服务器，见 `local.env.example`）：
 
 ```bash
-./build.sh                                   # dist/Reduction-v<版本>.apk
-tools/release/make_update.py \
-  --from dist/Reduction-v1.0.25.apk --from-code 55 \
-  --to dist/Reduction-v1.0.26.apk --to-code 56 --to-name 1.0.26
-# 生成 patch-55-56.bin、manifest.json、SHA256SUMS.txt，并先在本机验证补丁能还原新包
-# 上传顺序：先 APK 和补丁，最后 manifest.json
-REDUCTION_UPDATE_MANIFEST=http://example.com/dsassist/manifest.json \
-REDUCTION_INSTALLED_APK=dist/Reduction-v1.0.25.apk \
-  ./gradlew testReleaseUnitTest --tests '*UpdateFlowTest*'   # 用 App 的更新代码验证线上文件
+tools/release/publish.sh 1.0.58
 ```
+
+它改版本号、跑测试和 lint、构建、从线上版本生成补丁、上传、最后用 App 自己的更新代码验证线上文件。清单 `manifest.json` 最后才替换，之前任何一步失败都不会发布出去。更新服务器只需要能静态提供三个文件：APK、补丁、`manifest.json`。不填更新地址构建出来的 App 不检查更新。
 
 单测覆盖 SSE null、工具调用分片、工具循环、消息序列化、计算器、结束词检测、朗读文本清洗、朗读分句、提示音保证、工具摘要、会话状态脚本、录音留存等。
 
@@ -288,25 +277,22 @@ desktop/install.sh --remove  # 去掉桌面图标和开机自启（数据保留�
 
 ## 从源码构建
 
-需要 JDK 17、Android SDK（compileSdk 35、build-tools 35.0.0）、Gradle 8.9。
+需要 JDK 17、Android SDK（compileSdk 35、build-tools 35.0.0）。本机特有的东西写在根目录的 `local.env` 里（不入库），照 `local.env.example` 填：
 
 ```bash
-export JAVA_HOME=/path/to/jdk-17
-export ANDROID_HOME=/path/to/android-sdk
-./build.sh
+cp local.env.example local.env     # 填 JAVA_HOME、ANDROID_HOME
+./build.sh                         # dist/Reduction-v<版本>.apk
 ```
-
-产物：`dist/Reduction-v1.0.57.apk`
 
 免按住模式依赖：
 
 - `app/libs/sherpa-onnx-arm64.aar`
-- `app/src/main/assets/kws-en/` 下的英文 KWS 模型（唤醒词 Hi Reduction，`keywords.txt` 里是它的子词编码 `▁HI ▁ ENT RO P Y`）
+- `app/src/main/assets/kws-en/` 下的英文 KWS 模型（唤醒词 Hi Reduction，`keywords.txt` 里是它的子词编码）
 - `app/src/main/assets/kws/` 下的中文 KWS 模型（结束词“完毕”）
 - `app/src/main/assets/vad/silero_vad.onnx` 人声检测模型
 - 唤醒词：`Hi Reduction`
 
-签名配置在 `keystore.properties` 和 `keystore/release.jks`。升级安装必须使用同一个签名文件。
+签名：自己生成一个签名文件，路径和口令写进根目录的 `keystore.properties`（不入库；字段是 `storeFile`、`storePassword`、`keyAlias`、`keyPassword`）。没有这个文件时构建出来的是未签名的包。升级安装必须始终用同一个签名文件。
 
 ## 下一步
 

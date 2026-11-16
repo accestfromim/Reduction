@@ -6,14 +6,11 @@
 # update code. The manifest is swapped last, so a failure before that publishes nothing.
 set -euo pipefail
 NEW="${1:?usage: publish.sh <new version name, e.g. 1.0.57>}"
-cd "$(dirname "$0")/../.."
-export JAVA_HOME="${JAVA_HOME:-/home/user/tools/jdk-17.0.2}"
-export ANDROID_HOME="${ANDROID_HOME:-/home/user/android-sdk}" ANDROID_SDK_ROOT="${ANDROID_HOME:-/home/user/android-sdk}"
-export PATH="$JAVA_HOME/bin:$PATH"
-GRADLE="${GRADLE_BIN:-/home/user/tools/gradle-8.9/bin/gradle}"
-SERVER="${REDUCTION_UPDATE_HOST:-example-host}"
-REMOTE=/var/www/dsassist
-MANIFEST_URL="${REDUCTION_UPDATE_MANIFEST:-http://example.com/dsassist/manifest.json}"
+. "$(dirname "$0")/../env.sh"
+cd "$ROOT"
+SERVER="${REDUCTION_UPDATE_HOST:?set REDUCTION_UPDATE_HOST in local.env: the ssh host updates are served from}"
+REMOTE="${REDUCTION_UPDATE_DIR:?set REDUCTION_UPDATE_DIR in local.env: the directory on that host}"
+MANIFEST_URL="${REDUCTION_UPDATE_MANIFEST:?set REDUCTION_UPDATE_MANIFEST in local.env: the address the app asks}"
 
 OLD="$(sed -n 's/.*appVersionName.*?: "\(.*\)"/\1/p' app/build.gradle.kts)"
 OLD_CODE="$(sed -n 's/.*appVersionCode.*?: \([0-9]*\)$/\1/p' app/build.gradle.kts)"
@@ -25,10 +22,10 @@ echo "== $OLD ($OLD_CODE) -> $NEW ($CODE)"
 sed -i "s/?: $OLD_CODE\$/?: $CODE/; s/?: \"$OLD\"/?: \"$NEW\"/" app/build.gradle.kts
 sed -i "s/VERSION_CODE:-$OLD_CODE/VERSION_CODE:-$CODE/; s/VERSION_NAME:-$OLD/VERSION_NAME:-$NEW/" build.sh
 sed -i "s/BRIDGE_VERSION_CODE = $OLD_CODE/BRIDGE_VERSION_CODE = $CODE/" app/src/main/java/com/mindtravel/reduction/hardware/update/AssetUpdater.kt
-sed -i "s/v$OLD/v$NEW/g; s/必须不低于 $OLD_CODE（/必须不低于 $CODE（/" README_CN.md
+sed -i "s/v$OLD/v$NEW/g; s/必须不低于 $OLD_CODE（/必须不低于 $CODE（/" docs/DEVELOPMENT.md
 
 echo "== tests and lint"
-"$GRADLE" --offline -q :app:testReleaseUnitTest :app:lintRelease
+$GRADLE -q :app:testReleaseUnitTest :app:lintRelease
 python3 - <<'PY'
 import glob, re, sys
 tests = failures = 0
@@ -57,7 +54,7 @@ echo "== upload"
 echo "== live check"
 for attempt in 1 2 3; do
   REDUCTION_UPDATE_MANIFEST="$MANIFEST_URL" REDUCTION_INSTALLED_APK="$PWD/dist/Reduction-v$OLD.apk" \
-    "$GRADLE" --offline -q :app:testReleaseUnitTest --tests '*UpdateFlowTest*' >/dev/null 2>&1 || true
+    $GRADLE -q :app:testReleaseUnitTest --tests '*UpdateFlowTest*' >/dev/null 2>&1 || true
   if grep -q 'tests="1" skipped="0" failures="0" errors="0"' app/build/test-results/testReleaseUnitTest/TEST-*UpdateFlowTest.xml; then
     echo "published $NEW: a phone on $OLD updates to it through the patch"
     exit 0

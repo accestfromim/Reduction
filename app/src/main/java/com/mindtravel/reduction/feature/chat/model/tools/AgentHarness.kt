@@ -103,6 +103,9 @@ class AgentHarness(
         const val TIMEOUT_EXIT = 124
         private const val RESULT_FILE_MARK = "\n=====RESULT FILE=====\n"
 
+        /** A path as the computer's shell should read it: "~/" at its start is the home directory there. */
+        fun path(value: String): String = if (value.startsWith("~/")) "\"\$HOME\"/" + quote(value.removePrefix("~/")) else quote(value)
+
         fun quote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
         /** Reads the launcher's status output: a STATE line, then opencode's JSON events. */

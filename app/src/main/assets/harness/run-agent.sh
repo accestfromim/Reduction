@@ -37,6 +37,7 @@ say() { printf '%s\n' "$1"; exit 0; }
 # for this folder, kept outside every agent folder).
 locate() {
   dir=$1
+  case "$dir" in "~/"*) dir=$home/${dir#"~/"} ;; esac
   case "$dir" in
     "$home"/?*) ;;
     *) say "harness：文件夹必须在 $home 之下：$dir" ;;

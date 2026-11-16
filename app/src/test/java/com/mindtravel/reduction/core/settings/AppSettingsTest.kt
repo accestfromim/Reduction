@@ -7,15 +7,15 @@ class AppSettingsTest {
 
     @Test
     fun aProjectPathFromAnEarlierNameFollowsTheDirectory() {
-        for (former in listOf("/home/user/DSAssist-iterate", "/home/user/dsassist-iterate")) {
-            assertEquals("/home/user/Reduction-iterate", AppSettings.fromJson("""{"pcProject":"$former"}""").pcProject)
+        for (former in listOf("/home/someone/DSAssist-iterate", "/home/someone/dsassist-iterate", "~/DSAssist-iterate")) {
+            assertEquals("~/Reduction-iterate", AppSettings.fromJson("""{"pcProject":"$former"}""").pcProject)
         }
     }
 
     @Test
     fun anyOtherProjectPathIsKeptAsWritten() {
-        val settings = AppSettings.fromJson("""{"pcProject":"/home/user/other-Project"}""")
-        assertEquals("/home/user/other-Project", settings.pcProject)
+        val settings = AppSettings.fromJson("""{"pcProject":"/home/someone/other-Project"}""")
+        assertEquals("/home/someone/other-Project", settings.pcProject)
     }
 
     @Test

@@ -27,6 +27,8 @@ android {
         targetSdk = 35
         versionCode = appVersionCode
         versionName = appVersionName
+        // Where this build looks for updates; empty, it never looks. Given by whoever builds it (see local.env.example).
+        buildConfigField("String", "UPDATE_MANIFEST_URL", "\"${(project.findProperty("updateManifestUrl") as String?).orEmpty()}\"")
         ndk {
             abiFilters += "arm64-v8a"
         }

@@ -8,7 +8,7 @@ PORT=8780
 URL="http://localhost:$PORT"
 DATA="$HOME/.local/share/reduction"
 mkdir -p "$DATA"
-export JAVA_HOME="${JAVA_HOME:-/home/user/tools/jdk-17.0.2}"
+. "$HERE/../tools/env.sh"
 export PULSE_SERVER="${PULSE_SERVER:-unix:/mnt/wslg/PulseServer}"
 
 running() { curl -s -m 2 -o /dev/null "$URL/icon.png"; }

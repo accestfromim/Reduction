@@ -17,8 +17,8 @@ if [ "${1:-}" = "--remove" ]; then
 fi
 
 echo "== 构建"
-export JAVA_HOME="${JAVA_HOME:-/home/user/tools/jdk-17.0.2}"
-( cd "$HERE/.." && "${GRADLE:-/home/user/tools/gradle-8.9/bin/gradle}" --offline -q :desktop:installDist )
+. "$HERE/../tools/env.sh"
+( cd "$ROOT" && $GRADLE -q :desktop:installDist )
 
 echo "== 音频工具"
 AUDIO="$DATA/audio"

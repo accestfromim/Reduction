@@ -65,6 +65,6 @@ class ChatToolFactory(
 
     private companion object {
         /** Where sub agents' own folders live on the computer. */
-        const val AGENTS_ROOT = "/home/user/reduction-agents"
+        const val AGENTS_ROOT = "~/reduction-agents"
     }
 }

@@ -41,13 +41,11 @@ data class AppSettings(
     }
 
     companion object {
-        const val DEFAULT_PROJECT = "/home/user/Reduction-iterate"
+        /** On the computer; "~" is the home directory of the user the phone logs in as. */
+        const val DEFAULT_PROJECT = "~/Reduction-iterate"
 
         /** Where the project directory was under the app's earlier names; it is found at [DEFAULT_PROJECT] now. */
-        private val FORMER_DEFAULT_PROJECTS = setOf(
-            "/home/user/DSAssist-iterate",
-            "/home/user/dsassist-iterate"
-        )
+        private val FORMER_DEFAULT_PROJECTS = setOf("~/DSAssist-iterate", "~/dsassist-iterate")
 
         fun fromJson(raw: String): AppSettings {
             val json = JSONObject(raw)
@@ -69,7 +67,8 @@ data class AppSettings(
                 opencodeSessionId = json.stringOrEmpty("opencodeSessionId").trim(),
                 pcProject = json.stringOrEmpty("pcProject").trim()
                     .ifBlank { DEFAULT_PROJECT }
-                    .let { if (it in FORMER_DEFAULT_PROJECTS) DEFAULT_PROJECT else it }
+                    // A path under some home directory that ends in an earlier default is that earlier default.
+                    .let { path -> if (FORMER_DEFAULT_PROJECTS.any { path == it || path.endsWith(it.removePrefix("~")) && path.startsWith("/home/") }) DEFAULT_PROJECT else path }
             )
         }
     }

@@ -10,3 +10,11 @@ keystore/
 tools/ui-preview/node_modules/
 *.log
 __pycache__/
+
+# What is particular to one machine and one person
+local.env
+.env
+*.jks
+*.keystore
+*.p12
+*.pem

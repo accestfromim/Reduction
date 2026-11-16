@@ -21,7 +21,7 @@ export function openSettings() {
   ui.els.opencodeEnabledInput.checked = state.settings.opencodeEnabled === true;
   ui.els.opencodeWriteInput.checked = state.settings.opencodeWriteEnabled === true;
   ui.els.opencodeSessionInput.value = state.settings.opencodeSessionId || '';
-  ui.els.pcProjectInput.value = state.settings.pcProject || '/home/user/Reduction-iterate';
+  ui.els.pcProjectInput.value = state.settings.pcProject || '~/Reduction-iterate';
 
   const raw = callBridge('getAppInfo');
   if (typeof raw === 'string' && raw) {
@@ -55,7 +55,7 @@ function currentSettingsFromForm() {
     opencodeEnabled: ui.els.opencodeEnabledInput.checked,
     opencodeWriteEnabled: ui.els.opencodeWriteInput.checked,
     opencodeSessionId: ui.els.opencodeSessionInput.value.trim(),
-    pcProject: ui.els.pcProjectInput.value.trim() || '/home/user/Reduction-iterate',
+    pcProject: ui.els.pcProjectInput.value.trim() || '~/Reduction-iterate',
     pcHost: state.settings.pcHost || '',
     pcPort: state.settings.pcPort || 22,
     pcUser: state.settings.pcUser || ''
