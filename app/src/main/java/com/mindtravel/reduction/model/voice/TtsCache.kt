@@ -1,17 +1,19 @@
 package com.mindtravel.reduction.model.voice
 
-import android.content.Context
 import java.io.File
 import java.security.MessageDigest
 
-class TtsCache(context: Context) {
+/** Synthesised speech kept in [dir], so the same words are not paid for twice. */
+class TtsCache(private val dir: File) {
 
     companion object {
         private const val MAX_BYTES = 50L * 1024 * 1024
         private const val TRIM_TO_BYTES = 40L * 1024 * 1024
     }
 
-    private val dir = File(context.cacheDir, "tts_cache").apply { mkdirs() }
+    init {
+        dir.mkdirs()
+    }
 
     @Synchronized
     fun get(voice: String, text: String): ByteArray? {

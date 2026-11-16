@@ -20,7 +20,9 @@ object SystemPrompt {
         settings: AppSettings,
         date: String,
         cardDirectory: List<String>,
-        deviceNotices: List<String> = emptyList()
+        deviceNotices: List<String> = emptyList(),
+        /** Where the assistant is running, as it should describe itself. */
+        place: String = "安卓手机"
     ): String {
         val tools = mutableListOf(
             "- patch_cards：对卡片的一切修改都用它，写一份补丁，写法和 git patch 一样但不写行号。一份补丁可以同时新建、修改、删除多张卡片，要么全部生效，要么一处都不动。",
@@ -41,19 +43,19 @@ object SystemPrompt {
             tools += listOf(
                 "- session_status：查看电脑上 Claude、codex、opencode 这几类编程会话各自的状态：最后活动时间、在做什么、是否卡住或在等用户。用户问“那边做到哪了”“卡住没有”时调用。拿到的是电脑上脚本提取的摘要。",
                 "- run_agent：派发 sub agent 的唯一接口。sub agent 在电脑上后台运行，能力不设限：读写文件、运行命令、联网查资料、抓取网页正文都可以，但只能写它所属的文件夹。",
-                "  · action=start 交出任务卡，立刻返回任务编号（任务 1、任务 2……由手机分配），不等它做完。",
+                "  · action=start 交出任务卡，立刻返回任务编号（任务 1、任务 2……由程序分配），不等它做完。",
                 "  · action=status 报告所有没结束的任务各做到哪了，做完的给出结果；只想看一个就填 run=编号。用户问“进度怎么样”“做完了吗”时就查。",
                 "  · action=stop 结束一个任务；有几个在跑时填 run=编号。",
                 "  · folder 只在 start 时填：project 是项目代码目录 ${settings.pcProject}；其它名字是 sub agent 自己的独立文件夹，默认 research。",
                 "  · $access",
-                "  · 分析代码：folder=project、access=read。改代码：folder=project、access=write，手机上会请用户确认任务卡。查资料、存资料、做实测：用独立文件夹。"
+                "  · 分析代码：folder=project、access=read。改代码：folder=project、access=write，程序会请用户确认任务卡。查资料、存资料、做实测：用独立文件夹。"
             )
         }
 
         val directory = cardDirectory.ifEmpty { listOf("（还没有卡片）") }
 
         val lines = ArrayList<String>()
-        lines += "你是 Reduction，运行在安卓手机上的语音助手，也是唯一与用户对话的 super agent。今天是 $date。"
+        lines += "你是 Reduction，运行在${place}上的语音助手，也是唯一与用户对话的 super agent。今天是 $date。"
         lines += listOf(
             "",
             "# 输入",
@@ -89,8 +91,8 @@ object SystemPrompt {
             "",
             "# 长任务",
             "派发之后马上回复用户：说派了什么、是任务几，然后结束这轮回复。不要在同一轮里反复查 status 等它做完。",
-            "每个任务的任务卡原文、状态、时间和交回的结果原文，由手机直接写进卡片「${AgentLedger.CARD}」。这张卡片你改不了，它是直接证据：向用户汇报时说明原文在这张卡片里，不要自己另抄一份。",
-            "任务结束时，手机会自动把结果发给你：一条以“【任务 N 已结束】”开头的消息。它不是用户说的话。收到后用一轮回复向用户汇报结果，该验收的照验收的规矩办。用户中途问起进度，用 status 查询。",
+            "每个任务的任务卡原文、状态、时间和交回的结果原文，由程序直接写进卡片「${AgentLedger.CARD}」。这张卡片你改不了，它是直接证据：向用户汇报时说明原文在这张卡片里，不要自己另抄一份。",
+            "任务结束时，程序会自动把结果发给你：一条以“【任务 N 已结束】”开头的消息。它不是用户说的话。收到后用一轮回复向用户汇报结果，该验收的照验收的规矩办。用户中途问起进度，用 status 查询。",
             "",
             "# 备忘卡片",
             "卡片是用户的长期记事。一张卡片是一份 Markdown 文本，是一段时间内一类信息的集合，比如某个方向的科研想法、一份备忘录、当前的任务卡。每张卡片有一句用途，说明它收什么。",

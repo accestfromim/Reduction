@@ -22,7 +22,7 @@ class PcmPlayer(
     context: Context,
     private val queue: AudioQueue,
     private val scope: CoroutineScope
-) {
+) : SpeechOutput {
     private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
 
     private var job: Job? = null
@@ -34,7 +34,7 @@ class PcmPlayer(
     private var session = 0
 
     /** Begins a stretch of speech. [onStart] and [onDone] arrive on the main thread. */
-    fun start(onStart: () -> Unit, onDone: () -> Unit) {
+    override fun start(onStart: () -> Unit, onDone: () -> Unit) {
         stop()
         val current = ++session
         val audio = Channel<ByteArray>(capacity = QUEUED_AHEAD)
@@ -68,7 +68,7 @@ class PcmPlayer(
     }
 
     /** Hands over PCM, waiting while enough is already queued. Returns false once playback has stopped. */
-    suspend fun send(pcm: ByteArray): Boolean {
+    override suspend fun send(pcm: ByteArray): Boolean {
         val audio = channel ?: return false
         return try {
             audio.send(pcm)
@@ -81,12 +81,12 @@ class PcmPlayer(
     }
 
     /** No more PCM is coming; onDone follows when what was sent has been played. */
-    fun finish() {
+    override fun finish() {
         channel?.close()
     }
 
     /** Silences the speech now. No callback follows. */
-    fun stop() {
+    override fun stop() {
         if (owner != null) Logs.add("Speech stopped by the app")
         session++
         job?.cancel()

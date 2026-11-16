@@ -77,7 +77,7 @@ class AppCore private constructor(context: Context) {
     /** One card can float over other apps; see [CardOverlay]. */
     val cardOverlay = CardOverlay(context, cardRepository)
     private val agentRuns = AgentRuns(File(context.filesDir, "agent-runs.json"))
-    private val historyRepository = HistoryRepository(context)
+    private val historyRepository = HistoryRepository(File(context.filesDir, "chat_history.json"))
 
     // ── hardware ────────────────────────────────────────────────────────────
     private val headsetMic = HeadsetMicController(context)
@@ -90,7 +90,7 @@ class AppCore private constructor(context: Context) {
 
     // ── models ──────────────────────────────────────────────────────────────
     private val models = ModelGraph()
-    private val ttsCache = TtsCache(context)
+    private val ttsCache = TtsCache(File(context.cacheDir, "tts_cache"))
     private val ttsSynthesizer = TtsSynthesizer(models.audioGateway, ttsCache)
 
     // ── features: voice ─────────────────────────────────────────────────────

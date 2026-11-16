@@ -27,7 +27,9 @@ class Conversation(
     /** Today's date as yyyy-MM-dd. */
     private val today: () -> String,
     /** Things about the user's devices worth a sentence in this reply, such as a battery running low. */
-    private val deviceNotices: () -> List<String> = { emptyList() }
+    private val deviceNotices: () -> List<String> = { emptyList() },
+    /** Where the assistant is running, as it should describe itself. */
+    private val place: String = "安卓手机"
 ) {
     private class Line(val role: Role, val content: String)
 
@@ -79,7 +81,7 @@ class Conversation(
             "- ${card.name}：${card.purpose.ifBlank { "（没有写用途）" }}（${card.chars} 字）"
         }
         val messages = ArrayList<ChatMessage>()
-        messages += ChatMessage(role = Role.SYSTEM, content = SystemPrompt.build(settings, today(), directory, runCatching(deviceNotices).getOrDefault(emptyList())))
+        messages += ChatMessage(role = Role.SYSTEM, content = SystemPrompt.build(settings, today(), directory, runCatching(deviceNotices).getOrDefault(emptyList()), place))
         lines.takeLast(CONTEXT_LINES).mapTo(messages) { ChatMessage(role = it.role, content = it.content) }
 
         return chat.send(id, messages) { reply -> remember(reply) }

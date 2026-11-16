@@ -1,6 +1,6 @@
 # Reduction（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.55。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.56。
 
 ## 交互
 
@@ -58,7 +58,7 @@
 
 ## 安装
 
-1. 把 `Reduction-v1.0.55.apk` 传到手机。
+1. 把 `Reduction-v1.0.56.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -229,7 +229,7 @@ assets/js/ui/ui.js, markdown.js, splash.js（启动动画落进图标框）
 - SSE 中 `content: null` 不会变成字符串 `"null"`。
 - 工具参数只接受字符串片段，缺 id/name 会直接失败。
 - 协议层不把 `JSONObject` 传给业务层。
-- 资源热更新包的 `assetsMinVersionCode` 必须不低于 85（当前桥接协议的起始版本），否则不会被使用。
+- 资源热更新包的 `assetsMinVersionCode` 必须不低于 86（当前桥接协议的起始版本），否则不会被使用。
 - 设置升级会自动从旧版本迁移，不会丢 API Key。
 
 测试：
@@ -255,6 +255,24 @@ REDUCTION_INSTALLED_APK=dist/Reduction-v1.0.25.apk \
 
 单测覆盖 SSE null、工具调用分片、工具循环、消息序列化、计算器、结束词检测、朗读文本清洗、朗读分句、提示音保证、工具摘要、会话状态脚本、录音留存等。
 
+## 电脑端
+
+电脑上的 Reduction 是同一个对话核心：对话、提示词、工具、卡片、sub agent、朗读，编译的就是手机端那份代码（`desktop/build.gradle.kts` 直接引用 `app` 里不依赖安卓的源文件）。它在本机起一个只听 `127.0.0.1` 的小服务，界面是手机端那套网页，在浏览器里打开。
+
+```bash
+./desktop.sh          # 构建并启动，默认 http://localhost:8780 ；可在后面加端口号
+```
+
+- 第一次打开在设置里填 DeepSeek API Key；也可以用环境变量 `DEEPSEEK_API_KEY`。设置存在 `~/.config/reduction/settings.json`，只有本人可读。
+- 打字提问，回答由浏览器念出来；按住麦克风按钮说话，松开发送。
+- 卡片、对话历史、任务记录存在 `~/.local/share/reduction/`，和手机上的是两份。
+- sub agent 直接在这台电脑上运行，沙箱和手机派发时是同一个脚本。
+- 唤醒词、耳机手势、悬浮卡片是手机才有的，电脑端不提供。
+
+页面和服务之间只有两条通路：页面对服务的调用（`POST /bridge/<方法>`，就是手机页面对 App 的那些调用），和服务发给页面的事件流（`GET /events`，包括要播放的语音）。带不上页面专用请求头的请求一律拒绝，别的网站指挥不了它。
+
+`node tools/desktop-check/run.mjs` 用一个假的模型服务把电脑端从头到尾走一遍：填 Key、打字提问、朗读、工具调用、卡片、按住说话、刷新后历史还在。不花钱，不需要 Key。
+
 ## 从源码构建
 
 需要 JDK 17、Android SDK（compileSdk 35、build-tools 35.0.0）、Gradle 8.9。
@@ -265,7 +283,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/Reduction-v1.0.55.apk`
+产物：`dist/Reduction-v1.0.56.apk`
 
 免按住模式依赖：
 

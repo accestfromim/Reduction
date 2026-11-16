@@ -2,7 +2,7 @@ package com.mindtravel.reduction.feature.voice
 
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.hardware.audio.Loudness
-import com.mindtravel.reduction.hardware.audio.PcmPlayer
+import com.mindtravel.reduction.hardware.audio.SpeechOutput
 import com.mindtravel.reduction.model.voice.TtsSynthesizer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -18,10 +18,10 @@ import kotlinx.coroutines.launch
  */
 class ReplyStreamer(
     private val synthesizer: TtsSynthesizer,
-    private val player: PcmPlayer,
+    private val player: SpeechOutput,
     private val scope: CoroutineScope
 ) {
-    /** Delivered on the main thread. Exactly one of onDone / onError ends a session that is not stopped. */
+    /** Delivered on the thread of the scope this was given. Exactly one of onDone / onError ends a session that is not stopped. */
     interface Events {
         fun onStart()
         fun onDone()
@@ -45,7 +45,7 @@ class ReplyStreamer(
         texts = queue
 
         val fail = { message: String ->
-            if (abort(current)) scope.launch(Dispatchers.Main) { events.onError(message) }
+            if (abort(current)) scope.launch { events.onError(message) }
         }
         player.start(
             onStart = { if (current == session) events.onStart() },

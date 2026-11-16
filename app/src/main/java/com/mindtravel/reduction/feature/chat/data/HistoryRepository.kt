@@ -1,10 +1,9 @@
 package com.mindtravel.reduction.feature.chat.data
 
-import android.content.Context
 import java.io.File
 
-class HistoryRepository(context: Context) {
-    private val file = java.io.File(context.filesDir, "chat_history.json")
+/** The conversation so far, kept in [file]. */
+class HistoryRepository(private val file: File) {
 
     fun load(): String = if (file.exists()) {
         runCatching { file.readText() }.getOrDefault("[]")

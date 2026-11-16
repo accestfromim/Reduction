@@ -32,7 +32,7 @@ class RunAgentTool(
         name = "run_agent",
         description = "派发 sub agent 并查询它们的进度。sub agent 在电脑上后台运行，能力不设限，但只能写它所属的文件夹。" +
             "start 交出任务卡后立刻返回任务编号，不等它做完；" +
-            "status 报告还没结束的任务各做到哪了，做完的给出结果；stop 结束一个任务。任务编号由手机分配。",
+            "status 报告还没结束的任务各做到哪了，做完的给出结果；stop 结束一个任务。任务编号由程序分配。",
         parameters = listOf(
             ToolParam("action", "start：派发新任务；status：查询进度；stop：结束任务", choices = listOf("start", "status", "stop")),
             ToolParam("task", "start 时必填。任务卡：目标、约束、验收标准，以及希望交回什么", required = false),
