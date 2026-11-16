@@ -109,7 +109,7 @@
         <div class="mods">
           <div class="mod"><div class="mod-t">VoiceMachine</div><div class="mod-d">语音状态机，纯函数：给定状态和事件，返回新状态和要做的事；不碰任何设备</div></div>
           <div class="mod"><div class="mod-t">VoiceRuntime</div><div class="mod-d">执行器：照状态机给的清单办事，把结果作为事件送回；自己不做任何决定</div></div>
-          <div class="mod"><div class="mod-t">TurnListener</div><div class="mod-d">一轮用户语音：本地逐帧判定起止，结束词、静音、60 秒上限</div></div>
+          <div class="mod"><div class="mod-t">TurnListener</div><div class="mod-d">一轮用户语音：本地逐帧判定起止，说“完毕”结束，60 秒上限</div></div>
           <div class="mod"><div class="mod-t">ReplyStreamer</div><div class="mod-d">回复文本 → 清洗 → 分句 → 合成队列 → 播放</div></div>
           <div class="mod"><div class="mod-t">Conversation</div><div class="mod-d">对话本身：历史、系统提示、发出请求；说的和打字的都走它，不需要界面</div></div>
         </div>
@@ -182,7 +182,7 @@ stateDiagram-v2
     IDLE --> PREPARING: Hi Reduction
     state "录音" as REC {
         PREPARING --> LISTENING: 麦克风就绪，乐音响起
-        LISTENING --> TURN_ACK: 听到“完毕” / 静音 5s / 点结束 / 满 60s / 12s 没人说话 / 取消 / 出错
+        LISTENING --> TURN_ACK: 听到“完毕” / 点结束 / 满 60s / 12s 没人说话 / 取消 / 出错
     }
     PREPARING --> IDLE: 取消 / 麦克风打不开（无声）
     TURN_ACK --> REPLYING: 识别到文本
@@ -241,7 +241,7 @@ stateDiagram-v2
           <th class="row" style="--c:var(--fn)">功能层</th>
           <td>等唤醒词事件</td>
           <td class="ack">准备麦克风；就绪即开始录音</td>
-          <td>TurnEndpointer 逐帧判定起止：听到“完毕”立刻结束、或静音 5s、或 12s 没人说话；满 60s 强制结束；每半秒音频为蜂鸣续命一次</td>
+          <td>TurnEndpointer 逐帧判定起止：听到“完毕”立刻结束，停顿不结束；12s 没人开口则退出；满 60s 强制结束；每半秒音频为蜂鸣续命一次</td>
           <td class="ack">播“好的”；同时定稿文本，文本一到就交给 Conversation</td>
           <td>ReplyStreamer：整条回复都念；首段在第一个逗号（≥ 6 字）切出去合成；之后按句切，单段 ≤ 200 字；播放时预合成后续 3 段</td>
         </tr>

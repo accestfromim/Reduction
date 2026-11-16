@@ -96,7 +96,7 @@ class TurnRecorder(
     fun start(
         onSpeechStart: () -> Unit,
         onAlive: () -> Unit,
-        /** The turn ended by itself: the end word, or a long silence. */
+        /** The turn ended by itself: the end word was heard. */
         onEnd: (reason: String) -> Unit,
         /** Nobody spoke. */
         onTimeout: () -> Unit,
@@ -169,11 +169,6 @@ class TurnRecorder(
                 turn.over = true
                 Logs.add("Turn: end word heard")
                 turn.onEnd("end word")
-            }
-            TurnEndpointer.Decision.END_BY_SILENCE -> {
-                turn.over = true
-                Logs.add("Turn: long silence")
-                turn.onEnd("silence")
             }
         }
     }
