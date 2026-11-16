@@ -72,6 +72,11 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // The system's launch screen leaves at once, without a fade of its own: the page's
+        // opening animation is the first thing that moves.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            splashScreen.setOnExitAnimationListener { it.remove() }
+        }
 
         webView = WebView(this).apply {
             setBackgroundColor(Color.parseColor("#000000"))

@@ -1,0 +1,18 @@
+<resources>
+    <!--
+      Android 12 and later put a launch screen of their own in front of every app: the app's
+      icon, standing still. It cannot be switched off, so it is made to show nothing: black
+      like the app, with no icon. What the user sees first is then the opening animation.
+    -->
+    <style name="Theme.DeepSeekAssistant" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <item name="android:windowBackground">#000000</item>
+        <item name="android:statusBarColor">#000000</item>
+        <item name="android:navigationBarColor">#000000</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:fontFamily">sans</item>
+        <item name="android:windowSplashScreenBackground">#000000</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/splash_nothing</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">#000000</item>
+        <item name="android:windowSplashScreenAnimationDuration">0</item>
+    </style>
+</resources>
