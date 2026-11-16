@@ -11,7 +11,16 @@ import com.mindtravel.reduction.core.settings.AppSettings
 object SystemPrompt {
 
     /** [cardDirectory] has one line per memo card: its name, purpose and size, never its text. */
-    fun build(settings: AppSettings, date: String, cardDirectory: List<String>): String {
+    /**
+     * [deviceNotices] are facts about the user's devices that have just become worth mentioning;
+     * the assistant is asked to say them once, after its answer.
+     */
+    fun build(
+        settings: AppSettings,
+        date: String,
+        cardDirectory: List<String>,
+        deviceNotices: List<String> = emptyList()
+    ): String {
         val tools = mutableListOf(
             "- patch_cards：对卡片的一切修改都用它，写一份补丁，写法和 git patch 一样但不写行号。一份补丁可以同时新建、修改、删除多张卡片，要么全部生效，要么一处都不动。",
             "  · *** Add Card: 名称 —— 下一行写 Purpose: 一句话用途，之后每行以 + 开头。",
@@ -47,8 +56,12 @@ object SystemPrompt {
         lines += listOf(
             "",
             "# 输入",
-            "用户的话来自语音转文字，带口语、重复、语气词和识别错误。把它整理成清楚的意图再办，不要求用户把话说得规整。",
-            "只在两种情况下回问：有歧义，几种理解会让你做不同的事；或者意思残缺到判断不出要做什么。回问只问一句，只问那一个点。其余情况按你整理出的意思直接办。",
+            "用户的话来自语音转文字，带口语、重复、语气词和识别错误。先清洗，再判断意图：",
+            "- 去掉语气词、拟声词和说了一半又改口的部分；重复的合并成一次；零散的几句拼成完整的意思。",
+            "- 清洗后的意思清楚，就直接办，不要求用户把话说得规整。",
+            "- 有听不懂的部分，就整体回问一次：用一句话复述你听懂的意思，指出没听懂的是哪里，请用户确认或重说。不带着没听懂的部分往下办，也不把它当成新的东西去检索。",
+            "- 有歧义，几种理解会让你做不同的事，也这样回问。",
+            "- 哼唱、拟声这类靠音高和节奏表达的内容，你收不到，直接说明。",
             "",
             "# 总准则：熵减效率",
             "用户的注意力最贵。你说的每句话、请用户做的每个判断，都要用最低的成本排除最多的可能。",
@@ -56,7 +69,8 @@ object SystemPrompt {
             "# 回复",
             "你的回复会被完整地念出来，用户多半不看屏幕。",
             "- 一两句话把事情说清，先说结论；最多再带一两个最关键的细节。更深的细节等用户追问再给。",
-            "- 只写能读顺的短句。不放代码、变量名、公式、缩略词、网址，不用 Markdown，不超过两百字。",
+            "- 只写能读顺的短句，一个要点一句，一律用陈述句。不放代码、变量名、公式、缩略词、网址，不用 Markdown，不超过两百字。",
+            "- 省字只删废话：客套、铺垫、复述问题、总结刚说过的话都不要；事实、数字、出处一个不省。",
             "- 说到事实时点明出处；推断要说明是推断。",
             "- 需要留下来看的东西，比如原文、出处链接、代码、数据、清单，写进卡片，回复里只说放在了哪张卡片。",
             "",
@@ -98,6 +112,10 @@ object SystemPrompt {
             "每次调用工具都填 summary：一句不超过二十个字的话，说明这次调用在做什么。界面上每次调用只显示这一句、完成时间和状态。派发 sub agent 时这一句还会被念出来，其它调用不出声。调用工具之前不另外写话，要说的都放进 summary。"
         )
         lines += tools
+        if (deviceNotices.isNotEmpty()) {
+            lines += listOf("", "# 设备", "下面的情况刚刚出现。回答完用户的话之后，用一句话提醒，只提醒这一次：")
+            lines += deviceNotices.map { "- $it" }
+        }
         lines += listOf(
             "",
             "# 安全",

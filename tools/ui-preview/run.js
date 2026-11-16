@@ -229,6 +229,10 @@ const cardsShown = await page.evaluate(async () => {
     text: document.getElementById('cardBody').textContent.includes('用倒排索引做粗筛'),
     reading: hidden('cardEditor') && !hidden('cardBody')
   };
+  // One tap on the reading page copies the whole card.
+  window.__copied = '';
+  document.getElementById('cardCopyAll').click();
+  opened.copied = window.__copied === window.__cards['科研想法·检索'].text.trim() && !hidden('cardCopyAll');
   return { streamFirst, onCards, before, namesOnly: !listText.includes('向量检索方向') && !listText.includes('倒排'), opened };
 });
 await shot('12-card-open.png');
@@ -241,7 +245,7 @@ const cardsEdited = await page.evaluate(async () => {
   const followed = document.getElementById('cardBody').textContent.includes('新加的一条');
   // Edit by hand.
   document.getElementById('cardEdit').click();
-  const editing = !hidden('cardEditor') && hidden('cardBody') && hidden('cardNameField');
+  const editing = !hidden('cardEditor') && hidden('cardBody') && hidden('cardNameField') && hidden('cardCopyAll');
   document.getElementById('cardText').value = '改过的正文';
   document.getElementById('cardSave').click();
   const saved = hidden('cardEditor') && document.getElementById('cardBody').textContent.includes('改过的正文');

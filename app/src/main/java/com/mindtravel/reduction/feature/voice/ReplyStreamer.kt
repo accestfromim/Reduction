@@ -1,6 +1,7 @@
 package com.mindtravel.reduction.feature.voice
 
 import com.mindtravel.reduction.core.Logs
+import com.mindtravel.reduction.hardware.audio.Loudness
 import com.mindtravel.reduction.hardware.audio.PcmPlayer
 import com.mindtravel.reduction.model.voice.TtsSynthesizer
 import kotlinx.coroutines.CancellationException
@@ -56,7 +57,8 @@ class ReplyStreamer(
                 for (text in queue) {
                     // Timings go to the log: they show where a pause in speech comes from.
                     val synthStart = System.currentTimeMillis()
-                    val pcm = synthesizer.synthesize(apiKey, voice, text)
+                    // Every piece at one loudness: the same as the cues around it.
+                    val pcm = Loudness.leveled(synthesizer.synthesize(apiKey, voice, text))
                     val synthMs = System.currentTimeMillis() - synthStart
                     if (current != session) return@launch
                     val queueStart = System.currentTimeMillis()

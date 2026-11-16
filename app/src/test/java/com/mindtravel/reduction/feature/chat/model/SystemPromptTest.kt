@@ -54,4 +54,13 @@ class SystemPromptTest {
         assertFalse(bare.contains("web_search") || bare.contains("calculator") || bare.contains("run_agent"))
         assertTrue(bare.contains("patch_cards") && bare.contains("（还没有卡片）"))
     }
+
+    @Test
+    fun deviceNoticesAppearOnlyWhenThereAreSome() {
+        val plain = built().getValue("bare")
+        assertFalse(plain.contains("# 设备"))
+        val low = SystemPrompt.build(settings(false, false, false, false, "/x"), "2026-01-02", emptyList(), listOf("手机电量 15%"))
+        assertTrue(low.contains("# 设备") && low.contains("- 手机电量 15%"))
+        assertEquals(plain, low.replace(Regex("\\n\\n# 设备\\n[^#]*(?=\\n\\n# 安全)"), ""))
+    }
 }

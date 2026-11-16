@@ -20,8 +20,8 @@ class AckCue(
     private val describeOutput: () -> String
 ) : CueOutput {
 
-    /** 16-bit mono PCM at the audio queue's rate. */
-    class Sounds(val acknowledge: ByteArray, val hum: ByteArray)
+    /** 16-bit mono PCM at the audio queue's rate. "好的" is asked for each time it is needed. */
+    class Sounds(val acknowledge: () -> ByteArray, val hum: ByteArray)
 
     private var finishPending: (() -> Unit)? = null
     private var timeout: Job? = null
@@ -78,7 +78,7 @@ class AckCue(
             }
         }
         Logs.add("Cue 好的")
-        queue.play(sounds.acknowledge, owner = this, onDone = { finish() })
+        queue.play(sounds.acknowledge(), owner = this, onDone = { finish() })
     }
 
     /** Silences everything. If "好的" was playing it is over, so its onDone runs. */

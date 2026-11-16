@@ -105,6 +105,7 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
         if (settingsRepository.load().wakeWordEnabled) {
             setWakeWordEnabled(true)
         }
+        if (savedInstanceState == null) handleHeadsetGesture(intent)
 
         val assetLoader = WebViewAssetLoader.Builder()
             .addPathHandler(
@@ -288,6 +289,29 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
         }.onFailure { Logs.add("Battery exemption dialog unavailable: ${it.message}") }
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleHeadsetGesture(intent)
+    }
+
+    /**
+     * The headset's voice-assistant gesture starts a recording, just as the wake phrase
+     * does. The phone may be locked and in a pocket: the gesture is allowed through the
+     * lock screen for as long as this screen stays up.
+     */
+    private fun handleHeadsetGesture(intent: Intent?) {
+        if (intent?.action !in HEADSET_GESTURES) return
+        Logs.add("Headset gesture: ${intent?.action?.substringAfterLast('.')}")
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) setShowWhenLocked(true)
+        graph.core.voice.onHeadsetGesture()
+    }
+
+    override fun onStop() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) setShowWhenLocked(false)
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
         // Back in the foreground is the one place the microphone can be won back.
@@ -317,6 +341,9 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
     }
 
     private companion object {
+        /** What Android sends when a headset's voice-assistant gesture is made. */
+        val HEADSET_GESTURES = setOf(Intent.ACTION_VOICE_COMMAND, "android.speech.action.VOICE_SEARCH_HANDS_FREE")
+
         /** When the page's render process was last lost, in this process. */
         @Volatile
         var lastRenderLossAt = -(5 * 60_000L)

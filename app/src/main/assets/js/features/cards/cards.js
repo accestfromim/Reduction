@@ -51,6 +51,7 @@ function show(next) {
   ui.els.cardBody.classList.toggle('hidden', editing);
   ui.els.cardEditor.classList.toggle('hidden', !editing);
   ui.els.cardEdit.classList.toggle('hidden', mode !== 'read');
+  ui.els.cardCopyAll.classList.toggle('hidden', mode !== 'read');
   ui.els.cardNameField.classList.toggle('hidden', mode !== 'new');
   ui.els.cardCopy.classList.toggle('hidden', mode === 'new');
   ui.els.cardDelete.classList.toggle('hidden', mode === 'new');

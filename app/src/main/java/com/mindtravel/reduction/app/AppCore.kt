@@ -7,6 +7,7 @@ import com.mindtravel.reduction.R
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.feature.chat.data.CardRepository
 import com.mindtravel.reduction.feature.chat.data.HistoryRepository
+import com.mindtravel.reduction.feature.chat.model.BatteryWatch
 import com.mindtravel.reduction.feature.chat.model.ChatEngine
 import com.mindtravel.reduction.feature.chat.model.ChatSession
 import com.mindtravel.reduction.feature.chat.model.tools.ChatToolFactory
@@ -16,6 +17,7 @@ import com.mindtravel.reduction.feature.pc.ui.PcController
 import com.mindtravel.reduction.feature.settings.data.SettingsRepository
 import com.mindtravel.reduction.feature.update.ui.UpdateController
 import com.mindtravel.reduction.feature.voice.AckCue
+import com.mindtravel.reduction.feature.voice.AckVoice
 import com.mindtravel.reduction.feature.voice.PushToTalkSession
 import com.mindtravel.reduction.feature.voice.RecordingController
 import com.mindtravel.reduction.feature.voice.ReplyStreamer
@@ -35,6 +37,7 @@ import com.mindtravel.reduction.hardware.audio.RecordingArchive
 import com.mindtravel.reduction.hardware.audio.WavPcm
 import com.mindtravel.reduction.hardware.audio.WavRecorder
 import com.mindtravel.reduction.hardware.pc.PcGateway
+import com.mindtravel.reduction.hardware.power.DeviceBattery
 import com.mindtravel.reduction.hardware.pc.SshPcClient
 import com.mindtravel.reduction.model.ModelGraph
 import com.mindtravel.reduction.model.voice.RollingAsr
@@ -71,6 +74,7 @@ class AppCore private constructor(context: Context) {
     private val audioQueue = AudioQueue(AudioTrackSink()) { callback -> mainHandler.post(callback) }
     private val pcmPlayer = PcmPlayer(context, audioQueue, scope)
     private val pcGateway: PcGateway = SshPcClient(context)
+    private val deviceBattery = DeviceBattery(context)
     private val recordings = RecordingArchive(File(context.filesDir, "recordings"))
 
     // ── models ──────────────────────────────────────────────────────────────
@@ -79,10 +83,17 @@ class AppCore private constructor(context: Context) {
     private val ttsSynthesizer = TtsSynthesizer(models.audioGateway, ttsCache)
 
     // ── features: voice ─────────────────────────────────────────────────────
+    private val ackVoice = AckVoice(
+        settingsRepository = settingsRepository,
+        synthesizer = ttsSynthesizer,
+        bundled = cueSound(context, R.raw.ack_done),
+        sampleRate = AudioQueue.SAMPLE_RATE,
+        scope = scope
+    )
     private val ackCue = AckCue(
         queue = audioQueue,
         sounds = AckCue.Sounds(
-            acknowledge = cueSound(context, R.raw.ack_done),
+            acknowledge = ackVoice::sound,
             hum = cueSound(context, R.raw.ack_hum)
         ),
         scope = scope,
@@ -118,13 +129,17 @@ class AppCore private constructor(context: Context) {
         emitter = ui,
         scope = scope
     )
+    private val batteryWatch = BatteryWatch()
     val conversation = Conversation(
         settingsRepository = settingsRepository,
         history = historyRepository,
         cards = cardRepository,
         chat = chatController,
         emitter = ui,
-        today = { LocalDate.now().toString() }
+        today = { LocalDate.now().toString() },
+        deviceNotices = {
+            batteryWatch.notices(deviceBattery.readings().map { BatteryWatch.Device(it.name, it.percent, it.charging) })
+        }
     )
 
     private val turnListener = TurnListener(
@@ -179,6 +194,7 @@ class AppCore private constructor(context: Context) {
         }
         if (WakeWordBus.consumePending()) voice.onWakeWord()
         WakeWordBus.clipSink = { wav, keyword -> recordings.keep("wake", wav, keyword) }
+        ackVoice.prepare()
         Logs.add("Core started")
     }
 

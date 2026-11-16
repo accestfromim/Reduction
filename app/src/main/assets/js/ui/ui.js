@@ -58,6 +58,7 @@ export const els = {
   cardPage: byId('cardPage'),
   cardBack: byId('cardBack'),
   cardTitle: byId('cardTitle'),
+  cardCopyAll: byId('cardCopyAll'),
   cardEdit: byId('cardEdit'),
   cardBody: byId('cardBody'),
   cardEditor: byId('cardEditor'),

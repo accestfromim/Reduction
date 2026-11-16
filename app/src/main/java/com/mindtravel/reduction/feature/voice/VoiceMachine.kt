@@ -15,8 +15,10 @@ package com.mindtravel.reduction.feature.voice
  *     IDLE ──wake word──▶ PREPARING ──microphone ready──▶ LISTENING (hum)
  *     LISTENING ──turn ends──▶ TURN_ACK ("好的") ──words──▶ REPLYING ──reply spoken──▶ IDLE
  *
- * Only the wake phrase starts a recording: once in IDLE, and again while a reply is
- * playing, which it interrupts. Nothing else opens the microphone.
+ * Two things start a recording, and nothing else opens the microphone: the wake phrase,
+ * and the headset's voice-assistant gesture. Either works in IDLE, and again while a
+ * reply is playing, which it interrupts. A recording started from the headset is taken
+ * through the headset's microphone: the phone may be in a pocket.
  *
  * Each recording has a number, [State.turn]. Events about a recording carry its number,
  * and one that arrives for an earlier recording is ignored.
@@ -52,6 +54,9 @@ object VoiceMachine {
     sealed interface Event {
         /** The wake phrase was heard. */
         data object WakeWord : Event
+
+        /** The headset's voice-assistant gesture was made. */
+        data object HeadsetGesture : Event
 
         /** The microphone is open and delivering audio. */
         data class MicReady(val turn: Int) : Event
@@ -99,8 +104,11 @@ object VoiceMachine {
         /** Abandon the reply in progress, if any. */
         data object AbortReply : Effect
 
-        /** Get the microphone ready. Answers with MicReady or MicFailed. */
-        data class PrepareMic(val turn: Int) : Effect
+        /**
+         * Get the microphone ready: the headset's when [headsetMic], otherwise as the user
+         * has set. Answers with MicReady or MicFailed.
+         */
+        data class PrepareMic(val turn: Int, val headsetMic: Boolean = false) : Effect
 
         /** Begin recording and start the hum. Answers with TurnSpoken, TurnSilent or MicFailed. */
         data class StartRecording(val turn: Int) : Effect
@@ -137,7 +145,8 @@ object VoiceMachine {
     }
 
     private fun idle(s: State, e: Event): Step = when (e) {
-        Event.WakeWord -> record(s, Effect.AbortReply)
+        Event.WakeWord -> record(s, headsetMic = false, Effect.AbortReply)
+        Event.HeadsetGesture -> record(s, headsetMic = true, Effect.AbortReply)
         else -> stay(s)
     }
 
@@ -224,7 +233,8 @@ object VoiceMachine {
         e is Event.ReplyEnded && e.id == s.replyId -> toIdle(s)
 
         // Barge-in: the reply stops and a new turn begins.
-        e == Event.WakeWord -> record(s.copy(replyId = null), Effect.AbortReply)
+        e == Event.WakeWord -> record(s.copy(replyId = null), headsetMic = false, Effect.AbortReply)
+        e == Event.HeadsetGesture -> record(s.copy(replyId = null), headsetMic = true, Effect.AbortReply)
 
         // The reply carries on as an ordinary one; only the conversation ends.
         e == Event.UserCancel -> toIdle(s)
@@ -237,11 +247,11 @@ object VoiceMachine {
     private fun stay(s: State) = Step(s, emptyList())
 
     /** Begins a new recording: the next turn number, the microphone taken from the wake word. */
-    private fun record(s: State, vararg first: Effect): Step {
+    private fun record(s: State, headsetMic: Boolean, vararg first: Effect): Step {
         val turn = s.turn + 1
         return Step(
             s.copy(phase = VoiceState.PREPARING, turn = turn, okSounding = false, pending = Pending.NOTHING),
-            first.toList() + Effect.PauseWake + Effect.PrepareMic(turn)
+            first.toList() + Effect.PauseWake + Effect.PrepareMic(turn, headsetMic)
         )
     }
 

@@ -58,6 +58,8 @@ class VoiceRuntime(
 
     fun onWakeWord() = dispatch(Event.WakeWord)
 
+    fun onHeadsetGesture() = dispatch(Event.HeadsetGesture)
+
     fun finishTurn() = dispatch(Event.UserFinish)
 
     fun cancel() = dispatch(Event.UserCancel)
@@ -91,6 +93,7 @@ class VoiceRuntime(
 
     private fun handle(event: Event) {
         if (event == Event.WakeWord && !wakeWordWanted()) return
+        if (event == Event.HeadsetGesture && isPushToTalkActive()) return
         val before = state
         val step = VoiceMachine.next(before, event)
         state = step.state
@@ -112,7 +115,7 @@ class VoiceRuntime(
             Effect.ResumeWake -> if (settingsRepository.load().wakeWordEnabled) wake.resume()
             Effect.ArmBargeIn -> armBargeIn()
             Effect.AbortReply -> abortReply()
-            is Effect.PrepareMic -> prepare(effect.turn)
+            is Effect.PrepareMic -> prepare(effect.turn, effect.headsetMic)
             is Effect.StartRecording -> record(effect.turn)
             is Effect.FinishRecording -> capture.finishNow()
             is Effect.DiscardRecording -> capture.cancel()
@@ -130,7 +133,7 @@ class VoiceRuntime(
         if (settings.bargeInEnabled && settings.wakeWordEnabled && hasHeadsetOutput()) wake.resume()
     }
 
-    private fun prepare(turn: Int) {
+    private fun prepare(turn: Int, headsetMic: Boolean) {
         val settings = settingsRepository.load()
         if (settings.apiKey.isBlank()) {
             dispatch(Event.MicFailed(turn, "请先在设置里填写 API Key"))
@@ -138,11 +141,11 @@ class VoiceRuntime(
         }
         if (!permissions.hasMicPermission()) {
             permissions.requestMicPermission { granted ->
-                if (granted) prepare(turn) else dispatch(Event.MicFailed(turn, "需要麦克风权限"))
+                if (granted) prepare(turn, headsetMic) else dispatch(Event.MicFailed(turn, "需要麦克风权限"))
             }
             return
         }
-        capture.prepare(settings.headsetMicEnabled) { dispatch(Event.MicReady(turn)) }
+        capture.prepare(headsetMic || settings.headsetMicEnabled) { dispatch(Event.MicReady(turn)) }
     }
 
     private fun record(turn: Int) {

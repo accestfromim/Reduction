@@ -25,7 +25,9 @@ class Conversation(
     private val chat: ChatController,
     private val emitter: EventSink,
     /** Today's date as yyyy-MM-dd. */
-    private val today: () -> String
+    private val today: () -> String,
+    /** Things about the user's devices worth a sentence in this reply, such as a battery running low. */
+    private val deviceNotices: () -> List<String> = { emptyList() }
 ) {
     private class Line(val role: Role, val content: String)
 
@@ -70,7 +72,7 @@ class Conversation(
             "- ${card.name}：${card.purpose.ifBlank { "（没有写用途）" }}（${card.chars} 字）"
         }
         val messages = ArrayList<ChatMessage>()
-        messages += ChatMessage(role = Role.SYSTEM, content = SystemPrompt.build(settings, today(), directory))
+        messages += ChatMessage(role = Role.SYSTEM, content = SystemPrompt.build(settings, today(), directory, runCatching(deviceNotices).getOrDefault(emptyList())))
         lines.takeLast(CONTEXT_LINES).mapTo(messages) { ChatMessage(role = it.role, content = it.content) }
 
         return chat.send(id, messages) { reply -> remember(reply) }

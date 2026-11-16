@@ -1,6 +1,6 @@
 # Reduction（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.49。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.50。
 
 ## 交互
 
@@ -36,21 +36,25 @@
 - 备忘卡片：一张卡片是一份 Markdown 文本，收一类信息、随时间累积（比如几个方向的科研想法各一张，再加一张备忘录）；每张有一句用途，助手据此判断口述的内容该改哪一张；助手像编辑文档一样改卡片：写一份 git patch 风格的补丁（patch_cards），一次可以新建、修改、删除多张，整体生效或整体不动；read_card 读全文；平时只拿目录
 - 图标与启动动画：图标是三个一样大的圆，中间一个，另外两个在它身后各露出一道弧。启动时中间的圆先在，另外两个从两侧飞入、滑到它身后，拼成图标，然后缩小落进左上角的图标框。系统自带的启动页设为纯黑、不放图标，所以打开应用先看到的就是这段动画
 - 唤醒词“Hi Reduction”：一口气说完，或者“Hi”之后停顿再说“Reduction”（停顿最长 3 秒），都能唤醒。单独的“Reduction”、句子里出现的“reduction”不唤醒
-- 界面两页：「朗读」是流动的对话，回复全部念出来；「卡片」是固定下来的内容，列表只显示名称，点开后正文铺满整页，可编辑、复制、删除
+- 界面两页：「朗读」是流动的对话，回复全部念出来；「卡片」是固定下来的内容，列表只显示名称，点开后正文铺满整页，顶栏“复制全文”一点即复制，另可编辑、删除
+- 耳机手势开麦：蓝牙耳机的“语音助手”手势（多为长按或长触）和唤醒词一样开始一轮录音，手机可以留在口袋里、锁着屏；这样开始的录音走耳机麦克风。第一次使用时系统会问用哪个应用处理，选 Reduction 并设为始终
+- 响度一致：每一段朗读和“好的”都归一到同一响度再播放；“好的”用当前朗读音色合成一次后留在手机上，没网时用随包自带的那份
+- 电量提醒：手机或已连接的蓝牙耳机电量降到 20% 时，助手在回答之后提醒一句；充过电再降下来才会再提醒。耳机不上报电量时不提醒
+- 输入清洗：助手先去掉语气词、合并重复、拼起零散的句子，再判断意图；有听不懂的部分就复述整体的理解回问一次
 - 录音提示：开麦的同时响起一个微弱、缓慢起伏的和弦，它持续就表示麦克风仍在收音，录音中断时它会自己停下；每次关麦播“好的”（说完、没人说话、取消、出错都一样）
 - 流式朗读：首段在第一个逗号处切出先合成，之后按句切，单段最多 200 字，播放时预合成后续片段
 - 免按住模式：
   - 前台服务 + 常驻通知
   - 手机麦克风常驻监听“Hi Reduction”
   - 唤醒后自动录音，说“完毕”、点“结束”或到 60 秒上限时结束
-  - 麦克风只由唤醒词开启：回答播完、没听清、取消之后都回到待唤醒
+  - 麦克风只由唤醒词或耳机手势开启：回答播完、没听清、取消之后都回到待唤醒
   - 通知栏可停止监听
   - 开启时弹出系统的“忽略电池优化”授权；允许后锁屏也不会被系统休眠
   - 麦克风被系统收回时（服务在后台被重启、被别的应用占用），通知栏显示“麦克风被系统收回，点此恢复监听”，回到 App 即恢复
 
 ## 安装
 
-1. 把 `Reduction-v1.0.49.apk` 传到手机。
+1. 把 `Reduction-v1.0.50.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -137,7 +141,7 @@ app/                   应用核心：随进程存活，不依赖界面
 feature/               功能层：决定什么时候做什么；状态机在这里
   voice/               VoiceMachine（免按住状态机，纯函数：状态 + 事件 → 新状态 + 要做的事）
                        VoiceRuntime（执行器：照清单办事，把结果作为事件送回）、VoiceState
-                       AckCue（提示音播放与超时）
+                       AckCue（提示音播放与超时）、AckVoice（用朗读音色合成的“好的”）
                        TurnListener、TurnRecorder、TurnEndpointer、EndWords（一轮用户语音）
                        ReplyStreamer、SentenceSplitter、SpeechTextExtractor（流式朗读）
                        SpeechController、PushToTalkSession、RecordingController
@@ -164,7 +168,8 @@ model/                 模型层：输入进、结果出，无状态
 hardware/              硬件层：设备与系统的薄封装，不含策略
   audio/               PcmCapture、WavRecorder、WavEncoder、HeadsetMicController、
                        AudioQueue（唯一的播放队列）、AudioTrackSink（唯一的输出流）、PcmPlayer（朗读入队）、WavPcm、
-                       RecordingArchive（等待送往电脑的录音）
+                       RecordingArchive（等待送往电脑的录音）、Loudness（响度归一）
+  power/               DeviceBattery（手机与蓝牙耳机电量）
   pc/                  SshPcClient、SshKeyStore、PinnedHostKeyRepository、PcGateway
   update/              UpdateClient、UpdateInstaller、AssetUpdater、BsPatch
   web/                 HotAssetPathHandler
@@ -217,7 +222,7 @@ assets/js/ui/ui.js, markdown.js, splash.js（启动动画落进图标框）
 - SSE 中 `content: null` 不会变成字符串 `"null"`。
 - 工具参数只接受字符串片段，缺 id/name 会直接失败。
 - 协议层不把 `JSONObject` 传给业务层。
-- 资源热更新包的 `assetsMinVersionCode` 必须不低于 79（当前桥接协议的起始版本），否则不会被使用。
+- 资源热更新包的 `assetsMinVersionCode` 必须不低于 80（当前桥接协议的起始版本），否则不会被使用。
 - 设置升级会自动从旧版本迁移，不会丢 API Key。
 
 测试：
@@ -253,7 +258,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/Reduction-v1.0.49.apk`
+产物：`dist/Reduction-v1.0.50.apk`
 
 免按住模式依赖：
 

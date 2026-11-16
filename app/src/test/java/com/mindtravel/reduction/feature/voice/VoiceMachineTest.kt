@@ -85,6 +85,28 @@ class VoiceMachineTest {
         assertEquals(listOf(Effect.AbortReply, Effect.PauseWake, Effect.PrepareMic(2)), again.effects)
     }
 
+    @Test
+    fun theHeadsetGestureStartsARecordingThroughTheHeadsetMicrophone() {
+        val (state, effects) = run(Event.HeadsetGesture)
+        assertEquals(VoiceState.PREPARING, state.phase)
+        assertEquals(listOf(Effect.AbortReply, Effect.PauseWake, Effect.PrepareMic(1, headsetMic = true)), effects)
+    }
+
+    @Test
+    fun theHeadsetGestureInterruptsAReplyAndIsIgnoredWhileRecording() {
+        val replying = run(
+            Event.TurnSpoken(1), Event.Transcribed(1, "你好"), Event.OkDone(1), Event.ReplyStarted("r"),
+            from = listening
+        ).first
+        val step = VoiceMachine.next(replying, Event.HeadsetGesture)
+        assertEquals(VoiceState.PREPARING, step.state.phase)
+        assertEquals(listOf(Effect.AbortReply, Effect.PauseWake, Effect.PrepareMic(2, headsetMic = true)), step.effects)
+
+        val again = VoiceMachine.next(listening, Event.HeadsetGesture)
+        assertEquals(listening, again.state)
+        assertEquals(emptyList<Effect>(), again.effects)
+    }
+
     // ── the other ways a turn can go ────────────────────────────────────────
 
     @Test
@@ -221,7 +243,8 @@ class VoiceMachineTest {
 
             repeat(200) {
                 val turn = if (random.nextInt(8) == 0) (state.turn - 1).coerceAtLeast(0) else state.turn
-                val event: Event = when (random.nextInt(13)) {
+                val event: Event = when (random.nextInt(14)) {
+                    13 -> Event.HeadsetGesture
                     0, 1 -> Event.WakeWord
                     2, 3 -> Event.MicReady(turn)
                     4 -> Event.MicFailed(turn, "boom")
@@ -237,7 +260,10 @@ class VoiceMachineTest {
                 val step = VoiceMachine.next(state, event)
                 trace += "${state.phase} + $event -> ${step.state.phase} ${step.effects}"
                 if (step.effects.any { it is Effect.PrepareMic }) {
-                    assertEquals("seed $seed: the microphone was opened by something other than the wake word\n${trace.takeLast(4)}", Event.WakeWord, event)
+                    assertTrue(
+                        "seed $seed: the microphone was opened by something other than the wake word or the headset gesture\n${trace.takeLast(4)}",
+                        event == Event.WakeWord || event == Event.HeadsetGesture
+                    )
                 }
                 for (effect in step.effects) {
                     when (effect) {
