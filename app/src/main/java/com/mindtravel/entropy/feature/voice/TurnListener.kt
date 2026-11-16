@@ -81,14 +81,13 @@ class TurnListener(
         }
     }
 
-    override fun start(apiKey: String, followup: Boolean, events: Events) {
+    override fun start(apiKey: String, events: Events) {
         // The recorder is already warm from prepare(); only this listener's own state is reset.
         reset(cancelRecorder = false)
         this.apiKey = apiKey
         this.events = events
         val current = token
         val started = recorder.start(
-            followup = followup,
             onSpeechStart = { onMain(current) { beginRolling(current, events) } },
             onAlive = { onMain(current) { events.onAlive() } },
             onEnd = { reason ->

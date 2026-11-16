@@ -67,10 +67,7 @@ class VoiceRuntime(
     override fun onReplyEnded(id: String, ok: Boolean) = dispatch(Event.ReplyEnded(id, ok))
 
     /** Current state for a UI that has just loaded. */
-    fun snapshot(): String = JSONObject()
-        .put("state", state.phase.name)
-        .put("followup", state.followup)
-        .toString()
+    fun snapshot(): String = JSONObject().put("state", state.phase.name).toString()
 
     fun dispose() {
         capture.cancel()
@@ -100,9 +97,7 @@ class VoiceRuntime(
         if (step.state != before || step.effects.isNotEmpty()) {
             Logs.add("Voice ${before.phase} + ${describe(event)} -> ${step.state.phase} ${step.effects.map(::describe)}")
         }
-        if (step.state.phase != before.phase || step.state.followup != before.followup) {
-            emitter.emit("onVoiceState", step.state.phase.name, step.state.followup)
-        }
+        if (step.state.phase != before.phase) emitter.emit("onVoiceState", step.state.phase.name)
         step.effects.forEach(::perform)
     }
 
@@ -118,7 +113,7 @@ class VoiceRuntime(
             Effect.ArmBargeIn -> armBargeIn()
             Effect.AbortReply -> abortReply()
             is Effect.PrepareMic -> prepare(effect.turn)
-            is Effect.StartRecording -> record(effect.turn, effect.followup)
+            is Effect.StartRecording -> record(effect.turn)
             is Effect.FinishRecording -> capture.finishNow()
             is Effect.DiscardRecording -> capture.cancel()
             is Effect.SayOk -> cue.acknowledge { dispatch(Event.OkDone(effect.turn)) }
@@ -150,11 +145,11 @@ class VoiceRuntime(
         capture.prepare(settings.headsetMicEnabled) { dispatch(Event.MicReady(turn)) }
     }
 
-    private fun record(turn: Int, followup: Boolean) {
+    private fun record(turn: Int) {
         val recording = CompletableDeferred<TurnListener.Turn>()
         recordings.clear()
         recordings[turn] = recording
-        capture.start(settingsRepository.load().apiKey, followup, object : TurnListener.Events {
+        capture.start(settingsRepository.load().apiKey, object : TurnListener.Events {
             private fun current() = state.turn == turn && state.phase == VoiceState.LISTENING
 
             override fun onSpeechStart() {

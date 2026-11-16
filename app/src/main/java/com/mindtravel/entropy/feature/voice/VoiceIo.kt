@@ -22,7 +22,7 @@ interface TurnCapture {
      */
     fun prepare(useHeadsetMic: Boolean, onReady: () -> Unit)
 
-    fun start(apiKey: String, followup: Boolean, events: TurnListener.Events)
+    fun start(apiKey: String, events: TurnListener.Events)
     fun finishNow()
     fun cancel()
 

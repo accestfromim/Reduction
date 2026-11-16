@@ -94,7 +94,6 @@ class TurnRecorder(
 
     /** Starts recording a turn with the next frame. Warms up first if that has not been done. */
     fun start(
-        followup: Boolean,
         onSpeechStart: () -> Unit,
         onAlive: () -> Unit,
         /** The turn ended by itself: the end word, or a long silence. */
@@ -111,7 +110,7 @@ class TurnRecorder(
         speechStarted = false
         synchronized(pcm) { pcm.reset() }
         endpointer.reset(System.currentTimeMillis())
-        Logs.add("Turn recording start followup=$followup warm=$warm endWordSpotter=$spotting")
+        Logs.add("Turn recording start warm=$warm endWordSpotter=$spotting")
         turn = Turn(onSpeechStart, onAlive, onEnd, onTimeout, onError, spotting)
         return true
     }

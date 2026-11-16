@@ -85,9 +85,9 @@ await page.evaluateOnNewDocument(() => {
     startRecording: (id) => setTimeout(() => window.Native.onRecordingStart(id), 10),
     stopAndTranscribe: (id) => setTimeout(() => window.Native.onAsrResult(id, true, '你好'), 10),
     cancelRecording: () => {},
-    voiceState: () => JSON.stringify({ state: 'IDLE', followup: false }),
+    voiceState: () => JSON.stringify({ state: 'IDLE' }),
     voiceFinish: () => {},
-    voiceCancel: () => window.Native.onVoiceState('IDLE', false),
+    voiceCancel: () => window.Native.onVoiceState('IDLE'),
     setWakeWordEnabled: () => true,
     submitText: (text) => {
       const id = 'r' + (++window.__replies);
@@ -153,7 +153,25 @@ await page.evaluateOnNewDocument(() => {
 });
 
 await page.goto('http://127.0.0.1:8766/index.html', { waitUntil: 'networkidle0' });
-await new Promise((resolve) => setTimeout(resolve, 300));
+
+// The opening animation covers the app without taking touches, ends as the logo, then gets out of the way.
+const splash = await page.evaluate(async () => {
+  const el = document.querySelector('.splash');
+  const style = () => getComputedStyle(el);
+  const during = { pointer: style().pointerEvents, circles: el.querySelectorAll('circle').length };
+  // Jump to the moment the circles have settled: the two side ones sit where the logo's arcs are.
+  const fly = document.getAnimations().filter((a) => a.animationName === 'splash-fly');
+  fly.forEach((a) => a.finish());
+  const settled = Array.from(el.querySelectorAll('.splash-side')).map((c) => getComputedStyle(c).transform);
+  await new Promise((resolve) => setTimeout(resolve, 1700));
+  return { during, settled, flying: fly.length, after: { visibility: style().visibility, opacity: style().opacity } };
+});
+console.log('splash:', JSON.stringify(splash));
+if (splash.during.pointer !== 'none' || splash.during.circles !== 4 || splash.flying !== 2 ||
+    splash.settled.some((t) => t !== 'none' && t !== 'matrix(1, 0, 0, 1, 0, 0)') ||
+    splash.after.visibility !== 'hidden' || splash.after.opacity !== '0') {
+  throw new Error('opening animation did not behave: ' + JSON.stringify(splash));
+}
 
 async function shot(name) {
   await page.screenshot({ path: path.join(screenshots, name), fullPage: false });
@@ -300,8 +318,8 @@ await page.click('#closePc');
 
 // Hands-free, drawn from the states the app reports.
 await page.evaluate(() => {
-  window.Native.onVoiceState('PREPARING', false);
-  window.Native.onVoiceState('LISTENING', false);
+  window.Native.onVoiceState('PREPARING');
+  window.Native.onVoiceState('LISTENING');
   window.Native.onVoicePartial('帮我查一下明天的天气');
 });
 await new Promise((resolve) => setTimeout(resolve, 100));
@@ -314,24 +332,26 @@ const round = await page.evaluate(async () => {
   const barShown = () => !document.getElementById('recordingBar').classList.contains('hidden');
   const bubbles = () => document.querySelectorAll('.bubble').length;
   const seen = [];
-  window.Native.onVoiceState('TURN_ACK', false);
+  window.Native.onVoiceState('TURN_ACK');
   seen.push(['TURN_ACK', status(), barShown()]);
   const before = bubbles();
-  window.Native.onVoiceState('REPLYING', false);
+  window.Native.onVoiceState('REPLYING');
   window.Native.onReplyBegin('spoken-1', '你好');
   window.Native.onChatToken('spoken-1', '你好，');
   window.Native.onChatDone('spoken-1', '你好，我在。');
   await wait(50);
   seen.push(['REPLYING', status(), barShown(), bubbles() - before]);
-  window.Native.onVoiceState('PREPARING', true);
-  window.Native.onVoiceState('LISTENING', true);
-  seen.push(['LISTENING', status(), barShown()]);
-  window.Native.onVoiceState('IDLE', false);
+  window.Native.onVoiceState('IDLE');
   seen.push(['IDLE', status(), barShown()]);
+  // Only the wake phrase opens the microphone again.
+  window.Native.onVoiceState('PREPARING');
+  window.Native.onVoiceState('LISTENING');
+  seen.push(['LISTENING', status(), barShown()]);
+  window.Native.onVoiceState('IDLE');
   return seen;
 });
 console.log('hands-free round:', JSON.stringify(round));
-const expected = [['TURN_ACK', '好的', false], ['REPLYING', '', false, 2], ['LISTENING', '继续说话…', true], ['IDLE', '', false]];
+const expected = [['TURN_ACK', '好的', false], ['REPLYING', '', false, 2], ['IDLE', '', false], ['LISTENING', '正在听…', true]];
 if (JSON.stringify(round) !== JSON.stringify(expected)) errors.push('hands-free round rendered ' + JSON.stringify(round));
 
 // A spoken exchange that happened with no page showing appears once the page hears of it.

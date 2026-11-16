@@ -12,7 +12,7 @@ export function isHandsFree() {
   return state.voice !== 'IDLE';
 }
 
-export function applyVoiceState(name, followup) {
+export function applyVoiceState(name) {
   const previous = state.voice;
   state.voice = name;
 
@@ -25,10 +25,10 @@ export function applyVoiceState(name, followup) {
   }
 
   if (name === 'PREPARING') {
-    if (!followup) callBridge('vibrate', 30);
+    callBridge('vibrate', 30);
     ui.setStatus('准备中…');
   } else if (name === 'LISTENING') {
-    ui.setStatus(followup ? '继续说话…' : '正在听…');
+    ui.setStatus('正在听…');
   } else if (name === 'TURN_ACK') {
     ui.setStatus('好的');
   } else if (name === 'IDLE' && previous !== 'IDLE' && !state.busy && !state.speaking) {

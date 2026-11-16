@@ -32,14 +32,14 @@ class VoiceMachineTest {
         val (state, effects) = run(Event.WakeWord)
         assertEquals(VoiceState.PREPARING, state.phase)
         assertEquals(1, state.turn)
-        assertEquals(listOf(Effect.AbortReply, Effect.PauseWake, Effect.PrepareMic(1, false)), effects)
+        assertEquals(listOf(Effect.AbortReply, Effect.PauseWake, Effect.PrepareMic(1)), effects)
     }
 
     @Test
     fun recordingStartsWhenTheMicrophoneIsReady() {
         val step = VoiceMachine.next(run(Event.WakeWord).first, Event.MicReady(1))
         assertEquals(VoiceState.LISTENING, step.state.phase)
-        assertEquals(listOf(Effect.StartRecording(1, false)), step.effects)
+        assertEquals(listOf(Effect.StartRecording(1)), step.effects)
     }
 
     @Test
@@ -71,15 +71,18 @@ class VoiceMachineTest {
     }
 
     @Test
-    fun whenTheReplyHasBeenSpokenTheNextTurnBegins() {
+    fun whenTheReplyHasBeenSpokenTheMicrophoneStaysClosedUntilTheWakeWord() {
         val replying = run(
             Event.TurnSpoken(1), Event.Transcribed(1, "你好"), Event.OkDone(1), Event.ReplyStarted("r"),
             from = listening
         ).first
         val step = VoiceMachine.next(replying, Event.ReplyEnded("r", ok = true))
-        assertEquals(VoiceState.PREPARING, step.state.phase)
-        assertEquals(2, step.state.turn)
-        assertEquals(listOf(Effect.PauseWake, Effect.PrepareMic(2, true)), step.effects)
+        assertEquals(VoiceState.IDLE, step.state.phase)
+        assertEquals(listOf<Effect>(Effect.ResumeWake), step.effects)
+
+        val again = VoiceMachine.next(step.state, Event.WakeWord)
+        assertEquals(VoiceState.PREPARING, again.state.phase)
+        assertEquals(listOf(Effect.AbortReply, Effect.PauseWake, Effect.PrepareMic(2)), again.effects)
     }
 
     // ── the other ways a turn can go ────────────────────────────────────────
@@ -96,18 +99,12 @@ class VoiceMachineTest {
     }
 
     @Test
-    fun nothingUnderstoodRecordsAgainOnceAndThenGivesUp() {
-        val first = run(Event.TurnSpoken(1), Event.Transcribed(1, ""), Event.OkDone(1), from = listening)
-        assertEquals(VoiceState.PREPARING, first.first.phase)
-        assertEquals(2, first.first.turn)
-        assertEquals(Effect.PrepareMic(2, true), first.second.last())
-
-        val second = run(
-            Event.MicReady(2), Event.TurnSpoken(2), Event.Transcribed(2, " "), Event.OkDone(2),
-            from = first.first
-        )
-        assertEquals(VoiceState.IDLE, second.first.phase)
-        assertEquals(Effect.ResumeWake, second.second.last())
+    fun nothingUnderstoodGoesBackToWaitingForTheWakeWord() {
+        val (state, effects) = run(Event.TurnSpoken(1), Event.Transcribed(1, " "), Event.OkDone(1), from = listening)
+        assertEquals(VoiceState.IDLE, state.phase)
+        assertEquals(1, state.turn)
+        assertEquals(Effect.ResumeWake, effects.last())
+        assertTrue(effects.none { it is Effect.PrepareMic || it is Effect.Submit })
     }
 
     @Test
@@ -156,7 +153,7 @@ class VoiceMachineTest {
         ).first
         val step = VoiceMachine.next(replying, Event.WakeWord)
         assertEquals(VoiceState.PREPARING, step.state.phase)
-        assertEquals(listOf(Effect.AbortReply, Effect.PauseWake, Effect.PrepareMic(2, false)), step.effects)
+        assertEquals(listOf(Effect.AbortReply, Effect.PauseWake, Effect.PrepareMic(2)), step.effects)
     }
 
     @Test
@@ -239,6 +236,9 @@ class VoiceMachineTest {
                 }
                 val step = VoiceMachine.next(state, event)
                 trace += "${state.phase} + $event -> ${step.state.phase} ${step.effects}"
+                if (step.effects.any { it is Effect.PrepareMic }) {
+                    assertEquals("seed $seed: the microphone was opened by something other than the wake word\n${trace.takeLast(4)}", Event.WakeWord, event)
+                }
                 for (effect in step.effects) {
                     when (effect) {
                         is Effect.StartRecording -> {

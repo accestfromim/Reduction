@@ -13,7 +13,10 @@ package com.mindtravel.entropy.feature.voice
  * The phases:
  *
  *     IDLE ──wake word──▶ PREPARING ──microphone ready──▶ LISTENING (hum)
- *     LISTENING ──turn ends──▶ TURN_ACK ("好的") ──words──▶ REPLYING ──reply spoken──▶ PREPARING
+ *     LISTENING ──turn ends──▶ TURN_ACK ("好的") ──words──▶ REPLYING ──reply spoken──▶ IDLE
+ *
+ * Only the wake phrase starts a recording: once in IDLE, and again while a reply is
+ * playing, which it interrupts. Nothing else opens the microphone.
  *
  * Each recording has a number, [State.turn]. Events about a recording carry its number,
  * and one that arrives for an earlier recording is ignored.
@@ -24,10 +27,6 @@ object VoiceMachine {
         val phase: VoiceState = VoiceState.IDLE,
         /** Number of the current or most recent recording. */
         val turn: Int = 0,
-        /** This recording continues a conversation, rather than starting one. */
-        val followup: Boolean = false,
-        /** Recordings in a row in which nothing intelligible was said. */
-        val emptyTurns: Int = 0,
         /** The reply being generated and spoken. */
         val replyId: String? = null,
         /** "好的" has not finished sounding. */
@@ -46,10 +45,7 @@ object VoiceMachine {
         /** The words were sent; waiting for the reply to begin. */
         REPLY,
 
-        /** Nothing was understood: record again. */
-        RECORD_AGAIN,
-
-        /** The conversation is over. */
+        /** There is nothing to answer: back to waiting for the wake phrase. */
         GO_IDLE
     }
 
@@ -104,10 +100,10 @@ object VoiceMachine {
         data object AbortReply : Effect
 
         /** Get the microphone ready. Answers with MicReady or MicFailed. */
-        data class PrepareMic(val turn: Int, val followup: Boolean) : Effect
+        data class PrepareMic(val turn: Int) : Effect
 
         /** Begin recording and start the hum. Answers with TurnSpoken, TurnSilent or MicFailed. */
-        data class StartRecording(val turn: Int, val followup: Boolean) : Effect
+        data class StartRecording(val turn: Int) : Effect
 
         /** End the recording now, keeping what was said. Answers with TurnSpoken. */
         data class FinishRecording(val turn: Int) : Effect
@@ -132,9 +128,6 @@ object VoiceMachine {
 
     class Step(val state: State, val effects: List<Effect>)
 
-    /** After this many recordings in a row with nothing understood, the conversation ends. */
-    const val MAX_EMPTY_TURNS = 2
-
     fun next(state: State, event: Event): Step = when (state.phase) {
         VoiceState.IDLE -> idle(state, event)
         VoiceState.PREPARING -> preparing(state, event)
@@ -144,13 +137,13 @@ object VoiceMachine {
     }
 
     private fun idle(s: State, e: Event): Step = when (e) {
-        Event.WakeWord -> record(s.copy(emptyTurns = 0), followup = false, Effect.AbortReply)
+        Event.WakeWord -> record(s, Effect.AbortReply)
         else -> stay(s)
     }
 
     private fun preparing(s: State, e: Event): Step = when {
         e is Event.MicReady && e.turn == s.turn ->
-            Step(s.copy(phase = VoiceState.LISTENING), listOf(Effect.StartRecording(s.turn, s.followup)))
+            Step(s.copy(phase = VoiceState.LISTENING), listOf(Effect.StartRecording(s.turn)))
 
         e is Event.MicFailed && e.turn == s.turn ->
             toIdle(s, Effect.ShowError(e.message), Effect.DiscardRecording(s.turn), Effect.ReleaseRoute)
@@ -200,16 +193,11 @@ object VoiceMachine {
 
         e is Event.Transcribed && e.turn == s.turn && s.pending == Pending.WORDS ->
             if (e.text.isBlank()) {
-                val empty = s.emptyTurns + 1
-                settle(
-                    s.copy(
-                        emptyTurns = empty,
-                        pending = if (empty >= MAX_EMPTY_TURNS) Pending.GO_IDLE else Pending.RECORD_AGAIN
-                    )
-                )
+                // Nothing was understood. The user says the wake phrase to try again.
+                settle(s.copy(pending = Pending.GO_IDLE))
             } else {
                 // Sent at once: the reply is being prepared while "好的" is still sounding.
-                Step(s.copy(emptyTurns = 0, pending = Pending.REPLY), listOf(Effect.Submit(s.turn, e.text)))
+                Step(s.copy(pending = Pending.REPLY), listOf(Effect.Submit(s.turn, e.text)))
             }
 
         e is Event.ReplyStarted ->
@@ -232,11 +220,11 @@ object VoiceMachine {
 
         e is Event.ReplyStarted -> Step(s.copy(replyId = e.id), emptyList())
 
-        e is Event.ReplyEnded && e.id == s.replyId ->
-            if (e.ok) record(s.copy(replyId = null), followup = true) else toIdle(s)
+        // The reply is over, spoken or failed: the microphone stays closed until the wake phrase.
+        e is Event.ReplyEnded && e.id == s.replyId -> toIdle(s)
 
         // Barge-in: the reply stops and a new turn begins.
-        e == Event.WakeWord -> record(s.copy(replyId = null, emptyTurns = 0), followup = false, Effect.AbortReply)
+        e == Event.WakeWord -> record(s.copy(replyId = null), Effect.AbortReply)
 
         // The reply carries on as an ordinary one; only the conversation ends.
         e == Event.UserCancel -> toIdle(s)
@@ -249,14 +237,11 @@ object VoiceMachine {
     private fun stay(s: State) = Step(s, emptyList())
 
     /** Begins a new recording: the next turn number, the microphone taken from the wake word. */
-    private fun record(s: State, followup: Boolean, vararg first: Effect): Step {
+    private fun record(s: State, vararg first: Effect): Step {
         val turn = s.turn + 1
         return Step(
-            s.copy(
-                phase = VoiceState.PREPARING, turn = turn, followup = followup,
-                okSounding = false, pending = Pending.NOTHING
-            ),
-            first.toList() + Effect.PauseWake + Effect.PrepareMic(turn, followup)
+            s.copy(phase = VoiceState.PREPARING, turn = turn, okSounding = false, pending = Pending.NOTHING),
+            first.toList() + Effect.PauseWake + Effect.PrepareMic(turn)
         )
     }
 
@@ -269,10 +254,6 @@ object VoiceMachine {
         if (s.okSounding) return Step(s, first.toList())
         return when (s.pending) {
             Pending.GO_IDLE -> toIdle(s, *first)
-            Pending.RECORD_AGAIN -> {
-                val again = record(s, followup = true)
-                Step(again.state, first.toList() + again.effects)
-            }
             else -> Step(s, first.toList())
         }
     }

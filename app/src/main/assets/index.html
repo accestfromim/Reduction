@@ -10,6 +10,17 @@
 <link rel="stylesheet" href="./vendor/katex/katex.min.css" />
 </head>
 <body>
+  <!-- Opening animation: three equal circles. One waits in the middle; the other two fly in
+       from the sides and slide behind it, where a ring of background hides all but an arc. -->
+  <div class="splash" aria-hidden="true">
+    <svg viewBox="0 0 512 512">
+      <circle class="splash-side from-left" cx="197" cy="256" r="82"></circle>
+      <circle class="splash-side from-right" cx="315" cy="256" r="82"></circle>
+      <circle class="splash-gap" cx="256" cy="256" r="106"></circle>
+      <circle class="splash-core" cx="256" cy="256" r="82"></circle>
+    </svg>
+  </div>
+
   <div class="app">
     <header class="topbar">
       <div class="brand">

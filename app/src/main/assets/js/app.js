@@ -26,8 +26,8 @@ window.Native = {
     voice.handleAsrResult(id, ok, text);
   },
 
-  onVoiceState(name, followup) {
-    voice.applyVoiceState(name, followup);
+  onVoiceState(name) {
+    voice.applyVoiceState(name);
   },
 
   onVoicePartial(text) {
@@ -225,7 +225,7 @@ function init() {
 
   try {
     const voiceNow = JSON.parse(callBridge('voiceState') || '{}');
-    if (voiceNow.state) voice.applyVoiceState(voiceNow.state, !!voiceNow.followup);
+    if (voiceNow.state) voice.applyVoiceState(voiceNow.state);
   } catch (_) {}
 
   if (!state.settings.apiKey) {

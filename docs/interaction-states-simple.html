@@ -183,19 +183,18 @@ stateDiagram-v2
     state "录音" as REC {
         PREPARING --> LISTENING: 麦克风就绪，乐音响起
         LISTENING --> TURN_ACK: 听到“完毕” / 云端识别到 over / 静音 3s / 点结束 / 满 60s / 12s 没人说话 / 取消 / 出错
-        PREPARING --> TURN_ACK: 取消（无声）
     }
+    PREPARING --> IDLE: 取消 / 麦克风打不开（无声）
     TURN_ACK --> REPLYING: 识别到文本
-    TURN_ACK --> PREPARING: 识别为空，重听一次
-    TURN_ACK --> IDLE: 没人说话 / 取消 / 出错
-    REPLYING --> PREPARING: 回复播完 / Hi Entropy（打断）
-    REPLYING --> IDLE: 回复失败
+    TURN_ACK --> IDLE: 没人说话 / 没听清 / 取消 / 出错
+    REPLYING --> PREPARING: Hi Entropy（打断）
+    REPLYING --> IDLE: 回复播完 / 回复失败
       </pre>
       <div class="cues">
         <div class="cue">
           <div class="cue-t">乐音</div>
           <div class="cue-m">含义：麦克风开着，正在录，可以说。</div>
-          <div class="cue-d">进入录音状态的唯一信号，唤醒、追问、重听都一样。先把麦克风准备好（用耳机麦克风时先让蓝牙切到通话模式），就绪的那一刻开始录音，同时响起一个微弱的和弦，各音以不同的慢速率起伏。它靠麦克风送来的音频帧续命，每半秒一次：麦克风不出声音或录音中断，1.5 秒内自己停下。耳机和外放音量相同。</div>
+          <div class="cue-d">进入录音状态的唯一信号。录音只由唤醒词“Hi Entropy”开启：待唤醒时说，或在回复播放中说来打断。先把麦克风准备好（用耳机麦克风时先让蓝牙切到通话模式），就绪的那一刻开始录音，同时响起一个微弱的和弦，各音以不同的慢速率起伏。它靠麦克风送来的音频帧续命，每半秒一次：麦克风不出声音或录音中断，1.5 秒内自己停下。耳机和外放音量相同。</div>
         </div>
         <div class="cue">
           <div class="cue-t">“好的”</div>
@@ -278,13 +277,13 @@ stateDiagram-v2
   <section class="card">
     <h2>4. 状态机的接口：事件进，清单出</h2>
     <p class="cap"><code>VoiceMachine.next(状态, 事件) → (新状态, 要做的事)</code>。函数本身什么都不执行；执行器照清单办事，再把结果作为事件送回。每次转换在日志里是一行。</p>
-    <pre style="margin:0 0 16px;padding:12px 14px;border:1px solid #2a2a2a;border-radius:10px;background:#0c0c0c;color:#bdbdbd;font:12px/1.7 ui-monospace,Menlo,Consolas,monospace;overflow-x:auto">Voice IDLE + WakeWord -> PREPARING [AbortReply, PauseWake, PrepareMic(turn=1, followup=false)]
-Voice PREPARING + MicReady(turn=1) -> LISTENING [StartRecording(turn=1, followup=false)]
+    <pre style="margin:0 0 16px;padding:12px 14px;border:1px solid #2a2a2a;border-radius:10px;background:#0c0c0c;color:#bdbdbd;font:12px/1.7 ui-monospace,Menlo,Consolas,monospace;overflow-x:auto">Voice IDLE + WakeWord -> PREPARING [AbortReply, PauseWake, PrepareMic(turn=1)]
+Voice PREPARING + MicReady(turn=1) -> LISTENING [StartRecording(turn=1)]
 Voice LISTENING + TurnSpoken(turn=1) -> TURN_ACK [SayOk(turn=1), Transcribe(turn=1)]
 Voice TURN_ACK + Transcribed(1, 12 chars) -> TURN_ACK [Submit(1, 12 chars)]
 Voice TURN_ACK + ReplyStarted(id=…) -> REPLYING []
 Voice REPLYING + OkDone(turn=1) -> REPLYING [ReleaseRoute, ArmBargeIn]
-Voice REPLYING + ReplyEnded(id=…, ok=true) -> PREPARING [PauseWake, PrepareMic(turn=2, followup=true)]</pre>
+Voice REPLYING + ReplyEnded(id=…, ok=true) -> IDLE [ResumeWake]</pre>
     <div class="todo">
       <div><i>事件 · 来自硬件 / 模型</i><b>麦克风与唤醒词</b><code>WakeWord</code>、<code>MicReady</code>、<code>MicFailed</code>、<code>TurnSpoken</code>、<code>TurnSilent</code>、<code>Transcribed</code>、<code>OkDone</code>。</div>
       <div><i>事件 · 来自对话</i><b>回复的起止</b><code>ReplyStarted</code>、<code>ReplyEnded(ok)</code>、<code>ReplyOverdue</code>（话发出去了却没有回复开始）。</div>
