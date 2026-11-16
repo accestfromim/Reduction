@@ -33,29 +33,25 @@ $placeFile = Join-Path $home_ "pet.json"
                  FontFamily="Microsoft YaHei UI, Segoe UI"/>
     </Border>
     <Canvas Name="Pet" Width="200" Height="200" VerticalAlignment="Bottom" HorizontalAlignment="Center" Cursor="Hand">
-      <!-- What falls in: a disc of dust seen almost edge-on, turning; the far half is behind the body. -->
-      <Canvas Name="DiscBack" Width="200" Height="200"/>
       <Ellipse Name="Glow" Canvas.Left="40" Canvas.Top="40" Width="120" Height="120" Opacity="0">
         <Ellipse.Fill><RadialGradientBrush><GradientStop Color="#77FFFFFF" Offset="0.5"/><GradientStop Color="#00FFFFFF" Offset="1"/></RadialGradientBrush></Ellipse.Fill>
       </Ellipse>
       <!-- Light bent right round the edge. -->
-      <Ellipse Name="Halo" Canvas.Left="49" Canvas.Top="49" Width="102" Height="102" Stroke="#55FFFFFF" StrokeThickness="1.2"/>
-      <Ellipse Name="Body" Canvas.Left="52" Canvas.Top="52" Width="96" Height="96" Fill="#FF080808" Stroke="#38FFFFFF" StrokeThickness="1"/>
+      <Path Name="Halo" Stroke="#66FFFFFF" StrokeThickness="1.2"/>
+      <Path Name="Body" Fill="#FF080808" Stroke="#48FFFFFF" StrokeThickness="1"/>
       <Canvas Name="Face" Canvas.Left="52" Canvas.Top="52" Width="96" Height="96">
-        <Canvas.Clip><EllipseGeometry Center="48,48" RadiusX="47" RadiusY="47"/></Canvas.Clip>
+        <Canvas.Clip><EllipseGeometry Center="48,48" RadiusX="44" RadiusY="44"/></Canvas.Clip>
         <Ellipse Name="SideL" Width="36" Height="36" Fill="#F2F2F2"/>
         <Ellipse Name="SideR" Width="36" Height="36" Fill="#F2F2F2"/>
         <Ellipse Name="Gap" Width="46.6" Height="46.6" Fill="#FF080808"/>
         <Ellipse Name="Core" Width="36" Height="36" Fill="#F2F2F2"/>
       </Canvas>
-      <!-- The near half of the disc passes in front. -->
-      <Canvas Name="DiscFront" Width="200" Height="200"/>
     </Canvas>
   </Grid>
 </Window>
 "@
 $window = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
-$names = "Bubble","BubbleText","Pet","Glow","Halo","Body","Face","SideL","SideR","Gap","Core","DiscBack","DiscFront"
+$names = "Bubble","BubbleText","Pet","Glow","Halo","Body","Face","SideL","SideR","Gap","Core"
 $ui = @{}
 foreach ($name in $names) { $ui[$name] = $window.FindName($name) }
 
@@ -124,16 +120,27 @@ function Say([string]$text, [double]$seconds = 0) {
   $script:bubbleUntil = [DateTime]::Now.AddSeconds($seconds)
 }
 
-# The disc is made of grains, each on its own orbit: the nearer the centre, the faster. Seen almost edge-on,
-# an orbit is a flat ellipse; a grain is drawn behind the body on the far side and in front on the near side.
-# Grains slowly spiral inward and are born again at the rim, which is what makes the disc look like it is feeding.
-$rand = New-Object System.Random
-$grains = @()
-for ($i = 0; $i -lt 72; $i++) {
-  $dot = New-Object System.Windows.Shapes.Ellipse
-  $dot.Fill = [System.Windows.Media.Brushes]::White
-  $grains += [pscustomobject]@{ Dot = $dot; R = 52 + $rand.NextDouble() * 44; A = $rand.NextDouble() * 6.283; Size = 1.2 + $rand.NextDouble() * 2.2; Front = $null }
+# The rim is not a fixed circle: space near it is bent, and the bending moves. The outline is drawn afresh
+# each frame as a closed curve whose distance from the centre swells and dips as waves travel round it.
+function Rim([double]$cx, [double]$cy, [double]$radius, [double]$t, [double]$amount, [double]$speed, [double]$phase) {
+  $figure = New-Object System.Windows.Media.PathFigure
+  $figure.IsClosed = $true
+  $points = New-Object System.Windows.Media.PointCollection
+  for ($i = 0; $i -lt 72; $i++) {
+    $a = $i * 6.2831853 / 72
+    # Three waves of different counts going round at different rates, one of them backwards: never the same shape twice.
+    $r = $radius + $amount * (0.55 * [Math]::Sin(3 * $a + $t * 1.3 * $speed + $phase) + 0.30 * [Math]::Sin(5 * $a - $t * 2.1 * $speed) + 0.15 * [Math]::Sin(8 * $a + $t * 3.4 * $speed + $phase))
+    $point = New-Object System.Windows.Point ($cx + [Math]::Cos($a) * $r), ($cy + [Math]::Sin($a) * $r)
+    if ($i -eq 0) { $figure.StartPoint = $point } else { $points.Add($point) }
+  }
+  # Straight pieces this short read as a smooth curve.
+  $line = New-Object System.Windows.Media.PolyLineSegment $points, $true
+  $figure.Segments.Add($line)
+  $geometry = New-Object System.Windows.Media.PathGeometry
+  $geometry.Figures.Add($figure)
+  return $geometry
 }
+
 $script:spinFrom = -10.0     # when the wings last went round once, for fun
 
 $frame = New-Object System.Windows.Threading.DispatcherTimer
@@ -192,43 +199,18 @@ $step = {
   $ui.Face.Opacity = $dim
   $ui.Glow.Opacity = $glow
 
-  # The disc: quicker and brighter the busier it is, barely there when asleep.
-  $speed = 1.0; $bright = 0.55; $pull = 3.0
+  # How much the rim is bent, and how fast the bending travels: calm when idle, restless when thinking.
+  $warp = 2.2; $rate = 1.0; $lit = 0.5
   switch ($script:shown) {
-    "listening" { $speed = 0.5; $bright = 0.9; $pull = -6.0 }     # held back, widening: it is taking in, not eating
-    "thinking" { $speed = 2.6; $bright = 0.85; $pull = 9.0 }
-    "speaking" { $speed = 1.5; $bright = 0.75; $pull = 4.0 }
-    "asleep" { $speed = 0.25; $bright = 0.18; $pull = 1.0 }
+    "listening" { $warp = 3.6; $rate = 1.6; $lit = 0.9 }
+    "thinking" { $warp = 5.0; $rate = 3.0; $lit = 0.8 }
+    "speaking" { $warp = 2.6 + 3.0 * ($core - 1.0) * 10; $rate = 1.8; $lit = 0.7 }
+    "asleep" { $warp = 0.8; $rate = 0.3; $lit = 0.15 }
   }
-  $tilt = 0.30 + 0.05 * [Math]::Sin($t * 0.5)                      # the disc rocks a little
-  $lean = 0.22 * [Math]::Sin($t * 0.31)                            # and its axis sways
-  $cosL = [Math]::Cos($lean); $sinL = [Math]::Sin($lean)
-  foreach ($g in $grains) {
-    $g.A += 0.033 * $speed * 190.0 / [Math]::Pow($g.R, 1.35)
-    $g.R -= 0.033 * $pull
-    if ($g.R -lt 50) { $g.R = 92 + $rand.NextDouble() * 6; $g.A = $rand.NextDouble() * 6.283 }
-    if ($g.R -gt 99) { $g.R = 52 + $rand.NextDouble() * 6 }
-    $x = [Math]::Cos($g.A) * $g.R; $y = [Math]::Sin($g.A) * $g.R * $tilt
-    # Near the body the path is pulled round it, as light is: the closer, the more it bulges away from the centre line.
-    $bend = 1.0 + 0.55 * [Math]::Exp(-($g.R - 50) / 14.0)
-    $y *= $bend
-    $px = 100 + $x * $cosL - $y * $sinL; $py = 100 + $bob + $x * $sinL + $y * $cosL
-    $front = [Math]::Sin($g.A) -gt 0
-    if ($g.Front -ne $front) {
-      if ($g.Front -ne $null) { if ($g.Front) { $ui.DiscFront.Children.Remove($g.Dot) } else { $ui.DiscBack.Children.Remove($g.Dot) } }
-      if ($front) { [void]$ui.DiscFront.Children.Add($g.Dot) } else { [void]$ui.DiscBack.Children.Add($g.Dot) }
-      $g.Front = $front
-    }
-    $near = ($g.R - 50) / 46.0                                      # 0 at the body, 1 at the rim
-    $size = $g.Size * (0.7 + 0.5 * (1 - $near)) * $(if ($front) { 1.15 } else { 0.85 })
-    $g.Dot.Width = $size * (1.0 + 1.6 * (1 - $near)); $g.Dot.Height = $size    # stretched along its path as it speeds up
-    $g.Dot.Opacity = $bright * (0.25 + 0.75 * (1 - $near)) * $(if ($front) { 1.0 } else { 0.6 })
-    [System.Windows.Controls.Canvas]::SetLeft($g.Dot, $px - $g.Dot.Width / 2)
-    [System.Windows.Controls.Canvas]::SetTop($g.Dot, $py - $g.Dot.Height / 2)
-  }
-  $ui.Halo.Opacity = 0.35 + 0.45 * $bright + 0.15 * [Math]::Sin($t * 2.3)
-  [System.Windows.Controls.Canvas]::SetTop($ui.Halo, 49 + $bob)
-  [System.Windows.Controls.Canvas]::SetTop($ui.Body, 52 + $bob)
+  $ui.Body.Data = Rim 100 (100 + $bob) 47 $t $warp $rate 0.0
+  # The ring of bent light just outside follows its own waves, so the gap between the two keeps changing.
+  $ui.Halo.Data = Rim 100 (100 + $bob) 52 $t ($warp * 1.5) ($rate * 0.8) 1.7
+  $ui.Halo.Opacity = $lit * (0.7 + 0.3 * [Math]::Sin($t * 2.3))
   [System.Windows.Controls.Canvas]::SetTop($ui.Face, 52 + $bob)
   if ($ui.Bubble.Visibility -eq "Visible" -and [DateTime]::Now -gt $script:bubbleUntil -and $script:state -ne "listening") { $ui.Bubble.Visibility = "Collapsed" }
 }
