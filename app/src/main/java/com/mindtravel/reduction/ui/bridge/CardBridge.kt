@@ -16,6 +16,9 @@ class CardBridge(
     fun delete(name: String): Boolean = cards.delete(name)
     fun rename(from: String, to: String): Boolean = cards.rename(from, to)
 
+    /** The user has read the card through and locks it as a prompt, or takes the lock off again. */
+    fun setLocked(name: String, locked: Boolean): Boolean = cards.setLocked(name, locked)
+
     /** Keeps a picture or a recording the user picked; returns its id, or blank when it is not kept. */
     fun saveMedia(base64: String, extension: String): String =
         runCatching { cards.saveMedia(java.util.Base64.getDecoder().decode(base64), extension) }.getOrNull().orEmpty()

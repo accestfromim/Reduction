@@ -153,4 +153,34 @@ class CardRepositoryTest {
         cards.save("别的", "没有图")
         assertTrue(cards.mediaFile(fresh) != null)
     }
+
+    @Test
+    fun aLockedPromptStaysExactlyAsItWasApproved() {
+        val cards = cards()
+        cards.save("任务/改登录页", "把登录页的按钮改成蓝色", "任务卡")
+        assertFalse(cards.isLocked("任务/改登录页"))
+        assertTrue(cards.setLocked("任务/改登录页", true))
+        assertTrue(cards.directoryJson().contains("\"prompt\":true"))
+
+        // Not the assistant's patch, not a save from the screen, not a rename, not a delete.
+        val refused = runCatching { cards.patch("*** Update Card: 任务/改登录页\n+再把字体放大") }.exceptionOrNull()
+        assertTrue(refused is CardPatch.Invalid && refused.message!!.contains("锁定的 prompt"))
+        assertTrue(runCatching { cards.patch("*** Move Card: 任务/改登录页 -> 别处") }.exceptionOrNull() is CardPatch.Invalid)
+        assertTrue(runCatching { cards.patch("*** Delete Card: 任务/改登录页") }.exceptionOrNull() is CardPatch.Invalid)
+        assertFalse(cards.save("任务/改登录页", "改过的"))
+        assertFalse(cards.rename("任务/改登录页", "别处"))
+        assertFalse(cards.delete("任务/改登录页"))
+        assertEquals("把登录页的按钮改成蓝色", cards.read("任务/改登录页"))
+
+        assertTrue(cards.setLocked("任务/改登录页", false))
+        assertTrue(cards.save("任务/改登录页", "改过的"))
+    }
+
+    @Test
+    fun onlyAnExistingOrdinaryCardCanBeLocked() {
+        val cards = cards()
+        assertFalse(cards.setLocked("没有这张", true))
+        cards.writeProgramCard("任务记录", "原文", "程序写入")
+        assertFalse(cards.setLocked("任务记录", true))
+    }
 }

@@ -14,8 +14,8 @@ object AgentLedger {
     const val CARD = "sub agent 任务"
     const val PURPOSE = "程序直接写入的 sub agent 任务记录：任务卡、状态、时间、交回的结果原文"
 
-    /** How many runs the card shows, newest first. */
-    private const val SHOWN = 8
+    /** How many finished runs are shown in full, newest first. Older ones are one line each: what, how it ended, when. */
+    private const val IN_FULL = 3
 
     fun render(runs: List<AgentRuns.Run>): String = buildString {
         appendLine("这张卡片由程序直接写入，助手不能修改。任务卡和结果都是原文。")
@@ -23,13 +23,15 @@ object AgentLedger {
             appendLine()
             appendLine("还没有派发过任务。")
         }
-        for (run in runs.take(SHOWN)) {
+        val full = runs.filter { !it.finished } + runs.filter { it.finished }.take(IN_FULL)
+        for (run in runs.filter { it in full }) {
             appendLine()
             appendLine("## 任务 ${run.number} · ${run.outcome.ifEmpty { "进行中" }}")
             appendLine()
             appendLine("- 派发：${clock(run.startedAt)}")
             if (run.finished) appendLine("- 结束：${clock(run.endedAt)}（用时 ${took(run.endedAt - run.startedAt)}）")
-            appendLine("- 文件夹：${run.folderName} · ${if (run.write) "可写" else "只读"}")
+            appendLine("- 文件夹：${run.folderName} · ${if (run.write) "可写" else "只读"} · 执行者：${if (run.engine == "claude") "Claude Code" else "opencode"}")
+            if (run.card.isNotBlank()) appendLine("- 任务卡片：${run.card}")
             appendLine()
             appendLine("### 任务卡")
             appendLine()
@@ -46,6 +48,13 @@ object AgentLedger {
                 appendLine(run.diff)
                 appendLine("```")
             }
+        }
+        val earlier = runs.filter { it !in full }
+        if (earlier.isNotEmpty()) {
+            appendLine()
+            appendLine("## 更早的任务")
+            appendLine()
+            for (run in earlier) appendLine("- 任务 ${run.number} · ${run.outcome} · ${clock(run.startedAt)} · ${run.title}")
         }
     }.trimEnd() + "\n"
 

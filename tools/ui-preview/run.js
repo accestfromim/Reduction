@@ -73,13 +73,14 @@ await page.evaluateOnNewDocument(() => {
     }),
     saveSettings: () => true,
     listCards: () => JSON.stringify(Object.entries(window.__cards).map(([name, card]) => ({
-      name, purpose: card.purpose, chars: card.text.length, updatedAt: 0
+      name, purpose: card.purpose, chars: card.text.length, updatedAt: 0, prompt: card.prompt === true
     }))),
     readCard: (name) => (window.__cards[name] || {}).text || '',
     cardPurpose: (name) => (window.__cards[name] || {}).purpose || '',
     saveCard: (name, purpose, text) => { window.__cards[name] = { purpose, text }; return true; },
     deleteCard: (name) => { delete window.__cards[name]; return true; },
     renameCard: (from, to) => { if (window.__cards[to] || !window.__cards[from]) return false; window.__cards[to] = window.__cards[from]; delete window.__cards[from]; return true; },
+    lockCard: (name, locked) => { if (!window.__cards[name]) return false; window.__cards[name].prompt = locked; return true; },
     floatingCard: () => window.__floating || '',
     floatCard: (name) => { window.__floating = name; return true; },
     loadHistory: () => '[]',
@@ -232,6 +233,12 @@ const cardsShown = await page.evaluate(async () => {
     text: document.getElementById('cardBody').textContent.includes('用倒排索引做粗筛'),
     reading: hidden('cardEditor') && !hidden('cardBody')
   };
+  // One tap locks the card as a prompt: it can no longer be edited, until it is unlocked.
+  const lock = document.getElementById('cardLock');
+  lock.click();
+  const lockedNow = window.__cards['科研想法·检索'].prompt === true && hidden('cardEdit') && lock.textContent === '解锁' && document.getElementById('cardTitle').textContent.startsWith('🔒');
+  lock.click();
+  opened.locks = lockedNow && window.__cards['科研想法·检索'].prompt === false && !hidden('cardEdit') && lock.textContent === '审核并锁定';
   // One tap on the reading page copies the whole card.
   window.__copied = '';
   document.getElementById('cardCopyAll').click();

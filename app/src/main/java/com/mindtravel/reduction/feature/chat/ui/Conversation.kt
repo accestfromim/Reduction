@@ -78,7 +78,8 @@ class Conversation(
         emitter.emit("onReplyBegin", id, shown.trim().ifEmpty { text })
 
         val directory = cards.list().map { card ->
-            "- ${card.name}：${card.purpose.ifBlank { "（没有写用途）" }}（${card.chars} 字）"
+            "- ${card.name}：${card.purpose.ifBlank { "（没有写用途）" }}（${card.chars} 字）" +
+                if (cards.isLocked(card.name)) "【用户已审核并锁定的 prompt】" else ""
         }
         val messages = ArrayList<ChatMessage>()
         messages += ChatMessage(role = Role.SYSTEM, content = SystemPrompt.build(settings, today(), directory, runCatching(deviceNotices).getOrDefault(emptyList()), place))

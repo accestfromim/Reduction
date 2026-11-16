@@ -6,12 +6,15 @@
 #   drag it anywhere; right-click for the menu
 #
 # It only shows what the service at $Url is doing and passes on what is done to it.
-param([string]$Url = "http://localhost:8780", [string]$Browser = "", [string]$Profile = "")
+#
+# -Snapshot <png> draws the pet in the pose named by -Pose into a picture and leaves, showing nothing:
+# that is how its looks are checked without looking at anybody's screen.
+param([string]$Url = "http://localhost:8780", [string]$Browser = "", [string]$Profile = "", [string]$Snapshot = "", [string]$Pose = "idle", [double]$At = 3.0)
 
 Add-Type -AssemblyName PresentationFramework, PresentationCore, WindowsBase, System.Windows.Forms
 
 $created = $false
-$mutex = New-Object System.Threading.Mutex($true, "ReductionPet", [ref]$created)
+$mutex = New-Object System.Threading.Mutex($true, $(if ($Snapshot) { "ReductionPetSnapshot" } else { "ReductionPet" }), [ref]$created)
 if (-not $created) { exit }
 
 # Asked by number: under the name "localhost" Windows tries an address the service does not listen on, and waits.
@@ -21,7 +24,7 @@ $placeFile = Join-Path $home_ "pet.json"
 
 [xml]$xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        Title="Reduction Pet" Width="300" Height="230" WindowStyle="None" AllowsTransparency="True"
+        Title="Reduction Pet" Width="320" Height="310" WindowStyle="None" AllowsTransparency="True"
         Background="Transparent" Topmost="True" ShowInTaskbar="False" ResizeMode="NoResize">
   <Grid>
     <Border Name="Bubble" Visibility="Collapsed" VerticalAlignment="Top" HorizontalAlignment="Center" Margin="6,0,6,0"
@@ -29,31 +32,37 @@ $placeFile = Join-Path $home_ "pet.json"
       <TextBlock Name="BubbleText" Foreground="#F2F2F2" FontSize="13" TextWrapping="Wrap" MaxHeight="96" TextTrimming="CharacterEllipsis"
                  FontFamily="Microsoft YaHei UI, Segoe UI"/>
     </Border>
-    <Canvas Name="Pet" Width="112" Height="112" VerticalAlignment="Bottom" HorizontalAlignment="Center" Margin="0,0,0,6" Cursor="Hand">
-      <Ellipse Name="Glow" Width="112" Height="112" Opacity="0">
-        <Ellipse.Fill><RadialGradientBrush><GradientStop Color="#66FFFFFF" Offset="0.55"/><GradientStop Color="#00FFFFFF" Offset="1"/></RadialGradientBrush></Ellipse.Fill>
+    <Canvas Name="Pet" Width="200" Height="200" VerticalAlignment="Bottom" HorizontalAlignment="Center" Cursor="Hand">
+      <!-- What falls in: a disc of dust seen almost edge-on, turning; the far half is behind the body. -->
+      <Canvas Name="DiscBack" Width="200" Height="200"/>
+      <Ellipse Name="Glow" Canvas.Left="40" Canvas.Top="40" Width="120" Height="120" Opacity="0">
+        <Ellipse.Fill><RadialGradientBrush><GradientStop Color="#77FFFFFF" Offset="0.5"/><GradientStop Color="#00FFFFFF" Offset="1"/></RadialGradientBrush></Ellipse.Fill>
       </Ellipse>
-      <Ellipse Name="Body" Canvas.Left="8" Canvas.Top="8" Width="96" Height="96" Fill="#FF080808" Stroke="#38FFFFFF" StrokeThickness="1"/>
-      <Canvas Name="Face" Canvas.Left="8" Canvas.Top="8" Width="96" Height="96">
+      <!-- Light bent right round the edge. -->
+      <Ellipse Name="Halo" Canvas.Left="49" Canvas.Top="49" Width="102" Height="102" Stroke="#55FFFFFF" StrokeThickness="1.2"/>
+      <Ellipse Name="Body" Canvas.Left="52" Canvas.Top="52" Width="96" Height="96" Fill="#FF080808" Stroke="#38FFFFFF" StrokeThickness="1"/>
+      <Canvas Name="Face" Canvas.Left="52" Canvas.Top="52" Width="96" Height="96">
         <Canvas.Clip><EllipseGeometry Center="48,48" RadiusX="47" RadiusY="47"/></Canvas.Clip>
         <Ellipse Name="SideL" Width="36" Height="36" Fill="#F2F2F2"/>
         <Ellipse Name="SideR" Width="36" Height="36" Fill="#F2F2F2"/>
         <Ellipse Name="Gap" Width="46.6" Height="46.6" Fill="#FF080808"/>
         <Ellipse Name="Core" Width="36" Height="36" Fill="#F2F2F2"/>
       </Canvas>
+      <!-- The near half of the disc passes in front. -->
+      <Canvas Name="DiscFront" Width="200" Height="200"/>
     </Canvas>
   </Grid>
 </Window>
 "@
 $window = [Windows.Markup.XamlReader]::Load((New-Object System.Xml.XmlNodeReader $xaml))
-$names = "Bubble","BubbleText","Pet","Glow","Body","Face","SideL","SideR","Gap","Core"
+$names = "Bubble","BubbleText","Pet","Glow","Halo","Body","Face","SideL","SideR","Gap","Core","DiscBack","DiscFront"
 $ui = @{}
 foreach ($name in $names) { $ui[$name] = $window.FindName($name) }
 
 # Where it sat last time; otherwise the bottom right corner, above the taskbar.
 $area = [System.Windows.SystemParameters]::WorkArea
-$window.Left = $area.Right - 320
-$window.Top = $area.Bottom - 250
+$window.Left = $area.Right - 330
+$window.Top = $area.Bottom - 320
 if (Test-Path $placeFile) {
   try {
     $place = Get-Content $placeFile -Raw | ConvertFrom-Json
@@ -86,7 +95,7 @@ function TogglePanel {
   if ($open) { [void]$open.CloseMainWindow(); return }
   if (-not $Browser) { [void][System.Windows.MessageBox]::Show("没有找到可以开面板的程序。可以在浏览器里打开 $Url"); return }
   # Beside the pet, on whichever side there is room.
-  $x = [int]($window.Left - 410); if ($x -lt $area.Left) { $x = [int]($window.Left + 310) }
+  $x = [int]($window.Left - 410); if ($x -lt $area.Left) { $x = [int]($window.Left + 330) }
   $y = [int][Math]::Max($area.Top, [Math]::Min($window.Top - 560, $area.Bottom - 800))
   Start-Process $Browser -ArgumentList "--app=$Url", "--proxy-bypass-list=localhost;127.0.0.1", "`"--user-data-dir=$Profile`"", "--window-size=420,780", "--window-position=$x,$y", "--no-first-run"
 }
@@ -115,27 +124,48 @@ function Say([string]$text, [double]$seconds = 0) {
   $script:bubbleUntil = [DateTime]::Now.AddSeconds($seconds)
 }
 
+# The disc is made of grains, each on its own orbit: the nearer the centre, the faster. Seen almost edge-on,
+# an orbit is a flat ellipse; a grain is drawn behind the body on the far side and in front on the near side.
+# Grains slowly spiral inward and are born again at the rim, which is what makes the disc look like it is feeding.
+$rand = New-Object System.Random
+$grains = @()
+for ($i = 0; $i -lt 72; $i++) {
+  $dot = New-Object System.Windows.Shapes.Ellipse
+  $dot.Fill = [System.Windows.Media.Brushes]::White
+  $grains += [pscustomobject]@{ Dot = $dot; R = 52 + $rand.NextDouble() * 44; A = $rand.NextDouble() * 6.283; Size = 1.2 + $rand.NextDouble() * 2.2; Front = $null }
+}
+$script:spinFrom = -10.0     # when the wings last went round once, for fun
+
 $frame = New-Object System.Windows.Threading.DispatcherTimer
 $frame.Interval = [TimeSpan]::FromMilliseconds(33)
-$frame.Add_Tick({
+$step = {
   $script:t += 0.033
   $t = $script:t
   if ($script:shown -ne $script:state) { $script:shown = $script:state; $script:blend = 0.0 }
   $script:blend = [Math]::Min(1.0, $script:blend + 0.08)
   $k = $script:blend
 
-  # The figure is the logo: a core, and two equal circles behind it showing as arcs.
-  $spread = 25.9; $lift = 0.0; $core = 1.0; $squash = 1.0; $glow = 0.0; $bob = [Math]::Sin($t * 1.6) * 2.0; $dim = 1.0
+  # The figure is the logo, to scale: three circles of radius 82, the outer two centred 59 to either side and
+  # hidden within 106 of the middle. Here the radius is 18, so the offset is 12.95 and the ring 23.3.
+  $spread = 12.95; $lift = 0.0; $core = 1.0; $squash = 1.0; $glow = 0.0; $bob = [Math]::Sin($t * 1.6) * 2.0; $dim = 1.0
   $lx = -1.0; $ly = 0.0; $rx = 1.0; $ry = 0.0
   switch ($script:shown) {
     "idle" {
-      $spread = 25.9 + [Math]::Sin($t * 1.6) * 1.2
+      $spread = 12.95 + [Math]::Sin($t * 1.6) * 0.6
       # A blink now and then: the core flattens for a moment.
       $phase = $t % 5.2
       if ($phase -lt 0.16) { $squash = 1.0 - [Math]::Sin($phase / 0.16 * [Math]::PI) * 0.85 }
+      # And now and then the two wings swing once right round the core.
+      if ($t - $script:spinFrom -gt 9.0) { $script:spinFrom = $t }
+      $turn = ($t - $script:spinFrom) / 1.3
+      if ($turn -lt 1.0) {
+        $a = (1 - [Math]::Cos($turn * [Math]::PI)) * [Math]::PI      # eases in and out over one full turn
+        $lx = -[Math]::Cos($a); $ly = -[Math]::Sin($a) * 0.6; $rx = [Math]::Cos($a); $ry = [Math]::Sin($a) * 0.6
+        $spread = 12.95 + [Math]::Sin($turn * [Math]::PI) * 2.0
+      }
     }
     "listening" {
-      $spread = 25.9 + $k * (7.0 + [Math]::Sin($t * 7.0) * 1.6)
+      $spread = 12.95 + $k * (4.0 + [Math]::Sin($t * 7.0) * 1.0)
       $core = 1.0 + $k * 0.06
       $glow = $k * (0.55 + 0.3 * [Math]::Sin($t * 7.0))
       $bob = 0.0
@@ -144,25 +174,65 @@ $frame.Add_Tick({
       # The two arcs go round the core.
       $a = $t * 3.2
       $lx = -[Math]::Cos($a); $ly = -[Math]::Sin($a) * 0.55; $rx = [Math]::Cos($a); $ry = [Math]::Sin($a) * 0.55
-      $spread = 27.0; $core = 0.94
+      $spread = 14.0; $core = 0.94
     }
     "speaking" {
       $voice = [Math]::Abs([Math]::Sin($t * 9.0)) * 0.6 + [Math]::Abs([Math]::Sin($t * 5.3 + 1.0)) * 0.4
       $core = 1.0 + $k * 0.10 * $voice
-      $spread = 25.9 + $k * 3.5 * $voice
+      $spread = 12.95 + $k * 2.0 * $voice
       $glow = $k * 0.25 * $voice
     }
-    "asleep" { $dim = 0.45; $squash = 0.18; $bob = [Math]::Sin($t * 0.8) * 1.2; $spread = 24.0 }
+    "asleep" { $dim = 0.45; $squash = 0.18; $bob = [Math]::Sin($t * 0.8) * 1.2; $spread = 12.0 }
   }
-  $cx = 48.0; $cy = 48.0 + $bob
+  $cx = 48.0; $cy = 48.0
   Place $ui.SideL ($cx + $lx * $spread) ($cy + $ly * $spread)
   Place $ui.SideR ($cx + $rx * $spread) ($cy + $ry * $spread)
   Place $ui.Gap $cx $cy $core $core
   Place $ui.Core $cx $cy $core ($core * $squash)
   $ui.Face.Opacity = $dim
   $ui.Glow.Opacity = $glow
+
+  # The disc: quicker and brighter the busier it is, barely there when asleep.
+  $speed = 1.0; $bright = 0.55; $pull = 3.0
+  switch ($script:shown) {
+    "listening" { $speed = 0.5; $bright = 0.9; $pull = -6.0 }     # held back, widening: it is taking in, not eating
+    "thinking" { $speed = 2.6; $bright = 0.85; $pull = 9.0 }
+    "speaking" { $speed = 1.5; $bright = 0.75; $pull = 4.0 }
+    "asleep" { $speed = 0.25; $bright = 0.18; $pull = 1.0 }
+  }
+  $tilt = 0.30 + 0.05 * [Math]::Sin($t * 0.5)                      # the disc rocks a little
+  $lean = 0.22 * [Math]::Sin($t * 0.31)                            # and its axis sways
+  $cosL = [Math]::Cos($lean); $sinL = [Math]::Sin($lean)
+  foreach ($g in $grains) {
+    $g.A += 0.033 * $speed * 190.0 / [Math]::Pow($g.R, 1.35)
+    $g.R -= 0.033 * $pull
+    if ($g.R -lt 50) { $g.R = 92 + $rand.NextDouble() * 6; $g.A = $rand.NextDouble() * 6.283 }
+    if ($g.R -gt 99) { $g.R = 52 + $rand.NextDouble() * 6 }
+    $x = [Math]::Cos($g.A) * $g.R; $y = [Math]::Sin($g.A) * $g.R * $tilt
+    # Near the body the path is pulled round it, as light is: the closer, the more it bulges away from the centre line.
+    $bend = 1.0 + 0.55 * [Math]::Exp(-($g.R - 50) / 14.0)
+    $y *= $bend
+    $px = 100 + $x * $cosL - $y * $sinL; $py = 100 + $bob + $x * $sinL + $y * $cosL
+    $front = [Math]::Sin($g.A) -gt 0
+    if ($g.Front -ne $front) {
+      if ($g.Front -ne $null) { if ($g.Front) { $ui.DiscFront.Children.Remove($g.Dot) } else { $ui.DiscBack.Children.Remove($g.Dot) } }
+      if ($front) { [void]$ui.DiscFront.Children.Add($g.Dot) } else { [void]$ui.DiscBack.Children.Add($g.Dot) }
+      $g.Front = $front
+    }
+    $near = ($g.R - 50) / 46.0                                      # 0 at the body, 1 at the rim
+    $size = $g.Size * (0.7 + 0.5 * (1 - $near)) * $(if ($front) { 1.15 } else { 0.85 })
+    $g.Dot.Width = $size * (1.0 + 1.6 * (1 - $near)); $g.Dot.Height = $size    # stretched along its path as it speeds up
+    $g.Dot.Opacity = $bright * (0.25 + 0.75 * (1 - $near)) * $(if ($front) { 1.0 } else { 0.6 })
+    [System.Windows.Controls.Canvas]::SetLeft($g.Dot, $px - $g.Dot.Width / 2)
+    [System.Windows.Controls.Canvas]::SetTop($g.Dot, $py - $g.Dot.Height / 2)
+  }
+  $ui.Halo.Opacity = 0.35 + 0.45 * $bright + 0.15 * [Math]::Sin($t * 2.3)
+  [System.Windows.Controls.Canvas]::SetTop($ui.Halo, 49 + $bob)
+  [System.Windows.Controls.Canvas]::SetTop($ui.Body, 52 + $bob)
+  [System.Windows.Controls.Canvas]::SetTop($ui.Face, 52 + $bob)
   if ($ui.Bubble.Visibility -eq "Visible" -and [DateTime]::Now -gt $script:bubbleUntil -and $script:state -ne "listening") { $ui.Bubble.Visibility = "Collapsed" }
-})
+}
+$frame.Add_Tick($step)
 
 $poll = New-Object System.Windows.Threading.DispatcherTimer
 $poll.Interval = [TimeSpan]::FromMilliseconds(350)
@@ -232,6 +302,20 @@ foreach ($entry in @(@("打开或关闭面板", { TogglePanel }), @("让它安�
   [void]$menu.Items.Add($item)
 }
 $ui.Pet.ContextMenu = $menu
+
+if ($Snapshot) {
+  $script:state = $Pose
+  for ($i = 0; $i -lt [int]($At / 0.033); $i++) { & $step }
+  $ui.Pet.Background = New-Object System.Windows.Media.SolidColorBrush ([System.Windows.Media.Color]::FromRgb(58, 74, 92))
+  $size = New-Object System.Windows.Size 200, 200
+  $ui.Pet.Measure($size); $ui.Pet.Arrange((New-Object System.Windows.Rect $size)); $ui.Pet.UpdateLayout()
+  $picture = New-Object System.Windows.Media.Imaging.RenderTargetBitmap 600, 600, 288, 288, ([System.Windows.Media.PixelFormats]::Pbgra32)
+  $picture.Render($ui.Pet)
+  $encoder = New-Object System.Windows.Media.Imaging.PngBitmapEncoder
+  $encoder.Frames.Add([System.Windows.Media.Imaging.BitmapFrame]::Create($picture))
+  $file = [System.IO.File]::Create($Snapshot); $encoder.Save($file); $file.Close()
+  exit
+}
 
 $window.Add_Closed({ $frame.Stop(); $poll.Stop() })
 $frame.Start(); $poll.Start()

@@ -49,7 +49,7 @@ function renderList() {
   }
   const row = (card, leaf, inside) => {
     const button = document.createElement('button');
-    button.className = 'card-row' + (inside ? ' inside' : '');
+    button.className = 'card-row' + (inside ? ' inside' : '') + (card.prompt ? ' prompt' : '');
     button.textContent = leaf;
     button.dataset.name = card.name;
     button.addEventListener('click', () => openCard(card.name));
@@ -91,8 +91,14 @@ function show(next) {
   ui.els.cardBody.classList.toggle('hidden', editing);
   ui.els.cardEditor.classList.toggle('hidden', !editing);
   // A card the program writes can be read, copied and floated, not edited.
-  const locked = (state.cards.find((card) => card.name === state.cardName) || {}).locked === true;
-  ui.els.cardEdit.classList.toggle('hidden', mode !== 'read' || locked);
+  const open = state.cards.find((card) => card.name === state.cardName) || {};
+  const locked = open.locked === true;
+  // A prompt is a card the user has read through and locked: it stays as it is until the user unlocks it.
+  const prompt = open.prompt === true;
+  ui.els.cardEdit.classList.toggle('hidden', mode !== 'read' || locked || prompt);
+  ui.els.cardLock.classList.toggle('hidden', mode !== 'read' || locked);
+  ui.els.cardLock.textContent = prompt ? '解锁' : '审核并锁定';
+  ui.els.cardTitle.textContent = mode === 'new' ? '新卡片' : (prompt ? '🔒 ' : '') + state.cardName;
   ui.els.cardFloat.classList.toggle('hidden', mode !== 'read');
   ui.els.cardFloat.textContent = callBridge('floatingCard') === state.cardName ? '取消悬浮' : '悬浮';
   ui.els.cardCopyAll.classList.toggle('hidden', mode !== 'read');
@@ -216,6 +222,20 @@ export function saveCard() {
   renderOpenCard();
   show('read');
   ui.toast('卡片已保存');
+}
+
+/** The user has read the card through: one tap locks it as a prompt. Another tap takes the lock off. */
+export function toggleLock() {
+  const open = state.cards.find((card) => card.name === state.cardName) || {};
+  const lock = open.prompt !== true;
+  if (callBridge('lockCard', state.cardName, lock) !== true) {
+    ui.toast('锁不了这张卡片');
+    return;
+  }
+  load();
+  renderList();
+  show(mode);
+  ui.toast(lock ? '已锁定为 prompt：之后谁也改不了它，直到你解锁' : '已解锁，可以再改');
 }
 
 /** Floats the open card over other apps, or puts it away if it is the one floating. */

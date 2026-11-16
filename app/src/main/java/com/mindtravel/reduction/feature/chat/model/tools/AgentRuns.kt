@@ -28,6 +28,12 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
         /** The run may change the project: its record ends with what it changed. */
         val changesProject: Boolean,
         val startedAt: Long,
+        /** Who did the work: "opencode" or "claude". */
+        val engine: String = "opencode",
+        /** The card the task was read from and the result is written back to; blank when there is none. */
+        val card: String = "",
+        /** Stands for exactly what was asked, where, and of whom: the same request has the same one. */
+        val fingerprint: String = "",
         var endedAt: Long = 0,
         /** How it ended: 完成, 失败, 中断 or 已停止. Empty while running. */
         var outcome: String = "",
@@ -60,6 +66,8 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
                     folderName = item.getString("folderName"), folder = item.getString("folder"),
                     task = item.optString("task"), write = item.optBoolean("write"),
                     changesProject = item.optBoolean("changes"), startedAt = item.optLong("startedAt"),
+                    engine = item.optString("engine", "opencode"), card = item.optString("card"),
+                    fingerprint = item.optString("fingerprint"),
                     endedAt = item.optLong("endedAt"), outcome = item.optString("outcome"),
                     result = item.optString("result"), diff = item.optString("diff")
                 )
@@ -68,8 +76,14 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
     }
 
     @Synchronized
-    fun add(launcherId: String, folderName: String, folder: String, task: String, write: Boolean = false, changesProject: Boolean = false): Run {
-        val run = Run(++lastNumber, launcherId, folderName, folder, task.trim().take(TASK_CHARS), write, changesProject, now())
+    fun add(
+        launcherId: String, folderName: String, folder: String, task: String, write: Boolean = false,
+        changesProject: Boolean = false, engine: String = "opencode", card: String = "", fingerprint: String = ""
+    ): Run {
+        val run = Run(
+            ++lastNumber, launcherId, folderName, folder, task.trim().take(TASK_CHARS), write, changesProject, now(),
+            engine, card, fingerprint
+        )
         runs += run
         while (runs.size > KEPT) runs.removeAt(0)
         save()
@@ -78,6 +92,10 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
 
     @Synchronized
     fun find(number: Int): Run? = runs.firstOrNull { it.number == number }
+
+    /** The run that was given this very request before, if there was one. */
+    @Synchronized
+    fun sameRequest(fingerprint: String): Run? = runs.lastOrNull { it.fingerprint.isNotEmpty() && it.fingerprint == fingerprint }
 
     /** Runs not yet known to be over, oldest first. */
     @Synchronized
@@ -112,6 +130,7 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
                         JSONObject().put("number", run.number).put("id", run.launcherId).put("folderName", run.folderName)
                             .put("folder", run.folder).put("task", run.task).put("write", run.write)
                             .put("changes", run.changesProject).put("startedAt", run.startedAt).put("endedAt", run.endedAt)
+                            .put("engine", run.engine).put("card", run.card).put("fingerprint", run.fingerprint)
                             .put("outcome", run.outcome).put("result", run.result).put("diff", run.diff)
                     )
                 }
@@ -126,6 +145,8 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
         const val FAILED = "失败"
         const val LOST = "中断"
         const val STOPPED = "已停止"
+        const val TIMED_OUT = "超时"
+        const val EMPTY = "没有拿到内容"
 
         private const val KEPT = 30
         private const val TITLE_CHARS = 40

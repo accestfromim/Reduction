@@ -435,6 +435,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         "saveCard" -> cards.save(args.getString(0), args.getString(2), args.getString(1))
         "deleteCard" -> cards.delete(args.getString(0))
         "renameCard" -> cards.rename(args.getString(0), args.getString(1))
+        "lockCard" -> cards.setLocked(args.getString(0), args.getBoolean(1))
         "saveCardMedia" -> runCatching { cards.saveMedia(Base64.getDecoder().decode(args.getString(0)), args.getString(1)) }.getOrNull().orEmpty()
         "speak" -> speech.speak(args.getString(0), args.getString(1))
         "stopSpeaking" -> speech.stop(notify = true)

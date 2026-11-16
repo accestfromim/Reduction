@@ -72,6 +72,9 @@ class AndroidBridge(
     fun renameCard(from: String, to: String): Boolean = cards.rename(from, to)
 
     @JavascriptInterface
+    fun lockCard(name: String, locked: Boolean): Boolean = cards.setLocked(name, locked)
+
+    @JavascriptInterface
     fun saveCardMedia(base64: String, extension: String): String = cards.saveMedia(base64, extension)
 
     @JavascriptInterface

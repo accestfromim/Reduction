@@ -911,3 +911,5 @@
 /* Pictures and sound in a card. */
 .card-read img { display: block; max-width: 100%; height: auto; margin: 10px 0; border-radius: 10px; }
 .card-read audio { display: block; width: 100%; margin: 10px 0; }
+
+.card-row.prompt::before { content: "🔒 "; }

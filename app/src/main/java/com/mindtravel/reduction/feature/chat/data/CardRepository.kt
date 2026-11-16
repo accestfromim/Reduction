@@ -37,6 +37,28 @@ class CardRepository(private val dir: File) {
     @Synchronized
     fun isProgramCard(name: String): Boolean = cleanName(name) in programCards
 
+    /**
+     * A prompt is a card that has been read through and locked by the user: from then on its
+     * text is exactly what was approved. Nobody can change, rename or delete it — not the
+     * assistant, not the screen — until the user unlocks it again. Only a locked card can be
+     * handed to an agent as its task.
+     */
+    @Synchronized
+    fun isLocked(name: String): Boolean = lockFile(name)?.isFile == true
+
+    /** Locks or unlocks a card. This is the user's act alone: nothing the assistant can reach calls it. */
+    @Synchronized
+    fun setLocked(name: String, locked: Boolean): Boolean {
+        val clean = cleanName(name) ?: return false
+        if (isProgramCard(clean) || read(clean) == null) return false
+        val file = lockFile(clean) ?: return false
+        val done = if (locked) runCatching { file.writeText(""); true }.getOrDefault(false) else (!file.exists() || file.delete())
+        if (done) runCatching { onChange(clean) }
+        return done
+    }
+
+    private fun lockFile(name: String): File? = cleanName(name)?.let { File(dir, encode(it) + LOCK) }
+
     /** Writes a card that only the program may write. */
     @Synchronized
     fun writeProgramCard(name: String, content: String, purpose: String): Boolean {
@@ -71,7 +93,7 @@ class CardRepository(private val dir: File) {
 
     private fun save(name: String, content: String, purpose: String?, byProgram: Boolean): Boolean {
         val file = textFile(name) ?: return false
-        if (!byProgram && isProgramCard(name)) return false
+        if (!byProgram && (isProgramCard(name) || isLocked(name))) return false
         dir.mkdirs()
         if (purpose != null) writePurpose(name, purpose)
         return write(file, content.take(MAX_CHARS)).also {
@@ -97,6 +119,8 @@ class CardRepository(private val dir: File) {
             if (name in deletes) null else writes[name]?.first ?: read(name)
         for (op in ops) {
             if (isProgramCard(op.name)) throw CardPatch.Invalid("卡片“${op.name}”由程序写入，不能修改；它的内容是原始记录")
+            if (isLocked(op.name)) throw CardPatch.Invalid("卡片“${op.name}”是用户审核后锁定的 prompt，不能修改、改名或删除；只有用户能在界面上解锁")
+            if (op is CardPatch.Move && isLocked(op.to)) throw CardPatch.Invalid("“${op.to}”是一张锁定的 prompt 的名称，不能占用")
             when (op) {
                 is CardPatch.Add -> {
                     if (currentText(op.name) != null) {
@@ -148,7 +172,7 @@ class CardRepository(private val dir: File) {
         val source = cleanName(from) ?: return false
         val target = cleanName(to) ?: return false
         if (source == target) return true
-        if (isProgramCard(source) || isProgramCard(target) || read(target) != null) return false
+        if (isProgramCard(source) || isProgramCard(target) || isLocked(source) || read(target) != null) return false
         val text = read(source) ?: return false
         if (!save(target, text, purposeOf(source))) return false
         return delete(source)
@@ -187,7 +211,7 @@ class CardRepository(private val dir: File) {
 
     @Synchronized
     fun delete(name: String): Boolean {
-        if (isProgramCard(name)) return false
+        if (isProgramCard(name) || isLocked(name)) return false
         purposeFile(name)?.delete()
         return (textFile(name)?.takeIf { it.isFile }?.delete() ?: false).also {
             if (it) {
@@ -205,6 +229,7 @@ class CardRepository(private val dir: File) {
                 put("chars", card.chars)
                 put("updatedAt", card.updatedAt)
                 put("locked", isProgramCard(card.name))
+                put("prompt", isLocked(card.name))
             })
         }
     }.toString()
@@ -243,6 +268,7 @@ class CardRepository(private val dir: File) {
     companion object {
         private const val TEXT = ".md"
         private const val PURPOSE = ".purpose"
+        private const val LOCK = ".lock"
         const val MAX_CHARS = 60_000
         const val MAX_NAME = 60
         const val MAX_MEDIA_BYTES = 20 * 1024 * 1024
