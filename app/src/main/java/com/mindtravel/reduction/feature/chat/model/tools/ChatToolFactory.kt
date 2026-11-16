@@ -17,7 +17,9 @@ class ChatToolFactory(
     /** The sandbox launcher that runs on the computer. */
     private val agentLauncherScript: () -> String,
     /** The script that reports how the sessions on the computer are doing. */
-    private val sessionStatusScript: () -> String
+    private val sessionStatusScript: () -> String,
+    /** The runs started so far; they outlive any one reply. */
+    private val agentRuns: AgentRuns
 ) {
     fun create(settings: AppSettings): ToolRegistry {
         val harness = AgentHarness(
@@ -37,6 +39,7 @@ class ChatToolFactory(
                 add(
                     RunAgentTool(
                         harness = harness,
+                        runs = agentRuns,
                         project = settings.pcProject,
                         agentsRoot = AGENTS_ROOT,
                         allowWrite = settings.opencodeWriteEnabled,

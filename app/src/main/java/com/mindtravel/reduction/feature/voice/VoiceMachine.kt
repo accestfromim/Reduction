@@ -131,6 +131,9 @@ object VoiceMachine {
         /** Send what was said to the assistant. Answers with ReplyStarted, or ReplyOverdue. */
         data class Submit(val turn: Int, val text: String) : Effect
 
+        /** Say why there is no answer. Whatever happens, the user hears something. */
+        data class Say(val cue: Cue) : Effect
+
         data class ShowError(val message: String) : Effect
     }
 
@@ -155,7 +158,7 @@ object VoiceMachine {
             Step(s.copy(phase = VoiceState.LISTENING), listOf(Effect.StartRecording(s.turn)))
 
         e is Event.MicFailed && e.turn == s.turn ->
-            toIdle(s, Effect.ShowError(e.message), Effect.DiscardRecording(s.turn), Effect.ReleaseRoute)
+            toIdle(s, Effect.ShowError(e.message), Effect.Say(Cue.FAILED), Effect.DiscardRecording(s.turn), Effect.ReleaseRoute)
 
         // Nothing has been heard yet, so leaving makes no sound.
         e == Event.UserCancel || e == Event.UserFinish ->
@@ -179,7 +182,7 @@ object VoiceMachine {
             acknowledge(s, Pending.GO_IDLE, Effect.SayOk(s.turn))
 
         e is Event.MicFailed && e.turn == s.turn ->
-            acknowledge(s, Pending.GO_IDLE, Effect.ShowError(e.message), Effect.SayOk(s.turn))
+            acknowledge(s, Pending.GO_IDLE, Effect.ShowError(e.message), Effect.SayOk(s.turn), Effect.Say(Cue.FAILED))
 
         e == Event.UserFinish -> Step(s, listOf(Effect.FinishRecording(s.turn)))
 
@@ -202,8 +205,8 @@ object VoiceMachine {
 
         e is Event.Transcribed && e.turn == s.turn && s.pending == Pending.WORDS ->
             if (e.text.isBlank()) {
-                // Nothing was understood. The user says the wake phrase to try again.
-                settle(s.copy(pending = Pending.GO_IDLE))
+                // Nothing was understood. The user is told, and starts again when ready.
+                settle(s.copy(pending = Pending.GO_IDLE), Effect.Say(Cue.NOT_HEARD))
             } else {
                 // Sent at once: the reply is being prepared while "好的" is still sounding.
                 Step(s.copy(pending = Pending.REPLY), listOf(Effect.Submit(s.turn, e.text)))
@@ -216,7 +219,7 @@ object VoiceMachine {
             )
 
         e is Event.ReplyOverdue && e.turn == s.turn && s.pending == Pending.REPLY ->
-            settle(s.copy(pending = Pending.GO_IDLE))
+            settle(s.copy(pending = Pending.GO_IDLE), Effect.Say(Cue.FAILED))
 
         e == Event.UserCancel -> settle(s.copy(pending = Pending.GO_IDLE))
 

@@ -126,7 +126,7 @@ class ChatSessionTest {
         }
     }
 
-    private class RecordingCallbacks : ChatCallbacks {
+    private open class RecordingCallbacks : ChatCallbacks {
         val tokens = mutableListOf<String>()
         val tools = mutableListOf<String>()
         var completed: String? = null
@@ -223,5 +223,63 @@ class ChatSessionTest {
         assertEquals("calculator", api.requests[1].messages[2].toolCalls.single().name)
         assertEquals(Role.TOOL, api.requests[1].messages[3].role)
         assertEquals("2", api.requests[1].messages[3].content)
+    }
+
+    /** Fails with a network error the first [failures] times it is asked, then answers. */
+    private class FlakyGateway(private val failures: Int, private val failAfterContent: Boolean = false) : ChatGateway {
+        var asked = 0
+        override fun stream(request: ChatRequest, onEvent: (ChatStreamEvent) -> Unit) {
+            if (++asked <= failures) {
+                if (failAfterContent) onEvent(ChatStreamEvent.Content("半句"))
+                throw com.mindtravel.reduction.core.NetworkException("网络错误：断了")
+            }
+            onEvent(ChatStreamEvent.Content("通了"))
+            onEvent(ChatStreamEvent.Finished("stop"))
+        }
+    }
+
+    private fun ask(gateway: ChatGateway, callbacks: ChatCallbacks) = ChatSession(gateway, pause = {}).run(
+        ChatRequest(apiKey = "test", model = "deepseek-flash", messages = listOf(ChatMessage(Role.USER, "你好")), tools = emptyList()),
+        ToolRegistry(emptyList()),
+        callbacks
+    )
+
+    @Test
+    fun `a request that does not get through is sent again`() {
+        val gateway = FlakyGateway(failures = 2)
+        val retries = mutableListOf<Int>()
+        val callbacks = object : RecordingCallbacks() {
+            override fun onRetrying(attempt: Int, attempts: Int) { retries += attempt }
+        }
+        ask(gateway, callbacks)
+        assertEquals("通了", callbacks.completed)
+        assertEquals(3, gateway.asked)
+        assertEquals(listOf(2, 3), retries)
+    }
+
+    @Test
+    fun `after three attempts the network error is the caller's to report`() {
+        val gateway = FlakyGateway(failures = 5)
+        val callbacks = RecordingCallbacks()
+        try {
+            ask(gateway, callbacks)
+            fail("expected NetworkException")
+        } catch (_: com.mindtravel.reduction.core.NetworkException) {
+        }
+        assertEquals(ChatSession.ATTEMPTS, gateway.asked)
+        assertEquals(null, callbacks.completed)
+    }
+
+    @Test
+    fun `an answer that broke off half way is not started over`() {
+        val gateway = FlakyGateway(failures = 1, failAfterContent = true)
+        val callbacks = RecordingCallbacks()
+        try {
+            ask(gateway, callbacks)
+            fail("expected NetworkException")
+        } catch (_: com.mindtravel.reduction.core.NetworkException) {
+        }
+        assertEquals(1, gateway.asked)
+        assertEquals(listOf("半句"), callbacks.tokens)
     }
 }

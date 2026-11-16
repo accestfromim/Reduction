@@ -2,6 +2,7 @@ package com.mindtravel.reduction.feature.chat.model
 
 import com.mindtravel.reduction.core.ApiException
 import com.mindtravel.reduction.core.Logs
+import com.mindtravel.reduction.core.NetworkException
 import com.mindtravel.reduction.core.TextSanitizer
 import com.mindtravel.reduction.feature.chat.model.tools.ToolRegistry
 import com.mindtravel.reduction.model.chat.ChatGateway
@@ -12,12 +13,18 @@ import com.mindtravel.reduction.model.chat.Role
 
 class ChatSession(
     private val gateway: ChatGateway,
-    private val maxToolRounds: Int = DEFAULT_MAX_TOOL_ROUNDS
+    private val maxToolRounds: Int = DEFAULT_MAX_TOOL_ROUNDS,
+    /** Waits between attempts; replaceable so tests do not wait. */
+    private val pause: (Long) -> Unit = { Thread.sleep(it) }
 ) : ChatEngine {
 
     companion object {
         /** Room for several dispatch → verify → redo cycles in one reply. */
         private const val DEFAULT_MAX_TOOL_ROUNDS = 12
+
+        /** How many times a request is sent before the network is declared down. */
+        const val ATTEMPTS = 3
+        private const val RETRY_PAUSE_MS = 1_200L
     }
 
     override fun run(
@@ -29,30 +36,47 @@ class ChatSession(
 
         repeat(maxToolRounds) {
             val content = StringBuilder()
-            val toolCalls = ToolCallAccumulator()
+            var toolCalls = ToolCallAccumulator()
             var failure: String? = null
             var finishReason: String? = null
             var sawContent = false
             var droppedNulls = 0
 
-            gateway.stream(request.copy(messages = messages.toList(), tools = tools.specs())) { event ->
-                when (event) {
-                    is ChatStreamEvent.Content -> {
-                        val text = if (sawContent) {
-                            event.text
-                        } else {
-                            TextSanitizer.stripLeadingNullChunks(event.text)
+            // A request that does not get through is sent again, as long as nothing of its answer
+            // has been shown or said yet. After the last attempt the failure is the caller's to report.
+            var attempt = 1
+            while (true) {
+                try {
+                    gateway.stream(request.copy(messages = messages.toList(), tools = tools.specs())) { event ->
+                        when (event) {
+                            is ChatStreamEvent.Content -> {
+                                val text = if (sawContent) {
+                                    event.text
+                                } else {
+                                    TextSanitizer.stripLeadingNullChunks(event.text)
+                                }
+                                if (!sawContent && text != event.text) droppedNulls++
+                                if (text.isBlank()) return@stream
+                                sawContent = true
+                                content.append(text)
+                                callbacks.onToken(text)
+                            }
+                            is ChatStreamEvent.ToolCallDelta -> toolCalls.apply(event)
+                            is ChatStreamEvent.Failure -> failure = event.message
+                            is ChatStreamEvent.Finished -> finishReason = event.reason
+                            ChatStreamEvent.Done -> Unit
                         }
-                        if (!sawContent && text != event.text) droppedNulls++
-                        if (text.isBlank()) return@stream
-                        sawContent = true
-                        content.append(text)
-                        callbacks.onToken(text)
                     }
-                    is ChatStreamEvent.ToolCallDelta -> toolCalls.apply(event)
-                    is ChatStreamEvent.Failure -> failure = event.message
-                    is ChatStreamEvent.Finished -> finishReason = event.reason
-                    ChatStreamEvent.Done -> Unit
+                    break
+                } catch (t: NetworkException) {
+                    if (sawContent || attempt >= ATTEMPTS) throw t
+                    attempt++
+                    Logs.add("Chat request did not get through, attempt $attempt of $ATTEMPTS")
+                    callbacks.onRetrying(attempt, ATTEMPTS)
+                    toolCalls = ToolCallAccumulator()
+                    failure = null
+                    finishReason = null
+                    pause(RETRY_PAUSE_MS)
                 }
             }
 

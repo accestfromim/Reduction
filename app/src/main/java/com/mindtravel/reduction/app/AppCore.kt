@@ -10,6 +10,7 @@ import com.mindtravel.reduction.feature.chat.data.HistoryRepository
 import com.mindtravel.reduction.feature.chat.model.BatteryWatch
 import com.mindtravel.reduction.feature.chat.model.ChatEngine
 import com.mindtravel.reduction.feature.chat.model.ChatSession
+import com.mindtravel.reduction.feature.chat.model.tools.AgentRuns
 import com.mindtravel.reduction.feature.chat.model.tools.ChatToolFactory
 import com.mindtravel.reduction.feature.chat.ui.ChatController
 import com.mindtravel.reduction.feature.chat.ui.Conversation
@@ -17,11 +18,12 @@ import com.mindtravel.reduction.feature.pc.ui.PcController
 import com.mindtravel.reduction.feature.settings.data.SettingsRepository
 import com.mindtravel.reduction.feature.update.ui.UpdateController
 import com.mindtravel.reduction.feature.voice.AckCue
-import com.mindtravel.reduction.feature.voice.AckVoice
+import com.mindtravel.reduction.feature.voice.Cue
 import com.mindtravel.reduction.feature.voice.PushToTalkSession
 import com.mindtravel.reduction.feature.voice.RecordingController
 import com.mindtravel.reduction.feature.voice.ReplyStreamer
 import com.mindtravel.reduction.feature.voice.SpeechController
+import com.mindtravel.reduction.feature.voice.SpokenCues
 import com.mindtravel.reduction.feature.voice.TurnListener
 import com.mindtravel.reduction.feature.voice.TurnRecorder
 import com.mindtravel.reduction.feature.voice.VoiceRuntime
@@ -83,17 +85,23 @@ class AppCore private constructor(context: Context) {
     private val ttsSynthesizer = TtsSynthesizer(models.audioGateway, ttsCache)
 
     // ── features: voice ─────────────────────────────────────────────────────
-    private val ackVoice = AckVoice(
+    private val spokenCues = SpokenCues(
         settingsRepository = settingsRepository,
         synthesizer = ttsSynthesizer,
-        bundled = cueSound(context, R.raw.ack_done),
+        bundled = mapOf(
+            Cue.OK to cueSound(context, R.raw.ack_done),
+            Cue.RETRYING to cueSound(context, R.raw.cue_retrying),
+            Cue.NO_NETWORK to cueSound(context, R.raw.cue_no_network),
+            Cue.FAILED to cueSound(context, R.raw.cue_failed),
+            Cue.NOT_HEARD to cueSound(context, R.raw.cue_not_heard)
+        ),
         sampleRate = AudioQueue.SAMPLE_RATE,
         scope = scope
     )
     private val ackCue = AckCue(
         queue = audioQueue,
         sounds = AckCue.Sounds(
-            acknowledge = ackVoice::sound,
+            spoken = spokenCues::sound,
             hum = cueSound(context, R.raw.ack_hum)
         ),
         scope = scope,
@@ -123,9 +131,11 @@ class AppCore private constructor(context: Context) {
             emitter = ui,
             cards = cardRepository,
             agentLauncherScript = { harnessScript(context, "run-agent.sh") },
-            sessionStatusScript = { harnessScript(context, "session-status.py") }
+            sessionStatusScript = { harnessScript(context, "session-status.py") },
+            agentRuns = AgentRuns(File(context.filesDir, "agent-runs.json"))
         ),
         speech = speech,
+        say = ackCue::say,
         emitter = ui,
         scope = scope
     )
@@ -194,7 +204,7 @@ class AppCore private constructor(context: Context) {
         }
         if (WakeWordBus.consumePending()) voice.onWakeWord()
         WakeWordBus.clipSink = { wav, keyword -> recordings.keep("wake", wav, keyword) }
-        ackVoice.prepare()
+        spokenCues.prepare()
         Logs.add("Core started")
     }
 

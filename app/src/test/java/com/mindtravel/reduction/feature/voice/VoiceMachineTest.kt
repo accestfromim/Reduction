@@ -127,6 +127,8 @@ class VoiceMachineTest {
         assertEquals(1, state.turn)
         assertEquals(Effect.ResumeWake, effects.last())
         assertTrue(effects.none { it is Effect.PrepareMic || it is Effect.Submit })
+        // Not in silence: after "好的" the user is told nothing was understood.
+        assertTrue(effects.indexOf(Effect.Say(Cue.NOT_HEARD)) > effects.indexOf(Effect.SayOk(1)))
     }
 
     @Test
@@ -194,6 +196,16 @@ class VoiceMachineTest {
         val (state, effects) = run(Event.ReplyStarted("typed"), Event.ReplyEnded("typed", true))
         assertEquals(State(), state)
         assertEquals(emptyList<Effect>(), effects)
+    }
+
+    @Test
+    fun everyWayOfNotAnsweringIsHeard() {
+        // The reply never began.
+        val sent = run(Event.TurnSpoken(1), Event.Transcribed(1, "你好"), Event.OkDone(1), from = listening).first
+        assertTrue(Effect.Say(Cue.FAILED) in VoiceMachine.next(sent, Event.ReplyOverdue(1)).effects)
+        // The microphone failed, before and during recording.
+        assertTrue(Effect.Say(Cue.FAILED) in run(Event.WakeWord, Event.MicFailed(1, "x")).second)
+        assertTrue(Effect.Say(Cue.FAILED) in VoiceMachine.next(listening, Event.MicFailed(1, "x")).effects)
     }
 
     // ── what must never happen ──────────────────────────────────────────────

@@ -6,7 +6,10 @@ import com.mindtravel.reduction.core.events.EventSink
 import com.mindtravel.reduction.core.settings.SettingsGateway
 import com.mindtravel.reduction.feature.chat.model.ChatCallbacks
 import com.mindtravel.reduction.feature.chat.model.ChatEngine
+import com.mindtravel.reduction.feature.chat.model.ChatSession
 import com.mindtravel.reduction.feature.chat.model.tools.ChatToolFactory
+import com.mindtravel.reduction.core.NetworkException
+import com.mindtravel.reduction.feature.voice.Cue
 import com.mindtravel.reduction.feature.voice.SpeechController
 import com.mindtravel.reduction.model.chat.ChatMessage
 import com.mindtravel.reduction.model.chat.ChatRequest
@@ -31,6 +34,8 @@ class ChatController(
     private val chatEngine: ChatEngine,
     private val toolFactory: ChatToolFactory,
     private val speech: SpeechController,
+    /** Says a ready-made cue. A reply that cannot be given is still heard about. */
+    private val say: (Cue) -> Unit,
     private val emitter: EventSink,
     private val scope: CoroutineScope
 ) {
@@ -87,6 +92,9 @@ class ChatController(
         reply.job = scope.launch(Dispatchers.IO) {
             try {
                 chatEngine.run(request, registry, callbacksFor(reply, onCompleted))
+            } catch (t: NetworkException) {
+                Logs.add("chat failed after ${ChatSession.ATTEMPTS} attempts: ${t.message}")
+                fail(reply, "试了 ${ChatSession.ATTEMPTS} 次都没连上：${t.message ?: "网络不通"}", Cue.NO_NETWORK)
             } catch (t: ApiException) {
                 fail(reply, t.message ?: "请求失败")
             } catch (t: Throwable) {
@@ -133,6 +141,13 @@ class ChatController(
             emitter.emit("onToolFinished", reply.id, name, durationMs, success, result.take(TOOL_RESULT_SHOWN))
         }
 
+        override fun onRetrying(attempt: Int, attempts: Int) {
+            if (!isCurrent(reply)) return
+            emitter.emit("onStatus", reply.id, "网络不通，重试第 ${attempt - 1} 次")
+            // Said once: the user knows why it is taking long, without being told twice.
+            if (attempt == 2 && speaks()) say(Cue.RETRYING)
+        }
+
         override fun onCompleted(text: String) {
             if (!isCurrent(reply)) return
             Logs.add("chat completed chars=${text.length}")
@@ -149,12 +164,16 @@ class ChatController(
         }
     }
 
-    private fun fail(reply: Reply, message: String) {
+    private fun fail(reply: Reply, message: String, cue: Cue = Cue.FAILED) {
         if (!isCurrent(reply)) return
         emitter.emit("onChatError", reply.id, message)
         settle(reply, ok = false)
         speech.stop(notify = false)
+        if (speaks()) say(cue)
     }
+
+    /** Replies are read aloud, so their absence is announced aloud too. */
+    private fun speaks(): Boolean = settingsRepository.load().autoSpeak
 
     /** Reports the end of [reply] once: on failure at once, otherwise when generated and spoken. */
     private fun settle(reply: Reply, ok: Boolean) {

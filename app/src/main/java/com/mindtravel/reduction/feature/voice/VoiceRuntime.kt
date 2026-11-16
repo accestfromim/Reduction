@@ -123,6 +123,7 @@ class VoiceRuntime(
             Effect.ReleaseRoute -> capture.settle()
             is Effect.Transcribe -> transcribe(effect.turn)
             is Effect.Submit -> send(effect.turn, effect.text)
+            is Effect.Say -> cue.say(effect.cue)
             is Effect.ShowError -> emitter.emit("onVoiceError", effect.message)
         }
     }

@@ -12,11 +12,13 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The one way to dispatch a sub agent. A run happens in the background on the computer:
- * "start" hands over a task and waits a short while for it, "status" reports how far a
- * run has got, "stop" ends it.
+ * "start" hands over a task and waits a short while for it, "status" reports how far the
+ * runs have got, "stop" ends one. Runs are numbered by [runs]; the assistant never has
+ * to carry an identifier or a folder from one call to the next.
  */
 class RunAgentTool(
     private val harness: AgentHarness,
+    private val runs: AgentRuns,
     private val project: String,
     private val agentsRoot: String,
     private val allowWrite: Boolean,
@@ -27,16 +29,15 @@ class RunAgentTool(
 
     override val spec = ToolSpec(
         name = "run_agent",
-        description = "派发 sub agent 并查询它的进度。sub agent 在电脑上后台运行，能力不设限，但只能写它所属的文件夹。" +
-            "start 交出任务卡并等一小会儿：做完就返回结果，没做完就返回运行编号和已有进度；" +
-            "status 查询某次运行做到哪了；stop 结束它。",
+        description = "派发 sub agent 并查询它们的进度。sub agent 在电脑上后台运行，能力不设限，但只能写它所属的文件夹。" +
+            "start 交出任务卡并等一小会儿：做完就返回结果，没做完就返回任务编号和已有进度；" +
+            "status 报告还没结束的任务各做到哪了；stop 结束一个任务。任务编号由手机分配。",
         parameters = listOf(
-            ToolParam("action", "start：派发新任务；status：查询进度；stop：结束运行", choices = listOf("start", "status", "stop")),
+            ToolParam("action", "start：派发新任务；status：查询进度；stop：结束任务", choices = listOf("start", "status", "stop")),
             ToolParam("task", "start 时必填。任务卡：目标、约束、验收标准，以及希望交回什么", required = false),
             ToolParam(
                 "folder",
-                "sub agent 所属的文件夹。project 表示项目代码目录；其它值是它自己的独立文件夹名，比如 research。" +
-                    "status 和 stop 要填与 start 时相同的值。默认 research",
+                "start 时可选。sub agent 所属的文件夹：project 表示项目代码目录；其它值是它自己的独立文件夹名，比如 research。默认 research",
                 required = false
             ),
             ToolParam(
@@ -45,7 +46,7 @@ class RunAgentTool(
                 required = false,
                 choices = listOf("read", "write")
             ),
-            ToolParam("id", "status 和 stop 时必填：start 返回的运行编号", required = false)
+            ToolParam("run", "status 和 stop 时可选：任务编号，比如 2。不填时，status 报告所有没结束的任务，stop 结束唯一在跑的那个", required = false)
         )
     )
 
@@ -66,23 +67,46 @@ class RunAgentTool(
     override fun execute(argumentsJson: String): String {
         val args = JSONObject(argumentsJson)
         if (!harness.isConfigured) return "派发失败：请先配置电脑 SSH"
-        val folderName = args.stringOrNull("folder")?.trim().orEmpty().ifBlank { DEFAULT_FOLDER }
-        val folder = folderPath(folderName) ?: return "文件夹名无效：$folderName（只能用字母、数字、点、横线、下划线）"
-
         return when (args.stringOrNull("action")?.trim()) {
-            "start" -> start(args, folderName, folder)
-            "status" -> {
-                val id = args.stringOrNull("id")?.trim().orEmpty()
-                if (id.isBlank()) "查询失败：缺少运行编号 id" else report(folderName, id, harness.progress(folder, id))
+            "start" -> {
+                val folderName = args.stringOrNull("folder")?.trim().orEmpty().ifBlank { DEFAULT_FOLDER }
+                val folder = folderPath(folderName) ?: return "文件夹名无效：$folderName（只能用字母、数字、点、横线、下划线）"
+                start(args, folderName, folder)
             }
-            "stop" -> {
-                val id = args.stringOrNull("id")?.trim().orEmpty()
-                if (id.isBlank()) return "结束失败：缺少运行编号 id"
-                harness.stop(folder, id)
-                "已结束运行 $id"
-            }
+            "status" -> status(args)
+            "stop" -> stop(args)
             else -> "未知的 action，只能是 start、status 或 stop"
         }
+    }
+
+    /** The run a call is about: the one it names, or null when it names none. A wrong number is an error. */
+    private fun named(args: JSONObject): Result<AgentRuns.Run?> {
+        val raw = args.stringOrNull("run")?.trim().orEmpty().removePrefix("任务").trim()
+        if (raw.isEmpty()) return Result.success(null)
+        val run = raw.toIntOrNull()?.let(runs::find)
+        return if (run != null) Result.success(run) else Result.failure(IllegalArgumentException("没有任务 $raw。${known()}"))
+    }
+
+    private fun known(): String {
+        val open = runs.unfinished()
+        return if (open.isEmpty()) "现在没有在跑的任务。" else "在跑的任务：" + open.joinToString("；") { "任务 ${it.number}（${it.title}）" }
+    }
+
+    private fun status(args: JSONObject): String {
+        val one = named(args).getOrElse { return it.message.orEmpty() }
+        val asked = if (one != null) listOf(one) else runs.unfinished().ifEmpty { listOfNotNull(runs.latest()) }
+        if (asked.isEmpty()) return "还没有派发过任务。"
+        return asked.joinToString("\n\n") { run -> report(run, harness.progress(run.folder, run.launcherId)) }
+    }
+
+    private fun stop(args: JSONObject): String {
+        val one = named(args).getOrElse { return it.message.orEmpty() }
+        val open = runs.unfinished()
+        val run = one ?: open.singleOrNull()
+            ?: return if (open.isEmpty()) "现在没有在跑的任务。" else "有 ${open.size} 个任务在跑，请说明结束哪一个。${known()}"
+        harness.stop(run.folder, run.launcherId)
+        runs.finish(run)
+        return "已结束任务 ${run.number}"
     }
 
     private fun start(args: JSONObject, folderName: String, folder: String): String {
@@ -109,7 +133,8 @@ class RunAgentTool(
         } catch (t: IllegalStateException) {
             return "派发失败：${t.message}"
         }
-        Logs.add("Agent run started id=$id folder=$folderName write=$write")
+        val run = runs.add(id, folderName, folder, task)
+        Logs.add("Agent run ${run.number} started id=$id folder=$folderName write=$write")
 
         val deadline = System.currentTimeMillis() + waitMillis
         var progress = harness.progress(folder, id)
@@ -117,17 +142,18 @@ class RunAgentTool(
             Thread.sleep(pollMillis)
             progress = harness.progress(folder, id)
         }
-        val text = report(folderName, id, progress)
+        val text = report(run, progress)
         if (!(write && onProject && progress.state == AgentHarness.State.DONE)) return text
         val diff = runCatching { harness.exec("git -C ${AgentHarness.quote(folder)} diff --stat") }
             .getOrDefault("").trim()
         return if (diff.isBlank()) text else "$text\n\ngit diff --stat:\n${diff.take(4_000)}"
     }
 
-    private fun report(folderName: String, id: String, progress: AgentHarness.Progress): String = buildString {
+    private fun report(run: AgentRuns.Run, progress: AgentHarness.Progress): String = buildString {
+        val name = "任务 ${run.number}"
         when (progress.state) {
             AgentHarness.State.RUNNING -> {
-                appendLine("【进行中】运行编号 $id，文件夹 $folderName。稍后用 action=status 再查。")
+                appendLine("【进行中】$name：${run.title}")
                 appendLine("已执行 ${progress.steps.size} 步：")
                 progress.steps.takeLast(8).forEach { appendLine("- $it") }
                 if (progress.said.isNotBlank()) {
@@ -136,13 +162,15 @@ class RunAgentTool(
                 }
             }
             AgentHarness.State.DONE -> {
-                appendLine(if (progress.succeeded) "【完成】运行编号 $id" else "【失败】运行编号 $id，退出码 ${progress.exitCode}")
+                runs.finish(run)
+                appendLine(if (progress.succeeded) "【完成】$name" else "【失败】$name，退出码 ${progress.exitCode}")
                 progress.errors.forEach { appendLine("错误：$it") }
                 if (progress.said.isNotBlank()) appendLine(progress.said.take(12_000))
                 if (progress.said.isBlank() && progress.errors.isEmpty()) appendLine("sub agent 没有留下任何输出。")
             }
             AgentHarness.State.LOST -> {
-                appendLine("【找不到】运行编号 $id 不存在，或者它已经意外中断。")
+                runs.finish(run)
+                appendLine("【找不到】$name 已经不在电脑上，可能意外中断了。")
                 progress.errors.forEach { appendLine("错误：$it") }
             }
         }

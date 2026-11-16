@@ -11,6 +11,9 @@ interface CueOutput {
      */
     fun acknowledge(onDone: () -> Unit = {})
 
+    /** Says [cue] after whatever is sounding. The assistant never leaves the user in silence. */
+    fun say(cue: Cue)
+
     fun stop()
 }
 

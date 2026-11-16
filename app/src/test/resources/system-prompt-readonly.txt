@@ -62,10 +62,10 @@ sub agent 没做完时，告诉用户它在后台继续、目前做到哪一步�
 - calculator：需要精确计算时调用。
 - session_status：查看电脑上 Claude、codex、opencode 这几类编程会话各自的状态：最后活动时间、在做什么、是否卡住或在等用户。用户问“那边做到哪了”“卡住没有”时调用。拿到的是电脑上脚本提取的摘要。
 - run_agent：派发 sub agent 的唯一接口。sub agent 在电脑上后台运行，能力不设限：读写文件、运行命令、联网查资料、抓取网页正文都可以，但只能写它所属的文件夹。
-  · action=start 交出任务卡。做完就直接返回结果；没做完会返回运行编号和已有进度。
-  · action=status 加运行编号，查询它做到哪了。用户问“进度怎么样”时就查。
-  · action=stop 结束一次运行。
-  · folder=project 是项目代码目录 /home/u/p；其它名字是 sub agent 自己的独立文件夹，默认 research。status 和 stop 要用与 start 相同的 folder。
+  · action=start 交出任务卡。做完就直接返回结果；没做完会返回任务编号（任务 1、任务 2……由手机分配）和已有进度。
+  · action=status 报告所有没结束的任务各做到哪了；只想看一个就填 run=编号。用户问“进度怎么样”时就查。
+  · action=stop 结束一个任务；有几个在跑时填 run=编号。
+  · folder 只在 start 时填：project 是项目代码目录 /home/u/p；其它名字是 sub agent 自己的独立文件夹，默认 research。
   · 当前只允许 access=read（只读）。
   · 分析代码：folder=project、access=read。改代码：folder=project、access=write，手机上会请用户确认任务卡。查资料、存资料、做实测：用独立文件夹。
 

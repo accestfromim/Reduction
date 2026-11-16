@@ -2,6 +2,7 @@ package com.mindtravel.reduction.model
 
 import com.mindtravel.reduction.core.ApiException
 import com.mindtravel.reduction.core.Logs
+import com.mindtravel.reduction.core.NetworkException
 import com.mindtravel.reduction.core.objectOrNull
 import com.mindtravel.reduction.core.stringOrNull
 import okhttp3.MediaType.Companion.toMediaType
@@ -20,9 +21,11 @@ class DeepSeekHttp(
     companion object {
         const val DEFAULT_BASE_URL = "https://api.deepseek.com"
         private const val JSON_CONTENT_TYPE = "application/json; charset=utf-8"
+        private val RETRYABLE = setOf(502, 503, 504)
 
         private fun defaultClient(): OkHttpClient = OkHttpClient.Builder()
-            .connectTimeout(30, TimeUnit.SECONDS)
+            // Short: a connection that has not opened in this time is not going to, and the user is waiting.
+            .connectTimeout(10, TimeUnit.SECONDS)
             .readTimeout(180, TimeUnit.SECONDS)
             .writeTimeout(120, TimeUnit.SECONDS)
             .build()
@@ -36,7 +39,7 @@ class DeepSeekHttp(
         return client.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw ApiException(httpError(response.code, text))
+                throw httpError(response.code, text)
             }
             parseObject(text)
         }
@@ -50,7 +53,7 @@ class DeepSeekHttp(
         return client.newCall(request).execute().use { response ->
             val bytes = response.body?.bytes() ?: ByteArray(0)
             if (!response.isSuccessful) {
-                throw ApiException(httpError(response.code, String(bytes, Charsets.UTF_8)))
+                throw httpError(response.code, String(bytes, Charsets.UTF_8))
             }
             if (bytes.isEmpty()) throw ApiException("接口返回为空")
             bytes
@@ -77,7 +80,7 @@ class DeepSeekHttp(
         return client.newCall(request).execute().use { response ->
             val text = response.body?.string().orEmpty()
             if (!response.isSuccessful) {
-                throw ApiException(httpError(response.code, text))
+                throw httpError(response.code, text)
             }
             parseObject(text)
         }
@@ -96,7 +99,7 @@ class DeepSeekHttp(
         try {
             client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
-                    throw ApiException(httpError(response.code, response.body?.string().orEmpty()))
+                    throw httpError(response.code, response.body?.string().orEmpty())
                 }
                 val source = response.body?.source() ?: throw ApiException("DeepSeek 返回了空响应")
                 while (true) {
@@ -108,7 +111,7 @@ class DeepSeekHttp(
             throw t
         } catch (t: Throwable) {
             Logs.add("Network error: ${t.javaClass.simpleName}: ${t.message}")
-            throw ApiException("网络错误：${t.message ?: t.javaClass.simpleName}", t)
+            throw NetworkException("网络错误：${t.message ?: t.javaClass.simpleName}", t)
         }
     }
 
@@ -126,7 +129,7 @@ class DeepSeekHttp(
             throw ApiException("接口返回格式异常", t)
         }
 
-    private fun httpError(code: Int, body: String): String {
+    private fun httpError(code: Int, body: String): ApiException {
         val detail = runCatching {
             JSONObject(body).objectOrNull("error")?.stringOrNull("message")
         }.getOrNull()?.takeIf { it.isNotBlank() }
@@ -141,6 +144,8 @@ class DeepSeekHttp(
             504 -> "请求超时"
             else -> "请求失败（HTTP $code）"
         }
-        return if (detail == null) base else "$base：${detail.take(180)}"
+        val message = if (detail == null) base else "$base：${detail.take(180)}"
+        // A gateway or server that is momentarily overwhelmed is the same to the user as no network.
+        return if (code in RETRYABLE) NetworkException(message) else ApiException(message)
     }
 }

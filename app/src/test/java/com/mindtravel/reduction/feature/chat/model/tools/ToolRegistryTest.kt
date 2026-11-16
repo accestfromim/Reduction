@@ -22,6 +22,7 @@ class ToolRegistryTest {
 
     private fun agentTool() = RunAgentTool(
         harness = AgentHarness(LocalShell(), PcProfile("host", 22, "user"), "key", "model") { "" },
+        runs = AgentRuns(),
         project = "/p", agentsRoot = "/a", allowWrite = false, approvalHost = noApproval
     )
 

@@ -45,9 +45,13 @@ class AgentHarnessTest {
         }
     }
 
+    /** One registry for the whole test, as in the app: it outlives each tool. */
+    private val runs = AgentRuns()
+
     private fun tool(launcher: FakeLauncher, allowWrite: Boolean = true, approval: Approval = Approval(true)) =
         RunAgentTool(
             harness = harness(launcher.script),
+            runs = runs,
             project = "/home/u/project",
             agentsRoot = "/home/u/agents",
             allowWrite = allowWrite,
@@ -85,7 +89,7 @@ class AgentHarnessTest {
     @Test
     fun aRunThatCannotStartReportsTheLaunchersMessage() {
         val launcher = "printf '%s\\n' 'harness：电脑上没有 bwrap，无法隔离运行'\n"
-        val said = RunAgentTool(harness(launcher), "/home/u/p", "/home/u/a", true, Approval(true))
+        val said = RunAgentTool(harness(launcher), AgentRuns(), "/home/u/p", "/home/u/a", true, Approval(true))
             .execute(args("action" to "start", "task" to "查资料"))
         assertEquals("派发失败：harness：电脑上没有 bwrap，无法隔离运行", said)
     }
@@ -111,7 +115,7 @@ class AgentHarnessTest {
         val launcher = FakeLauncher()
         launcher.status("STATE done 0\n$toolEvent\n$textEvent\n")
         val said = tool(launcher).execute(args("action" to "start", "task" to "查资料"))
-        assertEquals("【完成】运行编号 t1\n做完了。", said)
+        assertEquals("【完成】任务 1\n做完了。", said)
         assertEquals(listOf("plan", "/home/u/agents/research"), launcher.started().take(2))
     }
 
@@ -120,13 +124,15 @@ class AgentHarnessTest {
         val launcher = FakeLauncher()
         launcher.status("STATE running\n$toolEvent\n")
         val said = tool(launcher).execute(args("action" to "start", "task" to "大任务", "folder" to "notes", "access" to "write"))
-        assertTrue(said, said.startsWith("【进行中】运行编号 t1，文件夹 notes。"))
+        assertTrue(said, said.startsWith("【进行中】任务 1：大任务"))
         assertTrue(said, said.contains("- bash: ls -la（completed）"))
         assertEquals(listOf("build", "/home/u/agents/notes"), launcher.started().take(2))
 
         launcher.status("STATE done 0\n$toolEvent\n$textEvent\n")
-        val later = tool(launcher).execute(args("action" to "status", "id" to "t1", "folder" to "notes"))
-        assertEquals("【完成】运行编号 t1\n做完了。", later)
+        // Asking later needs neither the number nor the folder: the app knows both.
+        val later = tool(launcher).execute(args("action" to "status"))
+        assertEquals("【完成】任务 1\n做完了。", later)
+        assertEquals("现在没有在跑的任务。", tool(launcher).execute(args("action" to "stop")))
     }
 
     @Test
@@ -166,9 +172,44 @@ class AgentHarnessTest {
     }
 
     @Test
-    fun stopReachesTheLauncher() {
+    fun stopEndsTheOnlyRunWithoutBeingToldWhich() {
         val launcher = FakeLauncher()
-        assertEquals("已结束运行 t1", tool(launcher).execute(args("action" to "stop", "id" to "t1")))
+        launcher.status("STATE running\n")
+        tool(launcher).execute(args("action" to "start", "task" to "大任务"))
+        assertEquals("已结束任务 1", tool(launcher).execute(args("action" to "stop")))
         assertEquals("t1", launcher.stopped())
+    }
+
+    @Test
+    fun withSeveralRunsTheNumberSaysWhich() {
+        val launcher = FakeLauncher()
+        launcher.status("STATE running\n")
+        tool(launcher).execute(args("action" to "start", "task" to "查甲"))
+        tool(launcher).execute(args("action" to "start", "task" to "查乙", "folder" to "notes"))
+
+        val all = tool(launcher).execute(args("action" to "status"))
+        assertTrue(all, all.contains("任务 1：查甲") && all.contains("任务 2：查乙"))
+        val one = tool(launcher).execute(args("action" to "status", "run" to "任务 2"))
+        assertTrue(one, one.contains("任务 2：查乙") && !one.contains("查甲"))
+
+        val unclear = tool(launcher).execute(args("action" to "stop"))
+        assertTrue(unclear, unclear.startsWith("有 2 个任务在跑，请说明结束哪一个。"))
+        assertEquals("已结束任务 2", tool(launcher).execute(args("action" to "stop", "run" to "2")))
+        val wrong = tool(launcher).execute(args("action" to "status", "run" to "9"))
+        assertTrue(wrong, wrong.startsWith("没有任务 9。在跑的任务：任务 1（查甲）"))
+    }
+
+    @Test
+    fun runNumbersSurviveARestart() {
+        val file = File(Files.createTempDirectory("runs").toFile(), "runs.json")
+        val first = AgentRuns(file)
+        first.add("t1", "research", "/a/research", "查甲\n第二行")
+        first.finish(first.add("t2", "notes", "/a/notes", "查乙"))
+
+        val again = AgentRuns(file)
+        assertEquals(listOf(1), again.unfinished().map { it.number })
+        assertEquals("查甲", again.find(1)!!.title)
+        assertEquals("/a/notes", again.find(2)!!.folder)
+        assertEquals(3, again.add("t3", "research", "/a/research", "查丙").number)
     }
 }
