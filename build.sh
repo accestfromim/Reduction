@@ -5,8 +5,8 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 JAVA_HOME="${JAVA_HOME:-/home/user/tools/jdk-17.0.2}"
 ANDROID_HOME="${ANDROID_HOME:-/home/user/android-sdk}"
 GRADLE_BIN="${GRADLE_BIN:-/home/user/tools/gradle-8.9/bin/gradle}"
-VERSION_CODE="${VERSION_CODE:-82}"
-VERSION_NAME="${VERSION_NAME:-1.0.52}"
+VERSION_CODE="${VERSION_CODE:-83}"
+VERSION_NAME="${VERSION_NAME:-1.0.53}"
 
 export JAVA_HOME
 export ANDROID_HOME

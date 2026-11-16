@@ -21,6 +21,8 @@ class AgentRuns(private val file: File? = null) {
         val folder: String,
         /** The first line of the task, to tell runs apart when reporting. */
         val title: String,
+        /** The run may change the project: its report ends with what it changed. */
+        val changesProject: Boolean = false,
         var finished: Boolean = false
     )
 
@@ -36,16 +38,16 @@ class AgentRuns(private val file: File? = null) {
                 val item = list.getJSONObject(i)
                 runs += Run(
                     item.getInt("number"), item.getString("id"), item.getString("folderName"),
-                    item.getString("folder"), item.optString("title"), item.optBoolean("finished")
+                    item.getString("folder"), item.optString("title"), item.optBoolean("changes"), item.optBoolean("finished")
                 )
             }
         }
     }
 
     @Synchronized
-    fun add(launcherId: String, folderName: String, folder: String, task: String): Run {
+    fun add(launcherId: String, folderName: String, folder: String, task: String, changesProject: Boolean = false): Run {
         val title = task.trim().lineSequence().firstOrNull().orEmpty().take(TITLE_CHARS)
-        val run = Run(++lastNumber, launcherId, folderName, folder, title)
+        val run = Run(++lastNumber, launcherId, folderName, folder, title, changesProject)
         runs += run
         while (runs.size > KEPT) runs.removeAt(0)
         save()
@@ -77,7 +79,7 @@ class AgentRuns(private val file: File? = null) {
             for (run in runs) {
                 list.put(
                     JSONObject().put("number", run.number).put("id", run.launcherId).put("folderName", run.folderName)
-                        .put("folder", run.folder).put("title", run.title).put("finished", run.finished)
+                        .put("folder", run.folder).put("title", run.title).put("changes", run.changesProject).put("finished", run.finished)
                 )
             }
             target.writeText(JSONObject().put("last", lastNumber).put("runs", list).toString())

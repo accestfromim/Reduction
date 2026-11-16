@@ -12,8 +12,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The one way to dispatch a sub agent. A run happens in the background on the computer:
- * "start" hands over a task and waits a short while for it, "status" reports how far the
- * runs have got, "stop" ends one. Runs are numbered by [runs]; the assistant never has
+ * "start" hands over a task and returns at once, so the reply to the user is not held up;
+ * "status" reports how far the runs have got, and what a finished one came to; "stop" ends one. Runs are numbered by [runs]; the assistant never has
  * to carry an identifier or a folder from one call to the next.
  */
 class RunAgentTool(
@@ -23,15 +23,16 @@ class RunAgentTool(
     private val agentsRoot: String,
     private val allowWrite: Boolean,
     private val approvalHost: ToolApprovalHost,
-    private val waitMillis: Long = 45_000,
-    private val pollMillis: Long = 3_000
+    /** How long "start" lingers: only long enough to notice a run that dies at once. */
+    private val waitMillis: Long = 2_500,
+    private val pollMillis: Long = 500
 ) : ChatTool {
 
     override val spec = ToolSpec(
         name = "run_agent",
         description = "派发 sub agent 并查询它们的进度。sub agent 在电脑上后台运行，能力不设限，但只能写它所属的文件夹。" +
-            "start 交出任务卡并等一小会儿：做完就返回结果，没做完就返回任务编号和已有进度；" +
-            "status 报告还没结束的任务各做到哪了；stop 结束一个任务。任务编号由手机分配。",
+            "start 交出任务卡后立刻返回任务编号，不等它做完；" +
+            "status 报告还没结束的任务各做到哪了，做完的给出结果；stop 结束一个任务。任务编号由手机分配。",
         parameters = listOf(
             ToolParam("action", "start：派发新任务；status：查询进度；stop：结束任务", choices = listOf("start", "status", "stop")),
             ToolParam("task", "start 时必填。任务卡：目标、约束、验收标准，以及希望交回什么", required = false),
@@ -133,7 +134,7 @@ class RunAgentTool(
         } catch (t: IllegalStateException) {
             return "派发失败：${t.message}"
         }
-        val run = runs.add(id, folderName, folder, task)
+        val run = runs.add(id, folderName, folder, task, changesProject = write && onProject)
         Logs.add("Agent run ${run.number} started id=$id folder=$folderName write=$write")
 
         val deadline = System.currentTimeMillis() + waitMillis
@@ -142,11 +143,8 @@ class RunAgentTool(
             Thread.sleep(pollMillis)
             progress = harness.progress(folder, id)
         }
-        val text = report(run, progress)
-        if (!(write && onProject && progress.state == AgentHarness.State.DONE)) return text
-        val diff = runCatching { harness.exec("git -C ${AgentHarness.quote(folder)} diff --stat") }
-            .getOrDefault("").trim()
-        return if (diff.isBlank()) text else "$text\n\ngit diff --stat:\n${diff.take(4_000)}"
+        if (progress.state != AgentHarness.State.RUNNING) return report(run, progress)
+        return "【已派发】任务 ${run.number}：${run.title}\n它在电脑上后台运行。现在就回复用户，不要等它；之后用 action=status 查进度和结果。"
     }
 
     private fun report(run: AgentRuns.Run, progress: AgentHarness.Progress): String = buildString {
@@ -167,6 +165,15 @@ class RunAgentTool(
                 progress.errors.forEach { appendLine("错误：$it") }
                 if (progress.said.isNotBlank()) appendLine(progress.said.take(12_000))
                 if (progress.said.isBlank() && progress.errors.isEmpty()) appendLine("sub agent 没有留下任何输出。")
+                if (run.changesProject) {
+                    val diff = runCatching { harness.exec("git -C ${AgentHarness.quote(run.folder)} diff --stat") }
+                        .getOrDefault("").trim()
+                    if (diff.isNotBlank()) {
+                        appendLine()
+                        appendLine("git diff --stat:")
+                        appendLine(diff.take(4_000))
+                    }
+                }
             }
             AgentHarness.State.LOST -> {
                 runs.finish(run)

@@ -120,19 +120,32 @@ class AgentHarnessTest {
     }
 
     @Test
-    fun aLongTaskReturnsItsIdAndProgressInsteadOfBlocking() {
+    fun startReturnsAtOnceAndTheResultComesWithStatus() {
         val launcher = FakeLauncher()
         launcher.status("STATE running\n$toolEvent\n")
+        val startedAt = System.currentTimeMillis()
         val said = tool(launcher).execute(args("action" to "start", "task" to "大任务", "folder" to "notes", "access" to "write"))
-        assertTrue(said, said.startsWith("【进行中】任务 1：大任务"))
-        assertTrue(said, said.contains("- bash: ls -la（completed）"))
+        assertTrue("start held the reply for ${System.currentTimeMillis() - startedAt}ms", System.currentTimeMillis() - startedAt < 2_000)
+        assertTrue(said, said.startsWith("【已派发】任务 1：大任务"))
         assertEquals(listOf("build", "/home/u/agents/notes"), launcher.started().take(2))
 
-        launcher.status("STATE done 0\n$toolEvent\n$textEvent\n")
+        val during = tool(launcher).execute(args("action" to "status"))
+        assertTrue(during, during.startsWith("【进行中】任务 1：大任务") && during.contains("- bash: ls -la（completed）"))
+
         // Asking later needs neither the number nor the folder: the app knows both.
-        val later = tool(launcher).execute(args("action" to "status"))
-        assertEquals("【完成】任务 1\n做完了。", later)
+        launcher.status("STATE done 0\n$toolEvent\n$textEvent\n")
+        assertEquals("【完成】任务 1\n做完了。", tool(launcher).execute(args("action" to "status")))
         assertEquals("现在没有在跑的任务。", tool(launcher).execute(args("action" to "stop")))
+    }
+
+    @Test
+    fun theDefaultWaitIsTooShortToHoldUpAReply() {
+        val launcher = FakeLauncher()
+        launcher.status("STATE running\n")
+        val tool = RunAgentTool(harness(launcher.script), AgentRuns(), "/home/u/p", "/home/u/a", true, Approval(true))
+        val startedAt = System.currentTimeMillis()
+        tool.execute(args("action" to "start", "task" to "大任务"))
+        assertTrue(System.currentTimeMillis() - startedAt < 5_000)
     }
 
     @Test
