@@ -17,6 +17,27 @@ class CardRepository(private val dir: File) {
 
     class Info(val name: String, val purpose: String, val chars: Int, val updatedAt: Long)
 
+    /** Told the name of every card that has just been written or deleted. */
+    @Volatile
+    var onChange: (name: String) -> Unit = {}
+
+    /**
+     * Cards written by the program alone. Neither the assistant nor the screen can change
+     * or delete them, which is what makes their content worth trusting.
+     */
+    private val programCards = HashSet<String>()
+
+    @Synchronized
+    fun isProgramCard(name: String): Boolean = cleanName(name) in programCards
+
+    /** Writes a card that only the program may write. */
+    @Synchronized
+    fun writeProgramCard(name: String, content: String, purpose: String): Boolean {
+        val clean = cleanName(name) ?: return false
+        programCards += clean
+        return save(clean, content, purpose, byProgram = true)
+    }
+
     @Synchronized
     fun list(): List<Info> = (dir.listFiles() ?: emptyArray())
         .filter { it.isFile && it.name.endsWith(TEXT) }
@@ -39,11 +60,14 @@ class CardRepository(private val dir: File) {
      * is. Returns false when the name is not usable.
      */
     @Synchronized
-    fun save(name: String, content: String, purpose: String? = null): Boolean {
+    fun save(name: String, content: String, purpose: String? = null): Boolean = save(name, content, purpose, byProgram = false)
+
+    private fun save(name: String, content: String, purpose: String?, byProgram: Boolean): Boolean {
         val file = textFile(name) ?: return false
+        if (!byProgram && isProgramCard(name)) return false
         dir.mkdirs()
         if (purpose != null) writePurpose(name, purpose)
-        return write(file, content.take(MAX_CHARS))
+        return write(file, content.take(MAX_CHARS)).also { if (it) runCatching { onChange(name.trim()) } }
     }
 
     /**
@@ -60,6 +84,7 @@ class CardRepository(private val dir: File) {
         fun currentText(name: String): String? =
             if (name in deletes) null else writes[name]?.first ?: read(name)
         for (op in ops) {
+            if (isProgramCard(op.name)) throw CardPatch.Invalid("卡片“${op.name}”由程序写入，不能修改；它的内容是原始记录")
             when (op) {
                 is CardPatch.Add -> {
                     if (currentText(op.name) != null) {
@@ -95,8 +120,9 @@ class CardRepository(private val dir: File) {
 
     @Synchronized
     fun delete(name: String): Boolean {
+        if (isProgramCard(name)) return false
         purposeFile(name)?.delete()
-        return textFile(name)?.takeIf { it.isFile }?.delete() ?: false
+        return (textFile(name)?.takeIf { it.isFile }?.delete() ?: false).also { if (it) runCatching { onChange(name.trim()) } }
     }
 
     fun directoryJson(): String = JSONArray().apply {
@@ -106,6 +132,7 @@ class CardRepository(private val dir: File) {
                 put("purpose", card.purpose)
                 put("chars", card.chars)
                 put("updatedAt", card.updatedAt)
+                put("locked", isProgramCard(card.name))
             })
         }
     }.toString()

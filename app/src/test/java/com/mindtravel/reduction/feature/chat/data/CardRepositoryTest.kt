@@ -63,4 +63,31 @@ class CardRepositoryTest {
         assertTrue("path characters are just part of the name", cards.save("../../etc/passwd", "x"))
         assertEquals(listOf("../../etc/passwd"), cards.list().map { it.name })
     }
+
+    @Test
+    fun aCardTheProgramWritesCannotBeChangedByAnyoneElse() {
+        val cards = cards()
+        assertTrue(cards.writeProgramCard("任务记录", "原文一", "程序写入"))
+        assertFalse(cards.save("任务记录", "改过的"))
+        assertFalse(cards.delete("任务记录"))
+        val refused = runCatching { cards.patch("*** Update Card: 任务记录\n+加一行") }.exceptionOrNull()
+        assertTrue(refused is CardPatch.Invalid && refused.message!!.contains("由程序写入"))
+        assertEquals("原文一", cards.read("任务记录"))
+
+        // The program itself can go on writing it, and it is marked in the directory.
+        assertTrue(cards.writeProgramCard("任务记录", "原文二", "程序写入"))
+        assertEquals("原文二", cards.read("任务记录"))
+        assertTrue(cards.directoryJson().contains("\"locked\":true"))
+    }
+
+    @Test
+    fun everyWriteAndDeleteIsAnnounced() {
+        val cards = cards()
+        val changed = ArrayList<String>()
+        cards.onChange = { changed += it }
+        cards.save("备忘", "- 买电池", "零碎待办")
+        cards.patch("*** Update Card: 备忘\n+- 交报告")
+        cards.delete("备忘")
+        assertEquals(listOf("备忘", "备忘", "备忘"), changed)
+    }
 }

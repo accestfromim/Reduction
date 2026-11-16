@@ -20,7 +20,9 @@ import java.util.concurrent.TimeUnit
  */
 class TurnRecorder(
     private val voice: VoiceDetector,
-    private val endWordSpotter: KeywordSpotterModel
+    private val endWordSpotter: KeywordSpotterModel,
+    /** Given the audio of a turn in which no speech was found, so it can be checked what the microphone heard. */
+    private val keepUnheard: (wav: ByteArray, note: String) -> Unit = { _, _ -> }
 ) {
     private class Turn(
         val onSpeechStart: () -> Unit,
@@ -45,6 +47,7 @@ class TurnRecorder(
     @Volatile
     private var speechStarted = false
     private var spotting = false
+    private var loudest = 0
     private var warmedAt = 0L
     private var firstAudio = CountDownLatch(1)
 
@@ -108,6 +111,7 @@ class TurnRecorder(
             return false
         }
         speechStarted = false
+        loudest = 0
         synchronized(pcm) { pcm.reset() }
         endpointer.reset(System.currentTimeMillis())
         Logs.add("Turn recording start warm=$warm endWordSpotter=$spotting")
@@ -161,7 +165,9 @@ class TurnRecorder(
             }
             TurnEndpointer.Decision.NO_SPEECH -> {
                 turn.over = true
-                Logs.add("Turn: nobody spoke")
+                val note = "nobody spoke; loudest sample $loudest of 32768"
+                Logs.add("Turn: $note")
+                runCatching { keepUnheard(WavEncoder.pcm16ToWav(synchronized(pcm) { pcm.toByteArray() }), note) }
                 capture.requestStop()
                 turn.onTimeout()
             }
@@ -177,6 +183,7 @@ class TurnRecorder(
         synchronized(pcm) {
             for (sample in frame) {
                 val value = sample.toInt()
+                if (value > loudest || -value > loudest) loudest = if (value < 0) -value else value
                 pcm.write(value and 0xff)
                 pcm.write((value shr 8) and 0xff)
             }

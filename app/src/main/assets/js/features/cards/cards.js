@@ -50,7 +50,11 @@ function show(next) {
   ui.els.cardPage.classList.toggle('hidden', mode === 'closed');
   ui.els.cardBody.classList.toggle('hidden', editing);
   ui.els.cardEditor.classList.toggle('hidden', !editing);
-  ui.els.cardEdit.classList.toggle('hidden', mode !== 'read');
+  // A card the program writes can be read, copied and floated, not edited.
+  const locked = (state.cards.find((card) => card.name === state.cardName) || {}).locked === true;
+  ui.els.cardEdit.classList.toggle('hidden', mode !== 'read' || locked);
+  ui.els.cardFloat.classList.toggle('hidden', mode !== 'read');
+  ui.els.cardFloat.textContent = callBridge('floatingCard') === state.cardName ? '取消悬浮' : '悬浮';
   ui.els.cardCopyAll.classList.toggle('hidden', mode !== 'read');
   ui.els.cardNameField.classList.toggle('hidden', mode !== 'new');
   ui.els.cardCopy.classList.toggle('hidden', mode === 'new');
@@ -87,6 +91,7 @@ export function onChanged(name) {
     if (exists(state.cardName)) renderOpenCard();
     else show('closed');
   }
+  if (mode !== 'closed') show(mode);
   if (name) ui.toast('卡片“' + name + '”已更新');
 }
 
@@ -153,6 +158,19 @@ export function saveCard() {
   renderOpenCard();
   show('read');
   ui.toast('卡片已保存');
+}
+
+/** Floats the open card over other apps, or puts it away if it is the one floating. */
+export function toggleFloat() {
+  if (callBridge('floatingCard') === state.cardName) {
+    callBridge('floatCard', '');
+    ui.toast('已取消悬浮');
+  } else if (callBridge('floatCard', state.cardName) === true) {
+    ui.toast('离开应用后，这张卡片会浮在屏幕上');
+  } else {
+    ui.toast('请在打开的系统页面里允许“显示在其他应用上层”，再回来点一次');
+  }
+  show(mode);
 }
 
 export function copyCard() {

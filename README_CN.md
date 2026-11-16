@@ -1,6 +1,6 @@
 # Reduction（Android）
 
-一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.54。
+一个直接调用 DeepSeek API 的安卓语音助手。当前版本 v1.0.55。
 
 ## 交互
 
@@ -39,6 +39,8 @@
 - 界面两页：「朗读」是流动的对话，回复全部念出来；「卡片」是固定下来的内容，列表只显示名称，点开后正文铺满整页，顶栏“复制全文”一点即复制，另可编辑、删除
 - 耳机开麦：在耳机上单击（播放/暂停键）和唤醒词一样开始一轮录音，手机可以留在口袋里；录音中再单击是说完了，回答播放中单击是打断并开始新的一轮。安卓把这个键交给最近出声的应用，所以刚在别的应用里听过歌时，单击仍是那个应用的播放/暂停。耳机的“语音助手”手势同样有效。这样开始的录音走耳机麦克风
 - sub agent 的结果自己回来：任务结束后，手机把结果交给助手，助手用一轮回复汇报；正在说话或回答时等到空下来再报
+- sub agent 任务记录：卡片「sub agent 任务」由程序按固定版式直接写入，每个任务一节：状态、派发与结束时间、文件夹与权限、任务卡原文、交回的结果原文、改动的文件。助手和界面都改不了它，也删不掉，所以它是可以直接采信的原始记录
+- 悬浮卡片：在卡片阅读页点“悬浮”，离开应用后这张卡片浮在其它应用上面，平时是一个写着卡片名的小条，点一下展开正文，可以拖到任何位置，点“×”收起；卡片内容变了它跟着变。需要先在系统设置里允许“显示在其他应用上层”，应用会带你到那个页面
 - 响度一致：每一段朗读和“好的”都归一到同一响度再播放；“好的”用当前朗读音色合成一次后留在手机上，没网时用随包自带的那份
 - 电量提醒：手机或已连接的蓝牙耳机电量降到 20% 时，助手在回答之后提醒一句；充过电再降下来才会再提醒。耳机不上报电量时不提醒
 - 输入清洗：助手先去掉语气词、合并重复、拼起零散的句子，再判断意图；有听不懂的部分就复述整体的理解回问一次
@@ -56,7 +58,7 @@
 
 ## 安装
 
-1. 把 `Reduction-v1.0.54.apk` 传到手机。
+1. 把 `Reduction-v1.0.55.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -134,6 +136,7 @@ ui/                    UI 层：只画状态、只发意图
   bridge/              AndroidBridge（JS facade）、VoiceBridge、ChatBridge、
                        SettingsBridge、PcBridge、UpdateBridge、SystemBridge、JsEmitter
   di/                  AppGraph（界面自己的接线，挂接到 AppCore）
+  overlay/             CardOverlay（浮在其它应用上面的卡片）
 
 app/                   应用核心：随进程存活，不依赖界面
   AppCore              组装硬件、模型、功能三层；唤醒词直接由它应答
@@ -150,7 +153,8 @@ feature/               功能层：决定什么时候做什么；状态机在这
   voice/wake/          WakeWordService、WakeWordDetector、PausedPhrase（带停顿的唤醒词）、WakeWordBus
   chat/model/          ChatSession、ChatEngine、ChatCallbacks、ToolCallAccumulator
   chat/model/tools/    ToolRegistry、ChatToolFactory、AgentHarness、RunAgentTool 与 AgentRuns（沙箱里的 sub agent；任务编号由手机分配和记住）、
-                       SessionStatusTool（电脑上的会话状态）、CardTools（备忘卡片）、WebSearchTool、CalculatorTool
+                       SessionStatusTool（电脑上的会话状态）、CardTools（备忘卡片）、WebSearchTool、CalculatorTool、
+                       AgentLedger（把任务记录按固定版式写成卡片）
   chat/ui/             Conversation（对话本身：历史、请求、说的和打字的都走它）、ChatController、ReplyObserver、
                        AgentWatch（sub agent 结束后把结果送进对话）
   chat/model/          SystemPrompt（系统提示）
@@ -225,7 +229,7 @@ assets/js/ui/ui.js, markdown.js, splash.js（启动动画落进图标框）
 - SSE 中 `content: null` 不会变成字符串 `"null"`。
 - 工具参数只接受字符串片段，缺 id/name 会直接失败。
 - 协议层不把 `JSONObject` 传给业务层。
-- 资源热更新包的 `assetsMinVersionCode` 必须不低于 84（当前桥接协议的起始版本），否则不会被使用。
+- 资源热更新包的 `assetsMinVersionCode` 必须不低于 85（当前桥接协议的起始版本），否则不会被使用。
 - 设置升级会自动从旧版本迁移，不会丢 API Key。
 
 测试：
@@ -261,7 +265,7 @@ export ANDROID_HOME=/path/to/android-sdk
 ./build.sh
 ```
 
-产物：`dist/Reduction-v1.0.54.apk`
+产物：`dist/Reduction-v1.0.55.apk`
 
 免按住模式依赖：
 

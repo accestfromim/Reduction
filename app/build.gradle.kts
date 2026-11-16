@@ -12,8 +12,8 @@ val keystoreProps = Properties().apply {
     }
 }
 
-val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 84
-val appVersionName = (project.findProperty("appVersionName") as String?) ?: "1.0.54"
+val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 85
+val appVersionName = (project.findProperty("appVersionName") as String?) ?: "1.0.55"
 
 android {
     namespace = "com.mindtravel.reduction"

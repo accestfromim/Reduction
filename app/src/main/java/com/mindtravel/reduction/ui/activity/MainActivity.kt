@@ -289,6 +289,15 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
         }.onFailure { Logs.add("Battery exemption dialog unavailable: ${it.message}") }
     }
 
+    /** Opens the system page where this app is allowed to show a card over other apps. */
+    fun askToAllowOverlay() {
+        runOnUiThread {
+            runCatching {
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
+            }.onFailure { Logs.add("Overlay settings unavailable: ${it.message}") }
+        }
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -316,10 +325,14 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
         super.onResume()
         // Back in the foreground is the one place the microphone can be won back.
         if (WakeWordService.deaf) WakeWordService.restartListening(this)
-        if (::graph.isInitialized) graph.onResume()
+        if (::graph.isInitialized) {
+            graph.onResume()
+            graph.core.cardOverlay.setAppInFront(true)
+        }
     }
 
     override fun onPause() {
+        graph.core.cardOverlay.setAppInFront(false)
         bridge.onPause()
         super.onPause()
     }

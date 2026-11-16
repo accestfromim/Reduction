@@ -69,6 +69,12 @@ class AndroidBridge(
     fun deleteCard(name: String): Boolean = cards.delete(name)
 
     @JavascriptInterface
+    fun floatingCard(): String = cards.floating()
+
+    @JavascriptInterface
+    fun floatCard(name: String): Boolean = cards.float(name)
+
+    @JavascriptInterface
     fun submitText(text: String): Boolean = chat.submit(text)
 
     @JavascriptInterface

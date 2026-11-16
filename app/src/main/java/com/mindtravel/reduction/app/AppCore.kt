@@ -10,6 +10,7 @@ import com.mindtravel.reduction.feature.chat.data.HistoryRepository
 import com.mindtravel.reduction.feature.chat.model.BatteryWatch
 import com.mindtravel.reduction.feature.chat.model.ChatEngine
 import com.mindtravel.reduction.feature.chat.model.ChatSession
+import com.mindtravel.reduction.feature.chat.model.tools.AgentLedger
 import com.mindtravel.reduction.feature.chat.model.tools.AgentRuns
 import com.mindtravel.reduction.feature.chat.model.tools.ChatToolFactory
 import com.mindtravel.reduction.feature.chat.ui.AgentWatch
@@ -50,6 +51,7 @@ import com.mindtravel.reduction.model.voice.TtsCache
 import com.mindtravel.reduction.model.voice.TtsSynthesizer
 import com.mindtravel.reduction.model.voice.VoiceDetector
 import com.mindtravel.reduction.model.wake.KeywordSpotterModel
+import com.mindtravel.reduction.ui.overlay.CardOverlay
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -71,6 +73,10 @@ class AppCore private constructor(context: Context) {
 
     val settingsRepository = SettingsRepository(context)
     val cardRepository = CardRepository(File(context.filesDir, "cards"))
+
+    /** One card can float over other apps; see [CardOverlay]. */
+    val cardOverlay = CardOverlay(context, cardRepository)
+    private val agentRuns = AgentRuns(File(context.filesDir, "agent-runs.json"))
     private val historyRepository = HistoryRepository(context)
 
     // ── hardware ────────────────────────────────────────────────────────────
@@ -132,7 +138,7 @@ class AppCore private constructor(context: Context) {
             cards = cardRepository,
             agentLauncherScript = { harnessScript(context, "run-agent.sh") },
             sessionStatusScript = { harnessScript(context, "session-status.py") },
-            agentRuns = AgentRuns(File(context.filesDir, "agent-runs.json"))
+            agentRuns = agentRuns
         )
     private val chatController = ChatController(
         settingsRepository = settingsRepository,
@@ -160,7 +166,8 @@ class AppCore private constructor(context: Context) {
         audioGateway = models.audioGateway,
         recorder = TurnRecorder(
             voice = VoiceDetector.create(context),
-            endWordSpotter = KeywordSpotterModel(context, KeywordSpotterModel.Language.CHINESE)
+            endWordSpotter = KeywordSpotterModel(context, KeywordSpotterModel.Language.CHINESE),
+            keepUnheard = { wav, note -> recordings.keep("unheard", wav, note) }
         ),
         headsetMic = headsetMic,
         keepRecording = recordings::keep,
@@ -221,6 +228,14 @@ class AppCore private constructor(context: Context) {
             voice.onWakeWord()
         }
         if (WakeWordBus.consumePending()) voice.onWakeWord()
+        // The record of sub agent runs is a card the program keeps, rewritten whenever a run changes.
+        val writeLedger = { cardRepository.writeProgramCard(AgentLedger.CARD, AgentLedger.render(agentRuns.all()), AgentLedger.PURPOSE) }
+        agentRuns.onChange = { writeLedger() }
+        writeLedger()
+        cardRepository.onChange = { name ->
+            cardOverlay.onCardChanged(name)
+            ui.emit("onCardsChanged", "")
+        }
         mediaButtons.start()
         agentWatch.start()
         WakeWordBus.clipSink = { wav, keyword -> recordings.keep("wake", wav, keyword) }

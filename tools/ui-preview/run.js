@@ -79,6 +79,8 @@ await page.evaluateOnNewDocument(() => {
     cardPurpose: (name) => (window.__cards[name] || {}).purpose || '',
     saveCard: (name, purpose, text) => { window.__cards[name] = { purpose, text }; return true; },
     deleteCard: (name) => { delete window.__cards[name]; return true; },
+    floatingCard: () => window.__floating || '',
+    floatCard: (name) => { window.__floating = name; return true; },
     loadHistory: () => '[]',
     clearHistory: () => {},
     requestMicPermission: () => setTimeout(() => window.Native.onMicPermission(true), 10),
@@ -233,6 +235,12 @@ const cardsShown = await page.evaluate(async () => {
   window.__copied = '';
   document.getElementById('cardCopyAll').click();
   opened.copied = window.__copied === window.__cards['科研想法·检索'].text.trim() && !hidden('cardCopyAll');
+  // The open card can be floated over other apps, and put away again.
+  const float = document.getElementById('cardFloat');
+  float.click();
+  const floated = window.__floating === '科研想法·检索' && float.textContent === '取消悬浮';
+  float.click();
+  opened.floats = floated && window.__floating === '' && float.textContent === '悬浮';
   return { streamFirst, onCards, before, namesOnly: !listText.includes('向量检索方向') && !listText.includes('倒排'), opened };
 });
 await shot('12-card-open.png');

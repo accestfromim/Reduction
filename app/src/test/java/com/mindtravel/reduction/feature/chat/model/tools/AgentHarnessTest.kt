@@ -225,16 +225,57 @@ class AgentHarnessTest {
     }
 
     @Test
-    fun runNumbersSurviveARestart() {
+    fun runNumbersAndRecordsSurviveARestart() {
         val file = File(Files.createTempDirectory("runs").toFile(), "runs.json")
         val first = AgentRuns(file)
         first.add("t1", "research", "/a/research", "查甲\n第二行")
-        first.finish(first.add("t2", "notes", "/a/notes", "查乙"))
+        first.end(first.add("t2", "notes", "/a/notes", "查乙", write = true), AgentRuns.DONE, "乙的结果")
 
         val again = AgentRuns(file)
         assertEquals(listOf(1), again.unfinished().map { it.number })
         assertEquals("查甲", again.find(1)!!.title)
-        assertEquals("/a/notes", again.find(2)!!.folder)
+        assertEquals("查甲\n第二行", again.find(1)!!.task)
+        assertEquals(listOf("/a/notes", "完成", "乙的结果"), again.find(2)!!.let { listOf(it.folder, it.outcome, it.result) })
         assertEquals(3, again.add("t3", "research", "/a/research", "查丙").number)
+    }
+
+    @Test
+    fun theFirstEndingRecordedIsTheOneThatStays() {
+        val runs = AgentRuns()
+        val run = runs.add("t1", "research", "/a/research", "查甲")
+        runs.end(run, AgentRuns.DONE, "结果")
+        runs.end(run, AgentRuns.LOST, "别的")
+        assertEquals(listOf("完成", "结果"), listOf(run.outcome, run.result))
+    }
+
+    @Test
+    fun theLedgerIsWrittenFromTheRecordWordForWord() {
+        var clock = 1_700_000_000_000L
+        val runs = AgentRuns(now = { clock })
+        val launcher = FakeLauncher()
+        launcher.status("STATE running\n")
+        val tool = RunAgentTool(harness(launcher.script), runs, "/home/u/project", "/home/u/agents", true, Approval(true), 300, 20)
+        tool.execute(args("action" to "start", "task" to "查甲\n## 约束：只读", "folder" to "notes"))
+
+        val during = AgentLedger.render(runs.all())
+        assertTrue(during, during.contains("## 任务 1 · 进行中") && during.contains("- 文件夹：notes · 只读"))
+        // The task's own "##" cannot pass for a heading of the card.
+        assertTrue(during, during.contains("> 查甲\n> ## 约束：只读") && during.contains("（还在做）"))
+
+        clock += 200_000
+        launcher.status("STATE done 0\n$textEvent\n")
+        tool.execute(args("action" to "status"))
+        val after = AgentLedger.render(runs.all())
+        assertTrue(after, after.contains("## 任务 1 · 完成") && after.contains("（用时 3 分钟）") && after.contains("> 做完了。"))
+        assertFalse(after, after.contains("（还在做）"))
+    }
+
+    @Test
+    fun theLedgerShowsTheNewestRunFirst() {
+        val runs = AgentRuns()
+        runs.add("t1", "research", "/a/research", "查甲")
+        runs.add("t2", "research", "/a/research", "查乙")
+        val card = AgentLedger.render(runs.all())
+        assertTrue(card.indexOf("## 任务 2") in 1 until card.indexOf("## 任务 1"))
     }
 }

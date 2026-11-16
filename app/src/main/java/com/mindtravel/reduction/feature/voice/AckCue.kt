@@ -41,7 +41,9 @@ class AckCue(
             scope.launch {
                 val before = queue.playedFrames()
                 delay(HUM_CHECK_MS)
-                if (humming) Logs.add("Hum sounding: ${queue.playedFrames() - before} frames played in ${HUM_CHECK_MS}ms")
+                val played = queue.playedFrames() - before
+                // The count starts over whenever the stream is emptied; then it says nothing.
+                if (humming) Logs.add("Hum sounding: " + if (played >= 0) "$played frames played in ${HUM_CHECK_MS}ms" else "stream restarted, not measured")
             }
         }
         humWatchdog?.cancel()

@@ -207,6 +207,7 @@ ui.els.tabStream.addEventListener('click', () => ui.showPage('stream'));
 ui.els.tabCards.addEventListener('click', () => ui.showPage('cards'));
 ui.els.cardNew.addEventListener('click', cards.newCard);
 ui.els.cardBack.addEventListener('click', cards.back);
+ui.els.cardFloat.addEventListener('click', cards.toggleFloat);
 ui.els.cardCopyAll.addEventListener('click', cards.copyCard);
 ui.els.cardEdit.addEventListener('click', cards.editCard);
 ui.els.cardSave.addEventListener('click', cards.saveCard);

@@ -118,7 +118,7 @@ class RunAgentTool(
         val run = one ?: open.singleOrNull()
             ?: return if (open.isEmpty()) "现在没有在跑的任务。" else "有 ${open.size} 个任务在跑，请说明结束哪一个。${known()}"
         harness.stop(run.folder, run.launcherId)
-        runs.finish(run)
+        runs.end(run, AgentRuns.STOPPED)
         return "已结束任务 ${run.number}"
     }
 
@@ -146,7 +146,7 @@ class RunAgentTool(
         } catch (t: IllegalStateException) {
             return "派发失败：${t.message}"
         }
-        val run = runs.add(id, folderName, folder, task, changesProject = write && onProject)
+        val run = runs.add(id, folderName, folder, task, write = write, changesProject = write && onProject)
         Logs.add("Agent run ${run.number} started id=$id folder=$folderName write=$write")
 
         val deadline = System.currentTimeMillis() + waitMillis
@@ -172,23 +172,23 @@ class RunAgentTool(
                 }
             }
             AgentHarness.State.DONE -> {
-                runs.finish(run)
+                val diff = if (!run.changesProject) "" else {
+                    runCatching { harness.exec("git -C ${AgentHarness.quote(run.folder)} diff --stat") }.getOrDefault("").trim()
+                }
+                val said = (progress.errors.map { "错误：$it" } + listOf(progress.said).filter { it.isNotBlank() }).joinToString("\n")
+                runs.end(run, if (progress.succeeded) AgentRuns.DONE else AgentRuns.FAILED, said, diff)
                 appendLine(if (progress.succeeded) "【完成】$name" else "【失败】$name，退出码 ${progress.exitCode}")
                 progress.errors.forEach { appendLine("错误：$it") }
                 if (progress.said.isNotBlank()) appendLine(progress.said.take(12_000))
                 if (progress.said.isBlank() && progress.errors.isEmpty()) appendLine("sub agent 没有留下任何输出。")
-                if (run.changesProject) {
-                    val diff = runCatching { harness.exec("git -C ${AgentHarness.quote(run.folder)} diff --stat") }
-                        .getOrDefault("").trim()
-                    if (diff.isNotBlank()) {
-                        appendLine()
-                        appendLine("git diff --stat:")
-                        appendLine(diff.take(4_000))
-                    }
+                if (diff.isNotBlank()) {
+                    appendLine()
+                    appendLine("git diff --stat:")
+                    appendLine(diff.take(4_000))
                 }
             }
             AgentHarness.State.LOST -> {
-                runs.finish(run)
+                runs.end(run, AgentRuns.LOST, progress.errors.joinToString("\n") { "错误：$it" })
                 appendLine("【找不到】$name 已经不在电脑上，可能意外中断了。")
                 progress.errors.forEach { appendLine("错误：$it") }
             }

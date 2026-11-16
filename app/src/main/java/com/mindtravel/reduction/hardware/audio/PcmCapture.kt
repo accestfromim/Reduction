@@ -90,11 +90,18 @@ class PcmCapture {
                 record = recorder
                 recorder.startRecording()
                 val buffer = ShortArray(FRAME_SAMPLES)
+                var named = false
                 while (running && current == generation) {
                     val read = recorder.read(buffer, 0, buffer.size)
                     if (read <= 0) {
                         if (read < 0) break
                         continue
+                    }
+                    if (!named) {
+                        // Which microphone this really is: the log must be able to tell headset from phone.
+                        named = true
+                        val device = runCatching { recorder.routedDevice }.getOrNull()
+                        Logs.add("Microphone input: type=${device?.type} ${device?.productName ?: "unknown"}")
                     }
                     onFrame(buffer.copyOf(read))
                 }

@@ -1,12 +1,18 @@
 package com.mindtravel.reduction.hardware.audio
 
 import android.content.Context
+import android.content.IntentFilter
 import android.media.AudioDeviceInfo
 import android.media.AudioManager
 import android.os.Build
 import com.mindtravel.reduction.core.Logs
 
-class HeadsetMicController(context: Context) {
+/**
+ * Switches recording to a Bluetooth headset's microphone. The headset has to open its
+ * call link for that, which takes a moment: [start] returns only once the link is really
+ * up, so that what is recorded afterwards comes from the headset and not from the phone.
+ */
+class HeadsetMicController(private val context: Context) {
 
     private val audioManager = context.getSystemService(AudioManager::class.java)
 
@@ -46,12 +52,32 @@ class HeadsetMicController(context: Context) {
             }
             manager.mode = AudioManager.MODE_IN_COMMUNICATION
             active = true
-            Logs.add("Headset mic active")
-            true
+            val startedAt = System.currentTimeMillis()
+            var linked = linkIsUp()
+            while (!linked && System.currentTimeMillis() - startedAt < LINK_LIMIT_MS) {
+                Thread.sleep(LINK_POLL_MS)
+                linked = linkIsUp()
+            }
+            val waited = System.currentTimeMillis() - startedAt
+            if (linked) {
+                Logs.add("Headset mic active, call link up after ${waited}ms")
+            } else {
+                // Without the link the phone's own microphone would be recorded instead: say so, and use it openly.
+                Logs.add("Headset mic: call link did not come up in ${waited}ms, using the phone's microphone")
+                stop()
+            }
+            linked
         } catch (t: Throwable) {
             Logs.add("Headset mic failed: ${t.message}")
             false
         }
+    }
+
+    /** Whether the headset's call link is carrying audio, as the system last announced it. */
+    private fun linkIsUp(): Boolean {
+        @Suppress("DEPRECATION")
+        val sticky = context.registerReceiver(null, IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED))
+        return sticky?.getIntExtra(AudioManager.EXTRA_SCO_AUDIO_STATE, -1) == AudioManager.SCO_AUDIO_STATE_CONNECTED
     }
 
     fun stop() {
@@ -73,5 +99,10 @@ class HeadsetMicController(context: Context) {
             active = false
             Logs.add("Headset mic stopped")
         }
+    }
+
+    private companion object {
+        const val LINK_LIMIT_MS = 2_500L
+        const val LINK_POLL_MS = 50L
     }
 }
