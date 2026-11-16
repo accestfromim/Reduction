@@ -79,12 +79,6 @@ place_keywords() {                          # cache name, directory inside it, d
   echo "placed  $3"
 }
 
-fetch() {                                   # cache name, sha, then the placing call
-  local name=$1 sha=$2; shift 2
-  obtain "$@" >/dev/null || { $check_only && echo "missing $name"; return 1; }
-  "$@"
-}
-
 obtain "$LIBRARY_URL" sherpa-onnx-2.0.1.aar "$LIBRARY_SHA" &&
   { mkdir -p "$ROOT/app/libs"; cp -f "$CACHE/sherpa-onnx-2.0.1.aar" "$ROOT/app/libs/sherpa-onnx-arm64.aar"; } &&
   echo "placed  app/libs/sherpa-onnx-arm64.aar"
