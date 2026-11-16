@@ -126,7 +126,12 @@ class LocalShell : PcGateway {
 class PageLink : EventSink {
     private val pages = CopyOnWriteArrayList<OutputStream>()
 
+    /** Told of every event as well: there is more to the application than its page. */
+    @Volatile
+    var onEvent: (function: String, args: List<Any?>) -> Unit = { _, _ -> }
+
     override fun emit(function: String, vararg args: Any?) {
+        runCatching { onEvent(function, args.toList()) }
         send(JSONObject().put("fn", function).put("args", JSONArray(args.map { it ?: JSONObject.NULL })))
     }
 
@@ -287,6 +292,54 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         place = "电脑"
     )
 
+    // ── the pet: the small figure on the desktop that stands for all this ────
+    @Volatile private var petSpeaking = false
+    @Volatile private var petListening = false
+    @Volatile private var petLine = ""
+    @Volatile private var petLineId = 0L
+
+    private fun petSays(line: String) {
+        petLine = line.replace(Regex("\\s+"), " ").trim()
+        petLineId++
+    }
+
+    /** What the pet should look like now, and the last thing worth a speech bubble. */
+    private fun petState(): String = JSONObject()
+        .put("state", when {
+            petListening -> "listening"
+            petSpeaking -> "speaking"
+            chat.isBusy() -> "thinking"
+            else -> "idle"
+        })
+        .put("line", petLine).put("lineId", petLineId)
+        .put("ready", settings.load().apiKey.isNotBlank())
+        .toString()
+
+    /** Talking to the pet directly: hold it, speak, let go. No page is needed. */
+    private fun petTalk(action: String) {
+        val mic = audio ?: return petSays("这台电脑上用不了麦克风")
+        when (action) {
+            "start" -> {
+                speech.stop(notify = false)
+                petListening = mic.startRecording()
+            }
+            "cancel" -> {
+                petListening = false
+                mic.cancelRecording()
+            }
+            "stop" -> {
+                petListening = false
+                val wav = mic.stopRecording() ?: return petSays("没有录到声音")
+                scope.launch(Dispatchers.IO) {
+                    val key = settings.load().apiKey
+                    val text = runCatching { models.audioGateway.transcribe(key, wav) }.getOrDefault("")
+                        .let { (EndWords.strip(it) ?: it).trim() }
+                    if (text.isBlank()) petSays("没听清，再说一遍？") else scope.launch { conversation.submit(text) }
+                }
+            }
+        }
+    }
+
     private val approvals = ConcurrentHashMap<String, (Boolean) -> Unit>()
     private val approvalIds = AtomicLong()
 
@@ -295,6 +348,18 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         agentRuns.onChange = { writeLedger() }
         writeLedger()
         cards.onChange = { page.emit("onCardsChanged", "") }
+        page.onEvent = { function, args ->
+            when (function) {
+                "onTtsStart" -> petSpeaking = true
+                "onTtsDone", "onTtsStopped", "onTtsError", "onChatAborted" -> petSpeaking = false
+                "onChatDone" -> petSays(args.getOrNull(1)?.toString().orEmpty())
+                "onChatError" -> {
+                    petSpeaking = false
+                    petSays(args.getOrNull(1)?.toString().orEmpty())
+                }
+                "onToolStarted" -> petSays(args.getOrNull(2)?.toString().orEmpty() + "…")
+            }
+        }
         AgentWatch(
             finished = {
                 toolFactory.endedRuns(settings.load()).map { (number, report) ->
@@ -319,6 +384,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     fun handle(exchange: HttpExchange) {
         val path = exchange.requestURI.path
         if (exchange.requestMethod == "GET" && path == "/events") return page.serve(exchange)
+        if (exchange.requestMethod == "GET" && path == "/pet") return reply(exchange, 200, petState())
         if (exchange.requestMethod == "GET") return serveFile(exchange, path)
         // Only this page may give orders: a request from any other site cannot carry this header.
         if (exchange.requestHeaders.getFirst("X-Reduction") != "1") return reply(exchange, 403, "{}")
@@ -330,6 +396,10 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
                 val result = runCatching { bridge(path.removePrefix("/bridge/"), args) }
                     .onFailure { Logs.add("bridge ${path.removePrefix("/bridge/")} failed: ${it.message}") }.getOrNull()
                 reply(exchange, 200, JSONObject().put("result", result ?: JSONObject.NULL).toString())
+            }
+            path == "/pet/talk" -> {
+                petTalk(query.removePrefix("action="))
+                reply(exchange, 200, petState())
             }
             path == "/audio-done" -> {
                 pageSpeech.played(query.removePrefix("session=").toLongOrNull() ?: 0)
@@ -364,6 +434,8 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         "cardPurpose" -> cards.purpose(args.getString(0))
         "saveCard" -> cards.save(args.getString(0), args.getString(2), args.getString(1))
         "deleteCard" -> cards.delete(args.getString(0))
+        "renameCard" -> cards.rename(args.getString(0), args.getString(1))
+        "saveCardMedia" -> runCatching { cards.saveMedia(Base64.getDecoder().decode(args.getString(0)), args.getString(1)) }.getOrNull().orEmpty()
         "speak" -> speech.speak(args.getString(0), args.getString(1))
         "stopSpeaking" -> speech.stop(notify = true)
         "clearAudioCache" -> speech.clearCache()
@@ -405,6 +477,14 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     }
 
     private fun serveFile(exchange: HttpExchange, path: String) {
+        if (path.startsWith("/card-media/")) {
+            // Pictures and sound kept with the cards, by their id.
+            val file = cards.mediaFile(path.removePrefix("/card-media/")) ?: return reply(exchange, 404, "")
+            exchange.responseHeaders.add("Content-Type", TYPES[file.extension] ?: "application/octet-stream")
+            exchange.sendResponseHeaders(200, file.length())
+            exchange.responseBody.use { out -> file.inputStream().use { it.copyTo(out) } }
+            return
+        }
         val name = if (path == "/") "index.html" else path.removePrefix("/")
         val bytes = if (name.contains("..")) null else javaClass.classLoader.getResourceAsStream(name)?.use { it.readBytes() }
         if (bytes == null) return reply(exchange, 404, "")
@@ -440,7 +520,9 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         val TYPES = mapOf(
             "html" to "text/html; charset=utf-8", "js" to "text/javascript; charset=utf-8", "css" to "text/css; charset=utf-8",
             "png" to "image/png", "svg" to "image/svg+xml", "woff2" to "font/woff2", "woff" to "font/woff", "ttf" to "font/ttf",
-            "json" to "application/json"
+            "json" to "application/json", "jpg" to "image/jpeg", "jpeg" to "image/jpeg", "webp" to "image/webp", "gif" to "image/gif",
+            "m4a" to "audio/mp4", "aac" to "audio/mp4", "mp3" to "audio/mpeg", "wav" to "audio/wav", "ogg" to "audio/ogg",
+            "webm" to "audio/webm", "flac" to "audio/flac"
         )
     }
 }

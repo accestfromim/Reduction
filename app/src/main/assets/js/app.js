@@ -211,6 +211,8 @@ ui.els.cardFloat.addEventListener('click', cards.toggleFloat);
 ui.els.cardCopyAll.addEventListener('click', cards.copyCard);
 ui.els.cardEdit.addEventListener('click', cards.editCard);
 ui.els.cardSave.addEventListener('click', cards.saveCard);
+ui.els.cardAttach.addEventListener('click', () => ui.els.cardMediaInput.click());
+ui.els.cardMediaInput.addEventListener('change', cards.attachMedia);
 ui.els.cardCopy.addEventListener('click', cards.copyCard);
 ui.els.cardDelete.addEventListener('click', cards.deleteCard);
 

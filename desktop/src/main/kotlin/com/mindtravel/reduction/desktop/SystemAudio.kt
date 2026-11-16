@@ -117,13 +117,19 @@ class SystemAudio private constructor(private val pacat: File, private val libra
     private var recorder: Process? = null
     private var heard: ByteArrayOutputStream? = null
 
-    /** Opens the microphone. What it hears is kept until [stopRecording]. */
+    /**
+     * Opens the microphone and returns once it is really delivering sound — a microphone that has
+     * been resting takes up to a second to wake, and saying "listening" before then would lose the
+     * first words. What it hears is kept until [stopRecording].
+     */
     @Synchronized
     fun startRecording(): Boolean {
         cancelRecording()
         return try {
-            val process = start(listOf("--record", "--rate=$RECORD_RATE", "--latency-msec=100"))
+            // Asked for in small pieces: otherwise the first half second of what is said is lost while the first large one fills.
+            val process = start(listOf("--record", "--rate=$RECORD_RATE", "--latency-msec=20", "--process-time-msec=10"))
             val buffer = ByteArrayOutputStream()
+            val awake = java.util.concurrent.CountDownLatch(1)
             recorder = process
             heard = buffer
             Thread({
@@ -133,10 +139,12 @@ class SystemAudio private constructor(private val pacat: File, private val libra
                         val read = process.inputStream.read(chunk)
                         if (read < 0) break
                         synchronized(buffer) { buffer.write(chunk, 0, read) }
+                        awake.countDown()
                     }
                 }
+                awake.countDown()
             }, "reduction-microphone").apply { isDaemon = true }.start()
-            true
+            awake.await(WAKE_LIMIT_MS, TimeUnit.MILLISECONDS) && process.isAlive
         } catch (t: Throwable) {
             Logs.add("Microphone failed: ${t.message}")
             false
@@ -183,6 +191,7 @@ class SystemAudio private constructor(private val pacat: File, private val libra
         /** What the sound system holds back before a sample reaches the loudspeaker. */
         private const val OUTPUT_LAG_MS = 150L
         private const val AHEAD_MS = 4_000L
+        private const val WAKE_LIMIT_MS = 2_500L
 
         /**
          * The audio tool, where there is one: the system's own, or the copy `desktop/install.sh`

@@ -18,6 +18,8 @@ import android.webkit.RenderProcessGoneDetail
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
 import android.webkit.WebView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
@@ -59,6 +61,25 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
             micCallback?.invoke(granted)
             micCallback = null
         }
+
+    private var filePicked: ValueCallback<Array<Uri>>? = null
+    private val filePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        filePicked?.onReceiveValue(if (uri != null) arrayOf(uri) else null)
+        filePicked = null
+    }
+
+    private fun mediaType(extension: String): String = when (extension.lowercase()) {
+        "jpg", "jpeg" -> "image/jpeg"
+        "png" -> "image/png"
+        "webp" -> "image/webp"
+        "gif" -> "image/gif"
+        "mp3" -> "audio/mpeg"
+        "wav" -> "audio/wav"
+        "ogg" -> "audio/ogg"
+        "webm" -> "audio/webm"
+        "flac" -> "audio/flac"
+        else -> "audio/mp4"
+    }
 
     private val notificationPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -115,7 +136,22 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
                     WebViewAssetLoader.AssetsPathHandler(this)
                 )
             )
+            // Pictures and sound kept with the cards, by their id.
+            .addPathHandler("/card-media/") { path ->
+                graph.core.cardRepository.mediaFile(path.trim('/'))?.let { file ->
+                    WebResourceResponse(mediaType(file.extension), null, file.inputStream())
+                }
+            }
             .build()
+        // Lets the page ask for a picture or a recording to put into a card.
+        webView.webChromeClient = object : WebChromeClient() {
+            override fun onShowFileChooser(view: WebView, callback: ValueCallback<Array<Uri>>, params: FileChooserParams): Boolean {
+                filePicked?.onReceiveValue(null)
+                filePicked = callback
+                val kinds = params.acceptTypes.filter { it.isNotBlank() }
+                return runCatching { filePicker.launch(kinds.singleOrNull() ?: "*/*") }.isSuccess
+            }
+        }
         webView.webViewClient = object : WebViewClientCompat() {
             override fun shouldInterceptRequest(
                 view: WebView,

@@ -56,7 +56,8 @@ class WavPcmTest {
         for (cue in cues) {
             val pcm = WavPcm.parse(cue.readBytes())
             assertEquals(cue.name, 24_000, pcm.sampleRate)
-            assertEquals(cue.name, 1, pcm.channels)
+            // The hum is stereo; what is spoken is mono.
+            assertEquals(cue.name, if (cue.name == "ack_hum.wav") 2 else 1, pcm.channels)
         }
     }
 }

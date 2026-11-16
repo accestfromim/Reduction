@@ -19,7 +19,8 @@ class PatchCardsTool(
             "*** Add Card: 名称      下一行写 Purpose: 一句话用途，之后每行以 + 开头，是卡片内容。\n" +
             "*** Update Card: 名称   之后是改动：以空格开头的行是不变的上下文，以 - 开头的行删掉，以 + 开头的行加上；用单独一行 @@ 分隔同一张卡片里的另一处改动。" +
             "上下文行和 - 行必须照抄卡片原文，它们决定改在哪里。只有 + 行的一处改动表示加在卡片末尾。可以在标题下一行写 Purpose: 来改用途。\n" +
-            "*** Delete Card: 名称",
+            "*** Delete Card: 名称\n" +
+            "*** Move Card: 旧名称 -> 新名称   给卡片改名。名称里的“/”表示文件夹，比如 产品需求/短期；把卡片放进文件夹就是改名。",
         parameterName = "patch",
         parameterDescription = "补丁全文"
     )

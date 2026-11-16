@@ -14,6 +14,11 @@ class CardBridge(
     fun purpose(name: String): String = cards.purpose(name)
     fun save(name: String, purpose: String, content: String): Boolean = cards.save(name, content, purpose)
     fun delete(name: String): Boolean = cards.delete(name)
+    fun rename(from: String, to: String): Boolean = cards.rename(from, to)
+
+    /** Keeps a picture or a recording the user picked; returns its id, or blank when it is not kept. */
+    fun saveMedia(base64: String, extension: String): String =
+        runCatching { cards.saveMedia(java.util.Base64.getDecoder().decode(base64), extension) }.getOrNull().orEmpty()
 
     /** The card that floats over other apps, or blank. */
     fun floating(): String = overlay.pinned()

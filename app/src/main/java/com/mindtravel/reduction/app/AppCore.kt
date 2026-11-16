@@ -111,7 +111,8 @@ class AppCore private constructor(context: Context) {
         queue = audioQueue,
         sounds = AckCue.Sounds(
             spoken = spokenCues::sound,
-            hum = cueSound(context, R.raw.ack_hum)
+            hum = sound(context, R.raw.ack_hum, channels = 2),
+            humStereo = true
         ),
         scope = scope,
         describeOutput = { AudioRoutes.describe(context) }
@@ -248,9 +249,11 @@ class AppCore private constructor(context: Context) {
         context.assets.open("harness/$name").bufferedReader().use { it.readText() }
 
     /** A bundled cue as PCM. The cues are 24 kHz mono, the audio queue's own format. */
-    private fun cueSound(context: Context, resId: Int): ByteArray {
+    private fun cueSound(context: Context, resId: Int): ByteArray = sound(context, resId, channels = 1)
+
+    private fun sound(context: Context, resId: Int, channels: Int): ByteArray {
         val pcm = context.resources.openRawResource(resId).use { WavPcm.parse(it.readBytes()) }
-        check(pcm.sampleRate == AudioQueue.SAMPLE_RATE && pcm.channels == 1) { "cue $resId is not 24 kHz mono" }
+        check(pcm.sampleRate == AudioQueue.SAMPLE_RATE && pcm.channels == channels) { "sound $resId is not 24 kHz with $channels channel(s)" }
         return pcm.data
     }
 

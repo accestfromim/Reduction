@@ -79,6 +79,7 @@ await page.evaluateOnNewDocument(() => {
     cardPurpose: (name) => (window.__cards[name] || {}).purpose || '',
     saveCard: (name, purpose, text) => { window.__cards[name] = { purpose, text }; return true; },
     deleteCard: (name) => { delete window.__cards[name]; return true; },
+    renameCard: (from, to) => { if (window.__cards[to] || !window.__cards[from]) return false; window.__cards[to] = window.__cards[from]; delete window.__cards[from]; return true; },
     floatingCard: () => window.__floating || '',
     floatCard: (name) => { window.__floating = name; return true; },
     loadHistory: () => '[]',
@@ -253,7 +254,7 @@ const cardsEdited = await page.evaluate(async () => {
   const followed = document.getElementById('cardBody').textContent.includes('新加的一条');
   // Edit by hand.
   document.getElementById('cardEdit').click();
-  const editing = !hidden('cardEditor') && hidden('cardBody') && hidden('cardNameField') && hidden('cardCopyAll');
+  const editing = !hidden('cardEditor') && hidden('cardBody') && !hidden('cardNameField') && hidden('cardCopyAll');
   document.getElementById('cardText').value = '改过的正文';
   document.getElementById('cardSave').click();
   const saved = hidden('cardEditor') && document.getElementById('cardBody').textContent.includes('改过的正文');
@@ -276,7 +277,30 @@ if (!cardsShown.streamFirst || !cardsShown.onCards || cardsShown.before.join() !
     cardsEdited.after.join() !== '备忘,科研想法·检索,科研想法·评测' || !cardsEdited.backToStream || !cardsEdited.nothingLeft) {
   throw new Error('cards did not behave: ' + JSON.stringify(cardsShown) + JSON.stringify(cardsEdited));
 }
-await page.evaluate(() => document.getElementById('tabCards').click());
+// Folders: a card renamed to "文件夹/名称" moves under that folder, which can be closed and opened.
+const folders = await page.evaluate(async () => {
+  const hidden = (id) => document.getElementById(id).classList.contains('hidden');
+  document.getElementById('tabCards').click();
+  Array.from(document.querySelectorAll('#cardList .card-row')).find((row) => row.textContent === '科研想法·检索').click();
+  document.getElementById('cardEdit').click();
+  document.getElementById('cardNameInput').value = '科研 / 检索';
+  document.getElementById('cardSave').click();
+  const title = document.getElementById('cardTitle').textContent;
+  window.onAndroidBack();
+  window.__cards['科研/评测'] = { purpose: '评测', text: '指标' };
+  window.Native.onCardsChanged('');
+  const rows = () => Array.from(document.querySelectorAll('#cardList > *')).map((el) => (el.classList.contains('card-folder') ? '[' + el.firstChild.textContent + ' ' + el.lastChild.textContent + ']' : (el.classList.contains('inside') ? '  ' : '') + el.textContent));
+  const open = rows();
+  document.querySelector('#cardList .card-folder').click();
+  const closed = rows();
+  document.querySelector('#cardList .card-folder').click();
+  return { title, open, closed, kept: !!window.__cards['科研/检索'] && !window.__cards['科研想法·检索'] };
+});
+console.log('folders:', JSON.stringify(folders));
+if (folders.title !== '科研/检索' || !folders.kept || !folders.open.includes('[科研 2]') || !folders.open.includes('  检索') || !folders.open.includes('  评测') ||
+    folders.closed.includes('  检索') || !folders.closed.includes('[科研 2]') || folders.open.indexOf('备忘') > folders.open.indexOf('[科研 2]')) {
+  throw new Error('folders did not behave: ' + JSON.stringify(folders));
+}
 await shot('13-card-list.png');
 await page.evaluate(() => document.getElementById('tabStream').click());
 

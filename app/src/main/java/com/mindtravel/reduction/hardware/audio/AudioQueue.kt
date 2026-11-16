@@ -2,8 +2,11 @@ package com.mindtravel.reduction.hardware.audio
 
 /** One output stream. Bytes are heard in the order they are written. */
 interface PcmSink {
-    /** Blocks until the bytes are accepted. Returns how many were, or a negative error. */
-    fun write(data: ByteArray, offset: Int, length: Int): Int
+    /**
+     * Blocks until the bytes are accepted. Returns how many were, or a negative error.
+     * The bytes are mono unless [stereo], in which case they are left and right in turn.
+     */
+    fun write(data: ByteArray, offset: Int, length: Int, stereo: Boolean = false): Int
 
     /** How many frames have been played since the last [flush]. */
     fun playedFrames(): Long
@@ -20,7 +23,8 @@ interface PcmSink {
  * on the sample after the previous one ended — there is nothing to line up, so nothing
  * can overlap or leave a gap.
  *
- * All audio is 16-bit mono PCM at the stream's rate. Callbacks are handed to [deliver].
+ * All audio is 16-bit PCM at the stream's rate: mono, except that the loop may be stereo.
+ * Callbacks are handed to [deliver].
  */
 class AudioQueue(
     private val sink: PcmSink,
@@ -42,6 +46,7 @@ class AudioQueue(
     private val unplayed = ArrayDeque<Written>()
     private var writing: Item? = null
     private var loop: ByteArray? = null
+    private var loopStereo = false
     private var loopAt = 0
     private var written = 0L
 
@@ -66,9 +71,10 @@ class AudioQueue(
     }
 
     /** A sound repeated whenever nothing is queued, until set to null. It follows queued sounds without a gap. */
-    fun setLoop(pcm: ByteArray?, gain: Float = 1f) {
+    fun setLoop(pcm: ByteArray?, gain: Float = 1f, stereo: Boolean = false) {
         synchronized(lock) {
             loop = pcm?.let { scale(it, gain) }
+            loopStereo = stereo
             loopAt = 0
             wake()
         }
@@ -139,6 +145,7 @@ class AudioQueue(
             var blockAt = 0
             var blockLength = 0
             var myEpoch = 0
+            var blockStereo = false
 
             synchronized(lock) {
                 if (!running) {
@@ -158,7 +165,8 @@ class AudioQueue(
                     repeated != null -> {
                         block = repeated
                         blockAt = loopAt
-                        blockLength = minOf(BLOCK_BYTES, repeated.size - loopAt)
+                        blockStereo = loopStereo
+                        blockLength = minOf(if (loopStereo) BLOCK_BYTES * 2 else BLOCK_BYTES, repeated.size - loopAt)
                         loopAt = (loopAt + blockLength) % repeated.size
                     }
                     // Silence keeps the stream moving until the last sound has been played out.
@@ -185,8 +193,9 @@ class AudioQueue(
                 sound.onStart?.let(deliver)
                 writeItem(sound, myEpoch)
             } else if (filler != null) {
-                val accepted = sink.write(filler, blockAt, blockLength)
-                synchronized(lock) { if (accepted > 0 && epoch == myEpoch) written += accepted / FRAME_BYTES }
+                val accepted = sink.write(filler, blockAt, blockLength, blockStereo)
+                val frameBytes = if (blockStereo) FRAME_BYTES * 2 else FRAME_BYTES
+                synchronized(lock) { if (accepted > 0 && epoch == myEpoch) written += accepted / frameBytes }
             }
         }
     }

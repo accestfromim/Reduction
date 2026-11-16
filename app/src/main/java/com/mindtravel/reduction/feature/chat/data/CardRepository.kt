@@ -12,6 +12,13 @@ import java.util.Base64
  * patches (see [CardPatch]). The
  * assistant works from the directory (names and purposes) and reads a card's text only
  * when it needs it.
+ *
+ * A name may contain "/": what comes before the last one is the folder the card is shown
+ * in. Folders are nothing but that — there is nothing to create or delete.
+ *
+ * A card may show pictures and play sound. Those are kept beside the cards as media files,
+ * each under a short id, and the card's text refers to one as `![说明](media:id)`. A media
+ * file that no card refers to any more is removed.
  */
 class CardRepository(private val dir: File) {
 
@@ -67,7 +74,12 @@ class CardRepository(private val dir: File) {
         if (!byProgram && isProgramCard(name)) return false
         dir.mkdirs()
         if (purpose != null) writePurpose(name, purpose)
-        return write(file, content.take(MAX_CHARS)).also { if (it) runCatching { onChange(name.trim()) } }
+        return write(file, content.take(MAX_CHARS)).also {
+            if (it) {
+                runCatching { sweepMedia() }
+                runCatching { onChange(name.trim()) }
+            }
+        }
     }
 
     /**
@@ -103,6 +115,18 @@ class CardRepository(private val dir: File) {
                     writes[op.name] = after to (op.purpose ?: writes[op.name]?.second)
                     summary += "修改“${op.name}”（${op.hunks.size} 处）"
                 }
+                is CardPatch.Move -> {
+                    val text = currentText(op.name)
+                        ?: throw CardPatch.Invalid("没有名为“${op.name}”的卡片可改名")
+                    if (isProgramCard(op.to)) throw CardPatch.Invalid("“${op.to}”是程序写入的卡片的名称，不能占用")
+                    if (currentText(op.to) != null) throw CardPatch.Invalid("已经有一张叫“${op.to}”的卡片")
+                    val purpose = writes[op.name]?.second ?: purposeOf(op.name)
+                    writes -= op.name
+                    deletes += op.name
+                    deletes -= op.to
+                    writes[op.to] = text to purpose
+                    summary += "“${op.name}”改名为“${op.to}”"
+                }
                 is CardPatch.Delete -> {
                     if (currentText(op.name) == null) throw CardPatch.Invalid("没有名为“${op.name}”的卡片可删")
                     writes -= op.name
@@ -118,11 +142,59 @@ class CardRepository(private val dir: File) {
         return summary
     }
 
+    /** Gives a card another name, which is also how it is put into a folder. False when that cannot be done. */
+    @Synchronized
+    fun rename(from: String, to: String): Boolean {
+        val source = cleanName(from) ?: return false
+        val target = cleanName(to) ?: return false
+        if (source == target) return true
+        if (isProgramCard(source) || isProgramCard(target) || read(target) != null) return false
+        val text = read(source) ?: return false
+        if (!save(target, text, purposeOf(source))) return false
+        return delete(source)
+    }
+
+    // ── pictures and sound ──────────────────────────────────────────────────
+
+    private val mediaDir: File get() = File(dir, "media")
+
+    /** Keeps [bytes] as a media file and returns its id, or null when it is not a kind or size that is kept. */
+    @Synchronized
+    fun saveMedia(bytes: ByteArray, extension: String): String? {
+        val kind = extension.lowercase().trim('.')
+        if (kind !in MEDIA_KINDS || bytes.isEmpty() || bytes.size > MAX_MEDIA_BYTES) return null
+        mediaDir.mkdirs()
+        val id = "m" + java.util.UUID.randomUUID().toString().replace("-", "").take(12) + "." + kind
+        return runCatching { File(mediaDir, id).writeBytes(bytes); id }.getOrNull()
+    }
+
+    /** The file behind a media id; null when there is none. */
+    fun mediaFile(id: String): File? = id.takeIf { MEDIA_ID.matches(it) }?.let { File(mediaDir, it) }?.takeIf { it.isFile }
+
+    /** Removes media no card refers to. What was added in the last hour is left: its card may not be saved yet. */
+    private fun sweepMedia() {
+        val files = mediaDir.listFiles() ?: return
+        if (files.isEmpty()) return
+        val used = HashSet<String>()
+        for (file in dir.listFiles().orEmpty()) {
+            if (file.isFile && file.name.endsWith(TEXT)) {
+                MEDIA_REF.findAll(runCatching { file.readText() }.getOrDefault("")).forEach { used += it.groupValues[1] }
+            }
+        }
+        val cutoff = System.currentTimeMillis() - MEDIA_GRACE_MS
+        for (file in files) if (file.name !in used && file.lastModified() < cutoff) file.delete()
+    }
+
     @Synchronized
     fun delete(name: String): Boolean {
         if (isProgramCard(name)) return false
         purposeFile(name)?.delete()
-        return (textFile(name)?.takeIf { it.isFile }?.delete() ?: false).also { if (it) runCatching { onChange(name.trim()) } }
+        return (textFile(name)?.takeIf { it.isFile }?.delete() ?: false).also {
+            if (it) {
+                runCatching { sweepMedia() }
+                runCatching { onChange(name.trim()) }
+            }
+        }
     }
 
     fun directoryJson(): String = JSONArray().apply {
@@ -172,7 +244,12 @@ class CardRepository(private val dir: File) {
         private const val TEXT = ".md"
         private const val PURPOSE = ".purpose"
         const val MAX_CHARS = 60_000
-        const val MAX_NAME = 40
+        const val MAX_NAME = 60
+        const val MAX_MEDIA_BYTES = 20 * 1024 * 1024
+        private const val MEDIA_GRACE_MS = 3_600_000L
+        val MEDIA_KINDS = setOf("jpg", "jpeg", "png", "webp", "gif", "m4a", "mp3", "wav", "ogg", "aac", "webm", "flac")
+        private val MEDIA_ID = Regex("^m[0-9a-f]{12}\\.[a-z0-9]{2,5}$")
+        private val MEDIA_REF = Regex("media:(m[0-9a-f]{12}\\.[a-z0-9]{2,5})")
         const val MAX_PURPOSE = 120
 
         /** A usable card name, or null: one line, not blank, not too long. */
@@ -180,7 +257,10 @@ class CardRepository(private val dir: File) {
             val name = raw.trim()
             if (name.isEmpty() || name.length > MAX_NAME) return null
             if (name.any { it.isISOControl() }) return null
-            return name
+            // Folder and name are told apart by "/": tidied, so that the same place is always written the same way.
+            val parts = name.split('/').map { it.trim() }
+            if (parts.any { it.isEmpty() }) return null
+            return parts.joinToString("/")
         }
     }
 }

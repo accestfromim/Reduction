@@ -887,3 +887,27 @@
 @media (prefers-reduced-motion: reduce) {
   .splash { display: none; }
 }
+
+/* Folders in the card list: a name with "/" in it sits under what comes before the last one. */
+.card-folder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 16px 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-align: left;
+}
+.card-folder::before { content: "▾"; font-size: 11px; }
+.card-folder.closed::before { content: "▸"; }
+.card-folder .count { margin-left: auto; font-variant-numeric: tabular-nums; }
+.card-row.inside { padding-left: 18px; }
+.card-row .locked { margin-left: 8px; color: var(--muted); font-size: 12px; }
+
+/* Pictures and sound in a card. */
+.card-read img { display: block; max-width: 100%; height: auto; margin: 10px 0; border-radius: 10px; }
+.card-read audio { display: block; width: 100%; margin: 10px 0; }

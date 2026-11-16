@@ -67,6 +67,8 @@ export const els = {
   cardNameInput: byId('cardNameInput'),
   cardPurposeInput: byId('cardPurposeInput'),
   cardText: byId('cardText'),
+  cardAttach: byId('cardAttach'),
+  cardMediaInput: byId('cardMediaInput'),
   cardSave: byId('cardSave'),
   cardCopy: byId('cardCopy'),
   cardDelete: byId('cardDelete'),

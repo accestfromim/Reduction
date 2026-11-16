@@ -14,10 +14,12 @@ package com.mindtravel.reduction.feature.chat.data
  *     -- 周五前交报告
  *     +- 周四前交报告
  *     *** Delete Card: 旧任务
+ *     *** Move Card: 需求·短期 -> 产品需求/短期
  *
  * In an update, a line starting with a space is context, "-" is removed, "+" is added;
  * "@@" starts another place in the same card. There are no line numbers: the context and
  * removed lines say where the change goes. A hunk with only "+" lines adds at the end.
+ * "Move" renames a card; a name with "/" in it puts the card in a folder.
  */
 object CardPatch {
 
@@ -30,6 +32,9 @@ object CardPatch {
     class Update(override val name: String, val purpose: String?, val hunks: List<Hunk>) : Op
 
     class Delete(override val name: String) : Op
+
+    /** Renames [name] to [to], text and purpose unchanged. */
+    class Move(override val name: String, val to: String) : Op
 
     /** One place to change, as the patch wrote it: lines marked " ", "-" or "+". */
     class Hunk(val lines: List<String>) {
@@ -62,7 +67,8 @@ object CardPatch {
 
     class Invalid(message: String) : Exception(message)
 
-    private val HEADER = Regex("^\\*\\*\\*\\s*(Add|Update|Delete)\\s+(?:Card|File)\\s*[:：]\\s*(.+?)\\s*$", RegexOption.IGNORE_CASE)
+    private val HEADER = Regex("^\\*\\*\\*\\s*(Add|Update|Delete|Move)\\s+(?:Card|File)\\s*[:：]\\s*(.+?)\\s*$", RegexOption.IGNORE_CASE)
+    private val ARROW = Regex("\\s*(?:->|→|=>)\\s*")
     private val PURPOSE = Regex("^(?:Purpose|用途)\\s*[:：]\\s*(.*)$", RegexOption.IGNORE_CASE)
     private val ENVELOPE = Regex("^\\*\\*\\*\\s*(Begin|End) Patch\\s*$", RegexOption.IGNORE_CASE)
 
@@ -81,8 +87,14 @@ object CardPatch {
                 continue
             }
             val kind = header.groupValues[1].lowercase()
-            val name = CardRepository.cleanName(header.groupValues[2])
-                ?: throw Invalid("卡片名称无效：“${header.groupValues[2].take(50)}”")
+            val named = header.groupValues[2]
+            val arrow = if (kind == "move") ARROW.find(named) else null
+            if (kind == "move" && arrow == null) throw Invalid("改名要写成 *** Move Card: 旧名称 -> 新名称")
+            val name = CardRepository.cleanName(if (arrow != null) named.substring(0, arrow.range.first) else named)
+                ?: throw Invalid("卡片名称无效：“${named.take(50)}”")
+            val target = arrow?.let {
+                CardRepository.cleanName(named.substring(it.range.last + 1)) ?: throw Invalid("新名称无效：“${named.take(60)}”")
+            }
             i++
             val body = ArrayList<String>()
             while (i < lines.size && HEADER.matchEntire(lines[i].trim()) == null && !ENVELOPE.matches(lines[i].trim())) {
@@ -104,6 +116,7 @@ object CardPatch {
                     Add(name, purpose!!, text)
                 }
                 "update" -> Update(name, purpose?.takeIf { it.isNotBlank() }, hunks(name, body))
+                "move" -> Move(name, target!!)
                 else -> Delete(name)
             }
         }

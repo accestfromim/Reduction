@@ -69,6 +69,12 @@ class AndroidBridge(
     fun deleteCard(name: String): Boolean = cards.delete(name)
 
     @JavascriptInterface
+    fun renameCard(from: String, to: String): Boolean = cards.rename(from, to)
+
+    @JavascriptInterface
+    fun saveCardMedia(base64: String, extension: String): String = cards.saveMedia(base64, extension)
+
+    @JavascriptInterface
     fun floatingCard(): String = cards.floating()
 
     @JavascriptInterface

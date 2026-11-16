@@ -33,7 +33,7 @@ class AudioQueueTest {
             return minOf(accepted.size, (elapsed * AudioQueue.SAMPLE_RATE * SPEED).toInt() * 2)
         }
 
-        override fun write(data: ByteArray, offset: Int, length: Int): Int {
+        override fun write(data: ByteArray, offset: Int, length: Int, stereo: Boolean): Int {
             synchronized(lock) {
                 if (startedAt == 0L) startedAt = System.nanoTime()
                 while (accepted.size - playedBytes() > BUFFER_BYTES) lock.wait(1)

@@ -45,25 +45,31 @@ for candidate in "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.e
   [ -x "$candidate" ] && { BROWSER="$(wslpath -w "$candidate")"; break; }
 done
 [ -n "$BROWSER" ] || echo "没有找到 Edge 或 Chrome：窗口开不了，可以在任意浏览器里打开 http://localhost:8780"
-# The launcher: starts the service inside this Linux system with no console window, and, unless
-# asked for the background only, opens the application window once the service answers. The window
-# has no address bar or tabs and keeps a profile of its own, so it is its own entry on the taskbar.
+# The pet, as a script Windows runs itself. Saved with a byte-order mark: without one, Windows PowerShell
+# would misread its Chinese text.
+{ printf '\xEF\xBB\xBF'; cat "$HERE/pet.ps1"; } > "$APPDIR/pet.ps1"
+# The launcher: starts the service inside this Linux system with no console window, puts the pet on the
+# desktop, and, when asked for the panel, opens it once the service answers. The panel is a window with
+# no address bar or tabs and a profile of its own, so it is its own entry on the taskbar.
 cat > "$APPDIR/Reduction.vbs" <<VBS
 Set shell = CreateObject("WScript.Shell")
 url = "http://localhost:8780"
+browser = "$BROWSER"
+profile = "$APPDIR_WIN\\window"
 shell.Run "wsl.exe -d ${WSL_DISTRO_NAME:-Ubuntu} -- $HERE/start.sh", 0, False
-If WScript.Arguments.Count > 0 Then WScript.Quit
+shell.Run "powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File ""$APPDIR_WIN\\pet.ps1"" -Url " & url & " -Browser """ & browser & """ -Profile """ & profile & """", 0, False
+If WScript.Arguments.Count = 0 Then WScript.Quit
 For attempt = 1 To 80
   If shell.Run("curl.exe -s -m 2 --noproxy * -o NUL " & url & "/icon.png", 0, True) = 0 Then Exit For
   WScript.Sleep 500
 Next
-shell.Run """$BROWSER"" --app=" & url & " ""--proxy-bypass-list=localhost;127.0.0.1"" ""--user-data-dir=$APPDIR_WIN\\window"" --window-size=500,920 --no-first-run", 1, False
+shell.Run """" & browser & """ --app=" & url & " ""--proxy-bypass-list=localhost;127.0.0.1"" ""--user-data-dir=" & profile & """ --window-size=420,780 --no-first-run", 1, False
 VBS
 rm -f "$HOME/.config/reduction/window.env"
 win '
 $app = "$env:LOCALAPPDATA\Reduction"
 $shell = New-Object -ComObject WScript.Shell
-foreach ($place in @(@("Desktop", ""), @("Startup", "--background"))) {
+foreach ($place in @(@("Desktop", "panel"), @("Startup", ""))) {
   $link = $shell.CreateShortcut("$([Environment]::GetFolderPath($place[0]))\Reduction.lnk")
   $link.TargetPath = "$env:WINDIR\System32\wscript.exe"
   $link.Arguments = "`"$app\Reduction.vbs`" " + $place[1]
@@ -75,4 +81,4 @@ foreach ($place in @(@("Desktop", ""), @("Startup", "--background"))) {
 '
 echo "桌面图标：$(win '[Environment]::GetFolderPath("Desktop")')\\Reduction.lnk"
 echo "开机自启：$(win '[Environment]::GetFolderPath("Startup")')\\Reduction.lnk"
-echo "装好了。双击桌面上的 Reduction 打开；登录 Windows 后它会自己在后台启动。"
+echo "装好了。登录 Windows 后桌宠会自己出现；双击桌面上的 Reduction 会同时打开面板。"

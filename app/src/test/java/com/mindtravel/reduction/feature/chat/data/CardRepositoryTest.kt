@@ -59,8 +59,9 @@ class CardRepositoryTest {
         val cards = cards()
         assertFalse(cards.save("", "x"))
         assertFalse(cards.save("两\n行", "x"))
-        assertFalse(cards.save("长".repeat(41), "x"))
-        assertTrue("path characters are just part of the name", cards.save("../../etc/passwd", "x"))
+        assertFalse(cards.save("长".repeat(61), "x"))
+        // "/" only says which folder a card is shown in; it never reaches the file system.
+        assertTrue(cards.save("../../etc/passwd", "x"))
         assertEquals(listOf("../../etc/passwd"), cards.list().map { it.name })
     }
 
@@ -89,5 +90,67 @@ class CardRepositoryTest {
         cards.patch("*** Update Card: 备忘\n+- 交报告")
         cards.delete("备忘")
         assertEquals(listOf("备忘", "备忘", "备忘"), changed)
+    }
+
+    @Test
+    fun aNameWithASlashPutsTheCardInAFolder() {
+        val cards = cards()
+        assertTrue(cards.save(" 产品需求 / 短期 ", "要做的", "近期要动手的"))
+        assertEquals("要做的", cards.read("产品需求/短期"))
+        assertEquals(listOf("产品需求/短期"), cards.list().map { it.name })
+        assertFalse(cards.save("产品需求/", "x"))
+        assertFalse(cards.save("/短期", "x"))
+    }
+
+    @Test
+    fun movingACardKeepsItsTextAndPurpose() {
+        val cards = cards()
+        cards.save("需求·短期", "- 耳机手势", "近期要动手的")
+        cards.save("备忘", "- 买电池", "零碎待办")
+        val said = cards.patch("*** Move Card: 需求·短期 -> 产品需求/短期\n*** Update Card: 产品需求/短期\n+- 悬浮卡片")
+        assertEquals(2, said.size)
+        assertEquals(null, cards.read("需求·短期"))
+        assertEquals(listOf("- 耳机手势", "- 悬浮卡片"), cards.read("产品需求/短期")!!.lines().filter { it.isNotBlank() })
+        assertEquals("近期要动手的", cards.purpose("产品需求/短期"))
+
+        val taken = runCatching { cards.patch("*** Move Card: 备忘 -> 产品需求/短期") }.exceptionOrNull()
+        assertTrue(taken is CardPatch.Invalid)
+        assertEquals("- 买电池", cards.read("备忘"))
+
+        assertTrue(cards.rename("备忘", "杂项/备忘"))
+        assertEquals("零碎待办", cards.purpose("杂项/备忘"))
+        assertFalse(cards.rename("杂项/备忘", "产品需求/短期"))
+    }
+
+    @Test
+    fun picturesAndSoundAreKeptWhileACardRefersToThem() {
+        val dir = Files.createTempDirectory("cards").toFile()
+        val cards = CardRepository(dir)
+        val picture = cards.saveMedia(byteArrayOf(1, 2, 3), "JPG")!!
+        val sound = cards.saveMedia(byteArrayOf(4, 5), "m4a")!!
+        assertEquals(null, cards.saveMedia(byteArrayOf(1), "exe"))
+        assertEquals(null, cards.saveMedia(ByteArray(0), "png"))
+        assertEquals(listOf<Byte>(1, 2, 3), cards.mediaFile(picture)!!.readBytes().toList())
+        assertEquals(null, cards.mediaFile("../" + picture))
+        assertEquals(null, cards.mediaFile("m000000000000.jpg"))
+
+        // Old enough to be swept, were nothing referring to them.
+        java.io.File(dir, "media").listFiles()!!.forEach { it.setLastModified(System.currentTimeMillis() - 7_200_000) }
+        cards.save("相册", "![白板](media:$picture)\n\n![口述](media:$sound)")
+        assertTrue(cards.mediaFile(picture) != null && cards.mediaFile(sound) != null)
+
+        cards.patch("*** Update Card: 相册\n-![口述](media:$sound)")
+        assertTrue(cards.mediaFile(picture) != null)
+        assertEquals(null, cards.mediaFile(sound))
+        cards.delete("相册")
+        assertEquals(null, cards.mediaFile(picture))
+    }
+
+    @Test
+    fun whatWasJustAddedIsNotSweptBeforeItsCardIsSaved() {
+        val cards = cards()
+        val fresh = cards.saveMedia(byteArrayOf(9), "png")!!
+        cards.save("别的", "没有图")
+        assertTrue(cards.mediaFile(fresh) != null)
     }
 }

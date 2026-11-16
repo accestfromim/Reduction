@@ -25,22 +25,62 @@ function exists(name) {
   return state.cards.some((card) => card.name === name);
 }
 
+const CLOSED_KEY = 'reduction_closed_folders';
+
+function closedFolders() {
+  try { return new Set(JSON.parse(localStorage.getItem(CLOSED_KEY) || '[]')); } catch (_) { return new Set(); }
+}
+
+/** A card's folder is what comes before the last "/" in its name; a card with none is at the top. */
+function placeOf(name) {
+  const at = name.lastIndexOf('/');
+  return at < 0 ? { folder: '', leaf: name } : { folder: name.slice(0, at), leaf: name.slice(at + 1) };
+}
+
 function renderList() {
   const list = ui.els.cardList;
   list.innerHTML = '';
   if (!state.cards.length) {
     const empty = document.createElement('div');
     empty.className = 'card-empty';
-    empty.textContent = '还没有卡片。新建几张，比如“科研想法·某方向”“备忘”，之后口述就会记进去。';
+    empty.textContent = '还没有卡片。新建几张，比如“科研想法/某方向”“备忘”，之后口述就会记进去。';
     list.appendChild(empty);
     return;
   }
+  const row = (card, leaf, inside) => {
+    const button = document.createElement('button');
+    button.className = 'card-row' + (inside ? ' inside' : '');
+    button.textContent = leaf;
+    button.dataset.name = card.name;
+    button.addEventListener('click', () => openCard(card.name));
+    return button;
+  };
+  // Cards at the top first, then each folder with its cards under it.
+  const folders = new Map();
   for (const card of state.cards) {
-    const row = document.createElement('button');
-    row.className = 'card-row';
-    row.textContent = card.name;
-    row.addEventListener('click', () => openCard(card.name));
-    list.appendChild(row);
+    const { folder, leaf } = placeOf(card.name);
+    if (!folder) list.appendChild(row(card, leaf, false));
+    else folders.set(folder, (folders.get(folder) || []).concat([{ card, leaf }]));
+  }
+  const closed = closedFolders();
+  for (const folder of Array.from(folders.keys()).sort((a, b) => a.localeCompare(b, 'zh'))) {
+    const inside = folders.get(folder);
+    const head = document.createElement('button');
+    head.className = 'card-folder' + (closed.has(folder) ? ' closed' : '');
+    const label = document.createElement('span');
+    label.textContent = folder;
+    const count = document.createElement('span');
+    count.className = 'count';
+    count.textContent = String(inside.length);
+    head.append(label, count);
+    head.addEventListener('click', () => {
+      const now = closedFolders();
+      if (now.has(folder)) now.delete(folder); else now.add(folder);
+      localStorage.setItem(CLOSED_KEY, JSON.stringify(Array.from(now)));
+      renderList();
+    });
+    list.appendChild(head);
+    if (!closed.has(folder)) for (const item of inside) list.appendChild(row(item.card, item.leaf, true));
   }
 }
 
@@ -56,7 +96,8 @@ function show(next) {
   ui.els.cardFloat.classList.toggle('hidden', mode !== 'read');
   ui.els.cardFloat.textContent = callBridge('floatingCard') === state.cardName ? '取消悬浮' : '悬浮';
   ui.els.cardCopyAll.classList.toggle('hidden', mode !== 'read');
-  ui.els.cardNameField.classList.toggle('hidden', mode !== 'new');
+  // The name can be changed while editing: that is also how a card is moved into a folder.
+  ui.els.cardNameField.classList.toggle('hidden', !editing);
   ui.els.cardCopy.classList.toggle('hidden', mode === 'new');
   ui.els.cardDelete.classList.toggle('hidden', mode === 'new');
 }
@@ -64,7 +105,18 @@ function show(next) {
 function renderOpenCard() {
   const text = String(callBridge('readCard', state.cardName) || '').trim();
   ui.els.cardTitle.textContent = state.cardName;
-  ui.els.cardBody.innerHTML = text ? renderMarkdown(text) : '';
+  // A picture or a recording is written as ![说明](media:编号); it is fetched from the app by that id.
+  ui.els.cardBody.innerHTML = text ? renderMarkdown(text.replace(/\]\(media:(m[0-9a-f]{12}\.[a-z0-9]{2,5})\)/g, '](/card-media/$1)')) : '';
+  for (const image of ui.els.cardBody.querySelectorAll('img')) {
+    const source = image.getAttribute('src') || '';
+    if (!/^\/card-media\/.+\.(m4a|mp3|wav|ogg|aac|webm|flac)$/.test(source)) continue;
+    const player = document.createElement('audio');
+    player.controls = true;
+    player.preload = 'metadata';
+    player.src = source;
+    player.title = image.getAttribute('alt') || '';
+    image.replaceWith(player);
+  }
   ui.els.cardBody.scrollTop = 0;
 }
 
@@ -105,6 +157,7 @@ export function openCard(name) {
 
 export function editCard() {
   if (mode !== 'read') return;
+  ui.els.cardNameInput.value = state.cardName;
   ui.els.cardPurposeInput.value = String(callBridge('cardPurpose', state.cardName) || '');
   ui.els.cardText.value = String(callBridge('readCard', state.cardName) || '');
   show('edit');
@@ -133,14 +186,15 @@ export function back() {
 
 export function saveCard() {
   const creating = mode === 'new';
-  const name = creating ? ui.els.cardNameInput.value.trim() : state.cardName;
+  const name = ui.els.cardNameInput.value.trim().replace(/\s*\/\s*/g, '/');
+  const renamed = !creating && name !== state.cardName;
   const purpose = ui.els.cardPurposeInput.value.trim();
   const text = ui.els.cardText.value.trim();
   if (!name) {
     ui.toast('先给卡片起个名字');
     return;
   }
-  if (creating && exists(name)) {
+  if ((creating || renamed) && exists(name)) {
     ui.toast('已经有一张叫“' + name + '”的卡片');
     return;
   }
@@ -148,8 +202,12 @@ export function saveCard() {
     ui.toast('写一句用途，助手靠它判断什么该记到这里');
     return;
   }
+  if (renamed && callBridge('renameCard', state.cardName, name) !== true) {
+    ui.toast('改不了名：名称最长 60 字，“/”两边不能是空的');
+    return;
+  }
   if (callBridge('saveCard', name, purpose, text) !== true) {
-    ui.toast('保存失败：名称最长 40 字');
+    ui.toast('保存失败：名称最长 60 字，“/”两边不能是空的');
     return;
   }
   load();
@@ -171,6 +229,56 @@ export function toggleFloat() {
     ui.toast('请在打开的系统页面里允许“显示在其他应用上层”，再回来点一次');
   }
   show(mode);
+}
+
+/** Puts [text] into the editor where the cursor is. */
+function insertIntoText(text) {
+  const box = ui.els.cardText;
+  const at = box.selectionStart ?? box.value.length;
+  const before = box.value.slice(0, at);
+  const line = (before && !before.endsWith('\n') ? '\n' : '') + text + '\n';
+  box.value = before + line + box.value.slice(box.selectionEnd ?? at);
+  box.selectionStart = box.selectionEnd = at + line.length;
+}
+
+const base64Of = (buffer) => {
+  const bytes = new Uint8Array(buffer);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+};
+
+/** A photo straight from a camera is far larger than a card needs: it is kept at 1600 pixels on its long side. */
+async function shrunk(file) {
+  const image = await createImageBitmap(file);
+  const scale = Math.min(1, 1600 / Math.max(image.width, image.height));
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.round(image.width * scale);
+  canvas.height = Math.round(image.height * scale);
+  canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.86));
+  return { buffer: await blob.arrayBuffer(), extension: 'jpg' };
+}
+
+/** The user picked a picture or a recording: it is kept by the app and referred to from the card's text. */
+export async function attachMedia(event) {
+  const file = event.target.files && event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  try {
+    const isImage = file.type.startsWith('image/') && file.type !== 'image/gif';
+    const named = (file.name.match(/\.([A-Za-z0-9]{2,5})$/) || [])[1];
+    const kept = isImage ? await shrunk(file) : { buffer: await file.arrayBuffer(), extension: (named || (file.type.startsWith('audio/') ? 'm4a' : '')).toLowerCase() };
+    const id = callBridge('saveCardMedia', base64Of(kept.buffer), kept.extension);
+    if (!id) {
+      ui.toast('放不进去：只收图片和录音，单个不超过 20 MB');
+      return;
+    }
+    insertIntoText('![' + file.name.replace(/\.[^.]*$/, '').replace(/[\[\]]/g, '') + '](media:' + id + ')');
+    ui.toast(file.type.startsWith('audio/') ? '录音已放进卡片，保存后生效' : '图片已放进卡片，保存后生效');
+  } catch (error) {
+    ui.toast('放不进去：' + (error && error.message ? error.message : '读不了这个文件'));
+  }
 }
 
 export function copyCard() {

@@ -115,6 +115,22 @@ try {
   await page.evaluate(() => Array.from(document.querySelectorAll('#cardList .card-row')).find((r) => r.textContent === 'sub agent 任务').click());
   check('the task ledger cannot be edited', await page.evaluate(() => document.getElementById('cardEdit').classList.contains('hidden') && document.getElementById('cardBody').textContent.includes('程序直接写入')));
   await page.click('#cardBack');
+  // A picture and a recording: kept by the app, shown and playable in the card, on the computer too.
+  const media = await page.evaluate(async () => {
+    const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+    const picture = window.Android.saveCardMedia(png, 'png');
+    const sound = window.Android.saveCardMedia(btoa('RIFF....WAVEfmt '), 'wav');
+    window.Android.saveCard('相册/白板', '图和录音', '![白板](media:' + picture + ')\n\n![口述](media:' + sound + ')');
+    window.Native.onCardsChanged('');
+    Array.from(document.querySelectorAll('#cardList .card-row')).find((r) => r.dataset.name === '相册/白板').click();
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    const image = document.querySelector('#cardBody img');
+    const audio = document.querySelector('#cardBody audio');
+    return { folder: !!document.querySelector('#cardList .card-folder'), loaded: !!image && image.naturalWidth === 1, audio: !!audio && audio.getAttribute('src') === '/card-media/' + sound,
+      refused: window.Android.saveCardMedia(png, 'exe') === '' };
+  });
+  check('a card shows its picture and plays its recording', media.folder && media.loaded && media.audio && media.refused, media);
+  await page.click('#cardBack');
   await page.click('#tabStream');
 
   // Holding the microphone button: recorded here, recognised, and sent as a question.
@@ -173,6 +189,21 @@ if (fs.existsSync(path.join(tools, 'usr/bin/pacat'))) {
   await wait(1500);
   const heard = seen.find((e) => e.fn === 'onAsrResult');
   check('the microphone is recorded and recognised', seen.some((e) => e.fn === 'onRecordingStart') && !!heard && heard.args[1] === true && heard.args[2] === '这是说出来的话', heard);
+  // The pet: what it is told, and talking to it with no page at all.
+  const pet = () => fetch('http://127.0.0.1:8793/pet').then((r) => r.json());
+  const talk = (action) => fetch('http://127.0.0.1:8793/pet/talk?action=' + action, { method: 'POST', headers: { 'X-Reduction': '1' } }).then((r) => r.json());
+  check('the pet is idle when nothing is happening', (await pet()).state === 'idle', await pet());
+  const listening = await talk('start');
+  await wait(1200);
+  const chats = asked.chat.length;
+  await talk('stop');
+  let busy = 'idle';
+  for (let i = 0; i < 40 && busy === 'idle'; i++) { await wait(25); busy = (await pet()).state; }
+  await wait(3500);
+  const after = await pet();
+  check('holding the pet records, and letting go asks the question', listening.state === 'listening' && asked.chat.length > chats, { listening, chats: asked.chat.length });
+  check('the pet shows it is busy, then says the answer in its bubble', busy !== 'idle' && after.state === 'idle' && after.line.includes('我在电脑上'), { busy, after });
+  check('a pet order from another site is refused', (await fetch('http://127.0.0.1:8793/pet/talk?action=start', { method: 'POST' })).status === 403);
   own.kill();
 } else {
   console.log('skip  own sound devices: audio tools not installed');
