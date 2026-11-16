@@ -1,10 +1,14 @@
 // The opening animation's second half. The first half is CSS: the logo assembles in the
 // middle of the screen. Then this moves it to where the logo sits in the top bar, shrinking
-// it to that size while the cover behind it clears, and hands over to the real logo.
+// it to that size while the cover behind it clears. Over the last stretch of the way the real
+// logo fades in and the moving drawing fades out, so what the animation ends on is the logo itself.
 
 /** When the circles have come to rest (see .splash-side in app.css). */
 const ASSEMBLED_MS = 1050;
 const LANDING_MS = 520;
+
+/** The share of the landing after which the real logo takes over from the moving drawing. */
+const HANDOVER_AT = 0.72;
 
 /** The logo's drawing spans 312 of the animation's 512 units; both are centred on the same point. */
 const LOGO_UNITS = 312;
@@ -19,8 +23,10 @@ export function playSplash() {
     return;
   }
   logo.style.opacity = '0';
+  let handover = null;
   const finish = () => {
     logo.style.opacity = '';
+    if (handover) handover.cancel();
     splash.remove();
   };
   setTimeout(() => {
@@ -37,6 +43,8 @@ export function playSplash() {
         [{ transform: 'none' }, { transform: `translate(${dx}px, ${dy}px) scale(${scale})` }],
         timing
       );
+      drawing.animate([{ opacity: 1 }, { opacity: 1, offset: HANDOVER_AT }, { opacity: 0 }], timing);
+      handover = logo.animate([{ opacity: 0 }, { opacity: 0, offset: HANDOVER_AT }, { opacity: 1 }], timing);
       landing.finished.then(finish, finish);
     } catch (_) {
       finish();

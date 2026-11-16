@@ -6,9 +6,10 @@ import org.junit.Test
 class AppSettingsTest {
 
     @Test
-    fun theLowercaseDefaultProjectIsCorrected() {
-        val settings = AppSettings.fromJson("""{"pcProject":"/home/user/dsassist-iterate"}""")
-        assertEquals("/home/user/DSAssist-iterate", settings.pcProject)
+    fun aProjectPathFromAnEarlierNameFollowsTheDirectory() {
+        for (former in listOf("/home/user/DSAssist-iterate", "/home/user/dsassist-iterate")) {
+            assertEquals("/home/user/Reduction-iterate", AppSettings.fromJson("""{"pcProject":"$former"}""").pcProject)
+        }
     }
 
     @Test

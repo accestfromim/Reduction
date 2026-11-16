@@ -16,7 +16,7 @@ export const DEFAULT_SETTINGS = Object.freeze({
   opencodeEnabled: false,
   opencodeWriteEnabled: false,
   opencodeSessionId: '',
-  pcProject: '/home/user/DSAssist-iterate'
+  pcProject: '/home/user/Reduction-iterate'
 });
 
 function string(value, fallback = '') {
@@ -40,7 +40,7 @@ export function normalizeSettings(raw) {
     opencodeEnabled: raw?.opencodeEnabled === true,
     opencodeWriteEnabled: raw?.opencodeWriteEnabled === true,
     opencodeSessionId: string(raw?.opencodeSessionId).trim(),
-    pcProject: string(raw?.pcProject, '/home/user/DSAssist-iterate').trim() || '/home/user/DSAssist-iterate'
+    pcProject: string(raw?.pcProject, '/home/user/Reduction-iterate').trim() || '/home/user/Reduction-iterate'
   };
 }
 

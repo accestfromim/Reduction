@@ -168,6 +168,14 @@ const splash = await page.evaluate(async () => {
   }
   landing.pause();
   landing.currentTime = landing.effect.getTiming().duration;
+  // The logo is the animation's last frame: both are three circles of radius 82, the outer two
+  // centred 59 to either side and hidden within 106 of the middle. Measured in the logo's own units.
+  const [core, left, right] = Array.from(document.querySelectorAll('#glyph > *')).map((shape) => shape.getBBox());
+  const shape = {
+    core: [core.x, core.width].map(Math.round).join(),
+    left: [left.x, left.x + left.width, left.y, left.y + left.height].map(Math.round).join(),
+    right: [right.x, right.x + right.width, right.y, right.y + right.height].map(Math.round).join()
+  };
   const drawn = el.querySelector('.splash-core').getBoundingClientRect();
   const target = logo.getBoundingClientRect();
   // The middle circle is 164 of the logo's 312 units wide.
@@ -178,11 +186,13 @@ const splash = await page.evaluate(async () => {
   };
   landing.finish();
   await wait(100);
-  return { during, fit, gone: !document.getElementById('splash'), logoShown: logo.style.opacity === '', logoWidth: target.width };
+  return { during, fit, shape, gone: !document.getElementById('splash'), logoShown: logo.style.opacity === '', logoWidth: target.width };
 });
 console.log('splash:', JSON.stringify(splash));
+// Left arc: from the outer circle's edge (197 - 82) to where the two circles cross (x = 188).
+const shape = (found) => found.core !== '174,164' || found.left !== '115,188,174,338' || found.right !== '324,397,174,338';
 if (splash.during.pointer !== 'none' || splash.during.circles !== 4 || !splash.during.logoHidden ||
-    splash.fit.dx > 0.6 || splash.fit.dy > 0.6 || splash.fit.size > 0.6 || !splash.gone || !splash.logoShown || splash.logoWidth < 20) {
+    shape(splash.shape) || splash.fit.dx > 0.6 || splash.fit.dy > 0.6 || splash.fit.size > 0.6 || !splash.gone || !splash.logoShown || splash.logoWidth < 20) {
   throw new Error('opening animation did not behave: ' + JSON.stringify(splash));
 }
 

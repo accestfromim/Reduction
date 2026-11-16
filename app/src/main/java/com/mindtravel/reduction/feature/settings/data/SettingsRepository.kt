@@ -54,7 +54,7 @@ class SettingsRepository(context: Context) : SettingsGateway {
             opencodeEnabled = false,
             opencodeWriteEnabled = false,
             opencodeSessionId = "",
-            pcProject = "/home/user/DSAssist-iterate"
+            pcProject = AppSettings.DEFAULT_PROJECT
         )
         save(legacy)
         Logs.add("Settings migrated to v2")

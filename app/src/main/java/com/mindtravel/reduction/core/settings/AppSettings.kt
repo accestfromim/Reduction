@@ -41,10 +41,13 @@ data class AppSettings(
     }
 
     companion object {
-        const val DEFAULT_PROJECT = "/home/user/DSAssist-iterate"
+        const val DEFAULT_PROJECT = "/home/user/Reduction-iterate"
 
-        /** A default shipped by early versions; that directory does not exist. */
-        private const val LOWERCASE_DEFAULT_PROJECT = "/home/user/dsassist-iterate"
+        /** Where the project directory was under the app's earlier names; it is found at [DEFAULT_PROJECT] now. */
+        private val FORMER_DEFAULT_PROJECTS = setOf(
+            "/home/user/DSAssist-iterate",
+            "/home/user/dsassist-iterate"
+        )
 
         fun fromJson(raw: String): AppSettings {
             val json = JSONObject(raw)
@@ -66,7 +69,7 @@ data class AppSettings(
                 opencodeSessionId = json.stringOrEmpty("opencodeSessionId").trim(),
                 pcProject = json.stringOrEmpty("pcProject").trim()
                     .ifBlank { DEFAULT_PROJECT }
-                    .let { if (it == LOWERCASE_DEFAULT_PROJECT) DEFAULT_PROJECT else it }
+                    .let { if (it in FORMER_DEFAULT_PROJECTS) DEFAULT_PROJECT else it }
             )
         }
     }
