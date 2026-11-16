@@ -105,6 +105,9 @@ class ChatController(
         return true
     }
 
+    /** A reply is being generated or spoken. */
+    fun isBusy(): Boolean = synchronized(lock) { current != null }
+
     /** Abandons the reply in progress, if any. The UI is told through onChatAborted. */
     fun cancel() {
         val reply = synchronized(lock) {

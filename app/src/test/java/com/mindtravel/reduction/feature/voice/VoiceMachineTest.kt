@@ -93,7 +93,7 @@ class VoiceMachineTest {
     }
 
     @Test
-    fun theHeadsetGestureInterruptsAReplyAndIsIgnoredWhileRecording() {
+    fun aHeadsetPressInterruptsAReplyAndEndsARecording() {
         val replying = run(
             Event.TurnSpoken(1), Event.Transcribed(1, "你好"), Event.OkDone(1), Event.ReplyStarted("r"),
             from = listening
@@ -102,9 +102,10 @@ class VoiceMachineTest {
         assertEquals(VoiceState.PREPARING, step.state.phase)
         assertEquals(listOf(Effect.AbortReply, Effect.PauseWake, Effect.PrepareMic(2, headsetMic = true)), step.effects)
 
+        // While recording, a press means "that is all": the turn ends and is kept.
         val again = VoiceMachine.next(listening, Event.HeadsetGesture)
         assertEquals(listening, again.state)
-        assertEquals(emptyList<Effect>(), again.effects)
+        assertEquals(listOf<Effect>(Effect.FinishRecording(1)), again.effects)
     }
 
     // ── the other ways a turn can go ────────────────────────────────────────

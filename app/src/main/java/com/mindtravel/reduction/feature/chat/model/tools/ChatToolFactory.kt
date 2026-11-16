@@ -22,13 +22,7 @@ class ChatToolFactory(
     private val agentRuns: AgentRuns
 ) {
     fun create(settings: AppSettings): ToolRegistry {
-        val harness = AgentHarness(
-            pcGateway = pcGateway,
-            profile = PcProfile(settings.pcHost, settings.pcPort, settings.pcUser),
-            apiKey = settings.apiKey,
-            model = settings.model,
-            launcherScript = agentLauncherScript
-        )
+        val harness = harness(settings)
         val tools = buildList {
             add(PatchCardsTool(cards, emitter))
             add(ReadCardTool(cards))
@@ -50,6 +44,24 @@ class ChatToolFactory(
         }
         return ToolRegistry(tools)
     }
+
+    /** True while some run has not been seen to end: there is something to watch. */
+    fun hasOpenRuns(): Boolean = agentRuns.unfinished().isNotEmpty()
+
+    /** The reports of runs that have ended since they were last looked at, each with its number. */
+    fun endedRuns(settings: AppSettings): List<Pair<Int, String>> {
+        if (!hasOpenRuns()) return emptyList()
+        return RunAgentTool(harness(settings), agentRuns, settings.pcProject, AGENTS_ROOT, settings.opencodeWriteEnabled, approvalHost)
+            .endedRuns()
+    }
+
+    private fun harness(settings: AppSettings) = AgentHarness(
+        pcGateway = pcGateway,
+        profile = PcProfile(settings.pcHost, settings.pcPort, settings.pcUser),
+        apiKey = settings.apiKey,
+        model = settings.model,
+        launcherScript = agentLauncherScript
+    )
 
     private companion object {
         /** Where sub agents' own folders live on the computer. */

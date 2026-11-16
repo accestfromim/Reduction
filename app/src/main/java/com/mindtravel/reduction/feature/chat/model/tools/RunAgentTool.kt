@@ -80,6 +80,18 @@ class RunAgentTool(
         }
     }
 
+    /**
+     * Looks at every run not yet known to be over and returns the report of each one that
+     * has ended, with its number. A run is reported this way once.
+     */
+    fun endedRuns(): List<Pair<Int, String>> {
+        if (!harness.isConfigured) return emptyList()
+        return runs.unfinished().mapNotNull { run ->
+            val progress = harness.progress(run.folder, run.launcherId)
+            if (progress.state == AgentHarness.State.RUNNING) null else run.number to report(run, progress)
+        }
+    }
+
     /** The run a call is about: the one it names, or null when it names none. A wrong number is an error. */
     private fun named(args: JSONObject): Result<AgentRuns.Run?> {
         val raw = args.stringOrNull("run")?.trim().orEmpty().removePrefix("任务").trim()

@@ -54,7 +54,14 @@ class Conversation(
      * why, when it cannot be sent.
      */
     @Synchronized
-    fun submit(raw: String): Boolean {
+    fun submit(raw: String): Boolean = submit(raw, raw)
+
+    /**
+     * As [submit], for a message that does not come from the user's mouth, such as the
+     * report of a finished sub agent: the assistant is given [raw], the screen shows [shown].
+     */
+    @Synchronized
+    fun submit(raw: String, shown: String): Boolean {
         val text = raw.trim()
         if (text.isEmpty()) return false
         val settings = settingsRepository.load()
@@ -66,7 +73,7 @@ class Conversation(
         lines += Line(Role.USER, text)
         save()
         val id = UUID.randomUUID().toString()
-        emitter.emit("onReplyBegin", id, text)
+        emitter.emit("onReplyBegin", id, shown.trim().ifEmpty { text })
 
         val directory = cards.list().map { card ->
             "- ${card.name}：${card.purpose.ifBlank { "（没有写用途）" }}（${card.chars} 字）"

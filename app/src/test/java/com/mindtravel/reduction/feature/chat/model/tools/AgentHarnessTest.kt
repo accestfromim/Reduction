@@ -213,6 +213,18 @@ class AgentHarnessTest {
     }
 
     @Test
+    fun aRunThatHasEndedIsReportedOnceWithoutBeingAskedFor() {
+        val launcher = FakeLauncher()
+        launcher.status("STATE running\n")
+        tool(launcher).execute(args("action" to "start", "task" to "查甲"))
+        assertEquals(emptyList<Pair<Int, String>>(), tool(launcher).endedRuns())
+
+        launcher.status("STATE done 0\n$textEvent\n")
+        assertEquals(listOf(1 to "【完成】任务 1\n做完了。"), tool(launcher).endedRuns())
+        assertEquals(emptyList<Pair<Int, String>>(), tool(launcher).endedRuns())
+    }
+
+    @Test
     fun runNumbersSurviveARestart() {
         val file = File(Files.createTempDirectory("runs").toFile(), "runs.json")
         val first = AgentRuns(file)

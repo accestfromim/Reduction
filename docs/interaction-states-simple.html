@@ -179,22 +179,22 @@
 stateDiagram-v2
     direction TB
     [*] --> IDLE
-    IDLE --> PREPARING: Hi Reduction / 耳机手势
+    IDLE --> PREPARING: Hi Reduction / 耳机单击
     state "录音" as REC {
         PREPARING --> LISTENING: 麦克风就绪，乐音响起
-        LISTENING --> TURN_ACK: 听到“完毕” / 点结束 / 满 60s / 12s 没人说话 / 取消 / 出错
+        LISTENING --> TURN_ACK: 听到“完毕” / 耳机单击 / 点结束 / 满 60s / 12s 没人说话 / 取消 / 出错
     }
     PREPARING --> IDLE: 取消 / 麦克风打不开（无声）
     TURN_ACK --> REPLYING: 识别到文本
     TURN_ACK --> IDLE: 没人说话 / 没听清 / 取消 / 出错
-    REPLYING --> PREPARING: Hi Reduction / 耳机手势（打断）
+    REPLYING --> PREPARING: Hi Reduction / 耳机单击（打断）
     REPLYING --> IDLE: 回复播完 / 回复失败
       </pre>
       <div class="cues">
         <div class="cue">
           <div class="cue-t">乐音</div>
           <div class="cue-m">含义：麦克风开着，正在录，可以说。</div>
-          <div class="cue-d">进入录音状态的唯一信号。录音只由两样东西开启：唤醒词“Hi Reduction”，或耳机的语音助手手势；待唤醒时用，或在回复播放中用来打断。先把麦克风准备好（用耳机麦克风时先让蓝牙切到通话模式），就绪的那一刻开始录音，同时响起一个微弱的和弦，各音以不同的慢速率起伏。它靠麦克风送来的音频帧续命，每半秒一次：麦克风不出声音或录音中断，1.5 秒内自己停下。耳机和外放音量相同。</div>
+          <div class="cue-d">进入录音状态的唯一信号。录音只由两样东西开启：唤醒词“Hi Reduction”，或在耳机上单击；待唤醒时用，或在回复播放中用来打断。先把麦克风准备好（用耳机麦克风时先让蓝牙切到通话模式），就绪的那一刻开始录音，同时响起一个微弱的和弦，各音以不同的慢速率起伏。它靠麦克风送来的音频帧续命，每半秒一次：麦克风不出声音或录音中断，1.5 秒内自己停下。耳机和外放音量相同。</div>
         </div>
         <div class="cue">
           <div class="cue-t">“好的”</div>

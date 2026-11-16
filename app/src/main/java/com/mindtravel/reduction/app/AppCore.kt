@@ -12,6 +12,7 @@ import com.mindtravel.reduction.feature.chat.model.ChatEngine
 import com.mindtravel.reduction.feature.chat.model.ChatSession
 import com.mindtravel.reduction.feature.chat.model.tools.AgentRuns
 import com.mindtravel.reduction.feature.chat.model.tools.ChatToolFactory
+import com.mindtravel.reduction.feature.chat.ui.AgentWatch
 import com.mindtravel.reduction.feature.chat.ui.ChatController
 import com.mindtravel.reduction.feature.chat.ui.Conversation
 import com.mindtravel.reduction.feature.pc.ui.PcController
@@ -27,6 +28,7 @@ import com.mindtravel.reduction.feature.voice.SpokenCues
 import com.mindtravel.reduction.feature.voice.TurnListener
 import com.mindtravel.reduction.feature.voice.TurnRecorder
 import com.mindtravel.reduction.feature.voice.VoiceRuntime
+import com.mindtravel.reduction.feature.voice.VoiceState
 import com.mindtravel.reduction.feature.voice.WakeControl
 import com.mindtravel.reduction.feature.voice.wake.WakeWordBus
 import com.mindtravel.reduction.feature.voice.wake.WakeWordService
@@ -34,6 +36,7 @@ import com.mindtravel.reduction.hardware.audio.AudioQueue
 import com.mindtravel.reduction.hardware.audio.AudioRoutes
 import com.mindtravel.reduction.hardware.audio.AudioTrackSink
 import com.mindtravel.reduction.hardware.audio.HeadsetMicController
+import com.mindtravel.reduction.hardware.audio.MediaButtons
 import com.mindtravel.reduction.hardware.audio.PcmPlayer
 import com.mindtravel.reduction.hardware.audio.RecordingArchive
 import com.mindtravel.reduction.hardware.audio.WavPcm
@@ -121,10 +124,7 @@ class AppCore private constructor(context: Context) {
 
     // ── features: chat ──────────────────────────────────────────────────────
     private val chatEngine: ChatEngine = ChatSession(models.chatGateway)
-    private val chatController = ChatController(
-        settingsRepository = settingsRepository,
-        chatEngine = chatEngine,
-        toolFactory = ChatToolFactory(
+    private val toolFactory = ChatToolFactory(
             searchGateway = models.searchGateway,
             pcGateway = pcGateway,
             approvalHost = ui,
@@ -133,7 +133,11 @@ class AppCore private constructor(context: Context) {
             agentLauncherScript = { harnessScript(context, "run-agent.sh") },
             sessionStatusScript = { harnessScript(context, "session-status.py") },
             agentRuns = AgentRuns(File(context.filesDir, "agent-runs.json"))
-        ),
+        )
+    private val chatController = ChatController(
+        settingsRepository = settingsRepository,
+        chatEngine = chatEngine,
+        toolFactory = toolFactory,
         speech = speech,
         say = ackCue::say,
         emitter = ui,
@@ -180,11 +184,25 @@ class AppCore private constructor(context: Context) {
         cue = ackCue,
         capture = turnListener,
         isPushToTalkActive = pushToTalk::isActive,
-        submit = conversation::submit,
+        submit = { text -> conversation.submit(text) },
         abortReply = chatController::cancel,
         emitter = ui,
         scope = scope
     ).also { chatController.observer = it }
+
+    private val mediaButtons = MediaButtons(context) { voice.onHeadsetGesture() }
+
+    /** A sub agent's result reaches the conversation by itself, in a quiet moment. */
+    private val agentWatch = AgentWatch(
+        finished = {
+            toolFactory.endedRuns(settingsRepository.load()).map { (number, report) ->
+                AgentWatch.Report("任务 $number 结束了", "【任务 $number 已结束】下面是它交回的结果，请向用户汇报。\n\n$report")
+            }
+        },
+        quiet = { voice.state.phase == VoiceState.IDLE && !chatController.isBusy() && !pushToTalk.isActive() },
+        deliver = { report -> conversation.submit(report.text, report.title) },
+        scope = scope
+    )
 
     // ── features: pc ────────────────────────────────────────────────────────
     val pc = PcController(
@@ -203,6 +221,8 @@ class AppCore private constructor(context: Context) {
             voice.onWakeWord()
         }
         if (WakeWordBus.consumePending()) voice.onWakeWord()
+        mediaButtons.start()
+        agentWatch.start()
         WakeWordBus.clipSink = { wav, keyword -> recordings.keep("wake", wav, keyword) }
         spokenCues.prepare()
         Logs.add("Core started")

@@ -16,9 +16,10 @@ package com.mindtravel.reduction.feature.voice
  *     LISTENING ──turn ends──▶ TURN_ACK ("好的") ──words──▶ REPLYING ──reply spoken──▶ IDLE
  *
  * Two things start a recording, and nothing else opens the microphone: the wake phrase,
- * and the headset's voice-assistant gesture. Either works in IDLE, and again while a
- * reply is playing, which it interrupts. A recording started from the headset is taken
- * through the headset's microphone: the phone may be in a pocket.
+ * and a press on the headset — its play/pause button or its voice-assistant gesture.
+ * Either works in IDLE, and again while a reply is playing, which it interrupts. A
+ * recording started from the headset is taken through the headset's microphone: the
+ * phone may be in a pocket. A press while recording ends the turn.
  *
  * Each recording has a number, [State.turn]. Events about a recording carry its number,
  * and one that arrives for an earlier recording is ignored.
@@ -55,7 +56,7 @@ object VoiceMachine {
         /** The wake phrase was heard. */
         data object WakeWord : Event
 
-        /** The headset's voice-assistant gesture was made. */
+        /** The headset was pressed: its play/pause button, or its voice-assistant gesture. */
         data object HeadsetGesture : Event
 
         /** The microphone is open and delivering audio. */
@@ -184,7 +185,8 @@ object VoiceMachine {
         e is Event.MicFailed && e.turn == s.turn ->
             acknowledge(s, Pending.GO_IDLE, Effect.ShowError(e.message), Effect.SayOk(s.turn), Effect.Say(Cue.FAILED))
 
-        e == Event.UserFinish -> Step(s, listOf(Effect.FinishRecording(s.turn)))
+        // Pressing the headset again while recording says "that is all", like the finish button.
+        e == Event.UserFinish || e == Event.HeadsetGesture -> Step(s, listOf(Effect.FinishRecording(s.turn)))
 
         e == Event.UserCancel ->
             // "好的" first: closing the microphone can take a moment and must not delay it.
