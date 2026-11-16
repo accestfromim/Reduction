@@ -4,9 +4,9 @@
 
 | 组件 | 用在哪 | 上游 | 许可证 |
 | --- | --- | --- | --- |
-| sherpa-onnx（`app/libs/sherpa-onnx-arm64.aar`） | 本地唤醒词、结束词、人声检测的运行库 | k2-fsa/sherpa-onnx | Apache-2.0 |
-| 关键词模型（`assets/kws`、`assets/kws-en`） | 认“完毕”和“Hi Reduction” | sherpa-onnx 发布的 zipformer KWS 模型（wenetspeech、gigaspeech） | 随 sherpa-onnx 发布，需核实 |
-| Silero VAD（`assets/vad/silero_vad.onnx`） | 判断有没有人在说话 | snakers4/silero-vad | MIT |
+| sherpa-onnx（`app/libs/sherpa-onnx-arm64.aar`，不入库，`tools/models/fetch-models.sh` 取） | 本地唤醒词、结束词、人声检测的运行库 | k2-fsa/sherpa-onnx v2.0.1 | Apache-2.0 |
+| 关键词模型（`assets/kws`、`assets/kws-en`，不入库，同上） | 认“完毕”和“Hi Reduction” | sherpa-onnx 发布的 zipformer KWS 模型（wenetspeech mobile、gigaspeech） | Apache-2.0 |
+| Silero VAD（`assets/vad/silero_vad.onnx`，不入库，同上） | 判断有没有人在说话 | snakers4/silero-vad | MIT |
 | marked | Markdown 渲染 | markedjs/marked | MIT |
 | DOMPurify | 渲染前清洗 HTML | cure53/DOMPurify | Apache-2.0 或 MPL-2.0 |
 | KaTeX | 数学公式 | KaTeX/KaTeX | MIT |

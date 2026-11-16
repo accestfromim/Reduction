@@ -61,3 +61,7 @@ desktop/install.sh     # 装成应用：桌宠、开机自启、桌面图标
 - [架构图](docs/interaction-states-simple.png)：硬件、模型、功能、界面四层，以及语音状态机
 - [Agent 工作原则](docs/agent-principles.md)：super agent、sub agent 和人如何分工
 - [用到的第三方组件](docs/THIRD_PARTY.md)
+
+## 许可证
+
+[MIT](LICENSE)。用到的第三方组件各自的许可证见[这里](docs/THIRD_PARTY.md)。

@@ -80,10 +80,12 @@ class KeywordSpotterModel(private val context: Context, private val language: La
     private fun load(): KeywordSpotter {
         check(NativeModels.available) { "此设备不支持本地关键词模型" }
         val model = OnlineModelConfig(
+            // Named without the epochs each model was trained for: tools/models/fetch-models.sh puts
+            // whatever build the configuration there names under these three names.
             transducer = OnlineTransducerModelConfig(
-                encoder = "${language.dir}/encoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
-                decoder = "${language.dir}/decoder-epoch-12-avg-2-chunk-16-left-64.int8.onnx",
-                joiner = "${language.dir}/joiner-epoch-12-avg-2-chunk-16-left-64.int8.onnx"
+                encoder = "${language.dir}/encoder.onnx",
+                decoder = "${language.dir}/decoder.onnx",
+                joiner = "${language.dir}/joiner.onnx"
             ),
             tokens = "${language.dir}/tokens.txt",
             // The model is tiny: a second thread costs several times the CPU for no gain.

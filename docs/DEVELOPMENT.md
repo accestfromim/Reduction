@@ -284,13 +284,13 @@ cp local.env.example local.env     # 填 JAVA_HOME、ANDROID_HOME
 ./build.sh                         # dist/Reduction-v<版本>.apk
 ```
 
-免按住模式依赖：
+本地语音用的运行库和模型不入库，clone 之后取一次：
 
-- `app/libs/sherpa-onnx-arm64.aar`
-- `app/src/main/assets/kws-en/` 下的英文 KWS 模型（唤醒词 Hi Reduction，`keywords.txt` 里是它的子词编码）
-- `app/src/main/assets/kws/` 下的中文 KWS 模型（结束词“完毕”）
-- `app/src/main/assets/vad/silero_vad.onnx` 人声检测模型
-- 唤醒词：`Hi Reduction`
+```bash
+tools/models/fetch-models.sh       # 下载并核对 sha256，放到 App 需要的位置
+```
+
+要哪些东西、从哪来、怎么换成别的模型，见 [tools/models/README.md](../tools/models/README.md)。唤醒词是 `Hi Reduction`，结束词是“完毕”。
 
 签名：自己生成一个签名文件，路径和口令写进根目录的 `keystore.properties`（不入库；字段是 `storeFile`、`storePassword`、`keyAlias`、`keyPassword`）。没有这个文件时构建出来的是未签名的包。升级安装必须始终用同一个签名文件。
 
