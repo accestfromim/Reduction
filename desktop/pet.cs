@@ -4,7 +4,8 @@
 //   the screen behind it is really bent round it, by the graphics card
 //   hold the space bar and speak, let go to send   (anywhere on the computer; its own microphone)
 //   hold Ctrl and the space bar and speak: what was said, put in order and stripped of the spoken filler, is
-//       typed where the cursor is                   (dictation; nothing is sent to the conversation)
+//       put on the clipboard, to be pasted where it is wanted (dictation; nothing is sent to the conversation,
+//       and nothing is typed anywhere)
 //   what it says appears in a box above it that can be edited, copied with one click, and resized
 //   click it to open or close the panel            (cards, history, settings): a card beside the pet, with no
 //       title bar or frame, that goes where the pet goes. The page in it is drawn by WebView2, the web
@@ -343,30 +344,6 @@ class SpaceKey {
   }
 }
 
-// ── typing for the user ───────────────────────────────────────────────────
-static class Typist {
-  [StructLayout(LayoutKind.Sequential)] struct Key { public ushort Vk, Scan; public uint Flags, Time; public IntPtr Extra; }
-  [StructLayout(LayoutKind.Explicit, Size = 40)] struct Input { [FieldOffset(0)] public uint Type; [FieldOffset(8)] public Key Ki; }
-  [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint count, Input[] inputs, int size);
-  [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
-
-  public static bool CtrlDown { get { return (GetAsyncKeyState(0x11) & 0x8000) != 0; } }
-
-  /// Types [text] into whatever window has the keyboard, as characters rather than keys: no shortcut is set off.
-  public static void Type(string text) {
-    List<Input> strokes = new List<Input>();
-    foreach (char c in text) {
-      if (c == '\r' || c == '\n') continue;                       // Enter sends in many places; a dictation is one paragraph
-      for (int up = 0; up < 2; up++) {
-        Input input = new Input(); input.Type = 1;
-        input.Ki.Scan = c; input.Ki.Flags = 4u | (up == 1 ? 2u : 0u);
-        strokes.Add(input);
-      }
-    }
-    if (strokes.Count > 0) SendInput((uint)strokes.Count, strokes.ToArray(), 40);
-  }
-}
-
 // ── the box the pet speaks in ─────────────────────────────────────────────
 // A small card above the pet: the text can be edited and selected, one click copies it all, and it is as
 // large as what it holds unless it has been dragged to another size by its corner. It never takes the
@@ -394,9 +371,7 @@ class ReplyBox {
     StackPanel bar = new StackPanel(); bar.Orientation = Orientation.Horizontal; bar.HorizontalAlignment = HorizontalAlignment.Right;
     bar.Margin = new Thickness(0, 4, 14, 0);
     Style(copy, "复制"); Style(close, "×");
-    copy.Click += delegate {
-      try { Clipboard.SetText(text.Text); copy.Content = "已复制"; } catch { copy.Content = "没复制上"; }
-    };
+    copy.Click += delegate { Copy(); };
     close.Click += delegate { Hide(); };
     bar.Children.Add(copy); bar.Children.Add(close);
     DockPanel.SetDock(bar, Dock.Bottom); rows.Children.Add(bar);
@@ -419,6 +394,16 @@ class ReplyBox {
     button.Background = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)); button.BorderThickness = new Thickness(0);
     button.Foreground = new SolidColorBrush(Color.FromRgb(0xD8, 0xD8, 0xD8)); button.FontSize = 12; button.Cursor = Cursors.Hand;
     button.Focusable = false;
+  }
+
+  /// Puts what the box holds on the clipboard, and says on the button whether it got there.
+  public bool Copy() {
+    // Another program may hold the clipboard for a moment: asked a few times before giving up.
+    for (int attempt = 0; attempt < 6; attempt++) {
+      try { Clipboard.SetDataObject(text.Text, true); copy.Content = "已复制"; return true; }
+      catch { Thread.Sleep(40); }
+    }
+    copy.Content = "没复制上"; return false;
   }
 
   public bool Shown { get { return Window.IsVisible; } }
@@ -749,7 +734,7 @@ class Pet {
       Ask("/pet/talk?action=start", "POST", delegate(Dictionary<string, object> answer) {
         if (answer != null && (string)answer["state"] == "listening") {
           if (!wants) { Ask("/pet/talk?action=cancel", "POST", null); return; }  // let go before the microphone was open
-          holding = true; state = "listening"; Say(dictating ? "在听…松开后整理成文字，打在光标处" : "在听…松开空格发送", 600);
+          holding = true; state = "listening"; Say(dictating ? "在听…松开后整理成文字，放进剪贴板" : "在听…松开空格发送", 600);
         } else if (answer != null && !(bool)answer["ready"]) Say("先点我一下，在面板的设置里填 API Key", 0);
         else Say("用不了麦克风", 0);
       });
@@ -838,17 +823,11 @@ class Pet {
     box.Say(text, seconds);
   }
 
-  /// A dictation, put in order: typed where the cursor is, and left in the box to be changed or copied.
+  /// A dictation, put in order: put on the clipboard for the user to paste where it is wanted, and left in
+  /// the box to be changed first. Nothing is typed: where the cursor happens to be is not where it is meant.
   void Dictate(string text) {
     Say(text, 60);
-    if (box.IsFront || window.IsActive) return;                   // the keyboard is with the pet itself: there is nowhere to type
-    int tries = 0; DispatcherTimer wait = new DispatcherTimer(); wait.Interval = TimeSpan.FromMilliseconds(60);
-    wait.Tick += delegate {
-      if (Typist.CtrlDown && tries++ < 50) return;                // with Ctrl still down the letters would be shortcuts
-      wait.Stop();
-      try { Typist.Type(text); } catch { }
-    };
-    wait.Start();
+    box.Copy();
   }
 
   /// Asks the service off the window's thread, and hands the answer (null when there is none) back on it.

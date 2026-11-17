@@ -320,7 +320,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
 
     @Volatile private var petKind = "say"
 
-    /** [kind] is "say" for something to read, "dictation" for text the pet is to type where the cursor is. */
+    /** [kind] is "say" for something to read, "dictation" for text the pet is to put on the clipboard. */
     private fun petSays(line: String, kind: String = "say") {
         petLine = line.trim()
         petKind = kind
