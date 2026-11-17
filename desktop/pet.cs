@@ -3,6 +3,9 @@
 //   it breathes while idle, opens its wings while listening, spins them while thinking, pulses while speaking
 //   the screen behind it is really bent round it, by the graphics card
 //   hold the space bar and speak, let go to send   (anywhere on the computer; its own microphone)
+//   hold Ctrl and the space bar and speak: what was said, put in order and stripped of the spoken filler, is
+//       typed where the cursor is                   (dictation; nothing is sent to the conversation)
+//   what it says appears in a box above it that can be edited, copied with one click, and resized
 //   click it to open or close the full panel       (cards, history, settings)
 //   drag it anywhere; right-click for the menu
 //
@@ -260,12 +263,14 @@ class SpaceKey {
   public const int HoldMs = 350;
 
   public bool Enabled = true;
-  public Action Held = delegate { }, LetGo = delegate { };
+  /// Held is told whether Ctrl was down with it: that is dictation rather than talk.
+  public Action<bool> Held = delegate { };
+  public Action LetGo = delegate { };
 
   readonly Hook keep;                    // kept, or the hook would be collected while Windows still calls it
   IntPtr hook;
   readonly DispatcherTimer wait = new DispatcherTimer();
-  bool pending, talking, passing;
+  bool pending, talking, passing, withCtrl;
 
   public SpaceKey() {
     keep = Each;
@@ -274,7 +279,7 @@ class SpaceKey {
       wait.Stop();
       if (!pending) return;
       pending = false; talking = true;
-      try { Held(); } catch { }
+      try { Held(withCtrl); } catch { }
     };
   }
 
@@ -308,8 +313,10 @@ class SpaceKey {
     if (down) {
       if (passing) return CallNextHookEx(hook, code, message, at);
       if (pending || talking) return (IntPtr)1;                                                // the key repeating while held
-      // With Ctrl, Alt, Shift or the Windows key it is a shortcut of someone else's.
-      if (!Enabled || IsDown(0x11) || IsDown(0x12) || IsDown(0x10) || IsDown(0x5B) || IsDown(0x5C)) {
+      // With Alt, Shift or the Windows key it is a shortcut of someone else's. With Ctrl alone it is
+      // dictation when held, and still Ctrl+Space when tapped.
+      withCtrl = IsDown(0x11);
+      if (!Enabled || IsDown(0x12) || IsDown(0x10) || IsDown(0x5B) || IsDown(0x5C)) {
         passing = true;
         return CallNextHookEx(hook, code, message, at);
       }
@@ -334,6 +341,117 @@ class SpaceKey {
   }
 }
 
+// ── typing for the user ───────────────────────────────────────────────────
+static class Typist {
+  [StructLayout(LayoutKind.Sequential)] struct Key { public ushort Vk, Scan; public uint Flags, Time; public IntPtr Extra; }
+  [StructLayout(LayoutKind.Explicit, Size = 40)] struct Input { [FieldOffset(0)] public uint Type; [FieldOffset(8)] public Key Ki; }
+  [DllImport("user32.dll", SetLastError = true)] static extern uint SendInput(uint count, Input[] inputs, int size);
+  [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
+
+  public static bool CtrlDown { get { return (GetAsyncKeyState(0x11) & 0x8000) != 0; } }
+
+  /// Types [text] into whatever window has the keyboard, as characters rather than keys: no shortcut is set off.
+  public static void Type(string text) {
+    List<Input> strokes = new List<Input>();
+    foreach (char c in text) {
+      if (c == '\r' || c == '\n') continue;                       // Enter sends in many places; a dictation is one paragraph
+      for (int up = 0; up < 2; up++) {
+        Input input = new Input(); input.Type = 1;
+        input.Ki.Scan = c; input.Ki.Flags = 4u | (up == 1 ? 2u : 0u);
+        strokes.Add(input);
+      }
+    }
+    if (strokes.Count > 0) SendInput((uint)strokes.Count, strokes.ToArray(), 40);
+  }
+}
+
+// ── the box the pet speaks in ─────────────────────────────────────────────
+// A small card above the pet: the text can be edited and selected, one click copies it all, and it is as
+// large as what it holds unless it has been dragged to another size by its corner. It never takes the
+// keyboard by appearing — only when clicked.
+class ReplyBox {
+  public readonly Window Window = new Window();
+  readonly TextBox text = new TextBox();
+  readonly Button copy = new Button(), close = new Button();
+  DateTime until = DateTime.MinValue;
+  bool kept, setting;
+  public Func<Point> Anchor;                                      // the point its bottom edge is centred on
+
+  public ReplyBox() {
+    Window.WindowStyle = WindowStyle.None; Window.AllowsTransparency = true; Window.Background = Brushes.Transparent;
+    Window.Topmost = true; Window.ShowInTaskbar = false; Window.ShowActivated = false; Window.Title = "Reduction Reply";
+    Window.ResizeMode = ResizeMode.CanResizeWithGrip; Window.SizeToContent = SizeToContent.WidthAndHeight;
+    Window.MinWidth = 150; Window.MinHeight = 64; Window.MaxWidth = 520; Window.MaxHeight = 460;
+
+    Border card = new Border();
+    card.Background = new SolidColorBrush(Color.FromArgb(0xF4, 0x14, 0x14, 0x16));
+    card.BorderBrush = new SolidColorBrush(Color.FromArgb(0x40, 0xFF, 0xFF, 0xFF)); card.BorderThickness = new Thickness(1);
+    card.CornerRadius = new CornerRadius(14); card.Padding = new Thickness(12, 9, 8, 6);
+    DockPanel rows = new DockPanel();
+
+    StackPanel bar = new StackPanel(); bar.Orientation = Orientation.Horizontal; bar.HorizontalAlignment = HorizontalAlignment.Right;
+    bar.Margin = new Thickness(0, 4, 14, 0);
+    Style(copy, "复制"); Style(close, "×");
+    copy.Click += delegate {
+      try { Clipboard.SetText(text.Text); copy.Content = "已复制"; } catch { copy.Content = "没复制上"; }
+    };
+    close.Click += delegate { Hide(); };
+    bar.Children.Add(copy); bar.Children.Add(close);
+    DockPanel.SetDock(bar, Dock.Bottom); rows.Children.Add(bar);
+
+    text.Background = Brushes.Transparent; text.BorderThickness = new Thickness(0);
+    text.Foreground = new SolidColorBrush(Color.FromRgb(0xF2, 0xF2, 0xF2)); text.CaretBrush = Brushes.White;
+    text.SelectionBrush = new SolidColorBrush(Color.FromRgb(0x5B, 0x8D, 0xEF));
+    text.FontSize = 13; text.FontFamily = new FontFamily("Microsoft YaHei UI, Segoe UI");
+    text.TextWrapping = TextWrapping.Wrap; text.AcceptsReturn = true; text.MaxWidth = 480;
+    text.VerticalScrollBarVisibility = ScrollBarVisibility.Auto;
+    // Edited by hand, it is the user's now: it stays until closed.
+    text.TextChanged += delegate { if (!setting) kept = true; copy.Content = "复制"; };
+    rows.Children.Add(text);
+    card.Child = rows; Window.Content = card;
+    Window.SizeChanged += delegate { Place(); };
+  }
+
+  static void Style(Button button, object label) {
+    button.Content = label; button.Margin = new Thickness(6, 0, 0, 0); button.Padding = new Thickness(8, 1, 8, 2);
+    button.Background = new SolidColorBrush(Color.FromArgb(0x30, 0xFF, 0xFF, 0xFF)); button.BorderThickness = new Thickness(0);
+    button.Foreground = new SolidColorBrush(Color.FromRgb(0xD8, 0xD8, 0xD8)); button.FontSize = 12; button.Cursor = Cursors.Hand;
+    button.Focusable = false;
+  }
+
+  public bool Shown { get { return Window.IsVisible; } }
+  public bool IsFront { get { return Window.IsActive; } }
+
+  /// Shows [words] for [seconds]; while the mouse is on it, or it is being worked in, it stays.
+  public void Say(string words, double seconds) {
+    setting = true; text.Text = words; setting = false;
+    text.ScrollToHome(); copy.Content = "复制"; kept = false;
+    until = DateTime.Now.AddSeconds(seconds);
+    if (!Window.IsVisible) Window.Show();
+    Place();
+  }
+
+  public void Hide() {
+    kept = false;
+    Window.Hide();
+    Window.SizeToContent = SizeToContent.WidthAndHeight;          // a size dragged by hand lasts until it is closed
+  }
+
+  /// Called now and then: the box goes when its time is up and nobody is at it.
+  public void Tick(bool hold) {
+    if (!Window.IsVisible || hold || kept || Window.IsMouseOver || Window.IsActive) return;
+    if (DateTime.Now > until) Hide();
+  }
+
+  public void Place() {
+    if (Anchor == null || !Window.IsVisible) return;
+    Point at = Anchor(); Rect area = SystemParameters.WorkArea;
+    double left = at.X - Window.ActualWidth / 2, top = at.Y - Window.ActualHeight;
+    Window.Left = Math.Max(area.Left, Math.Min(left, area.Right - Window.ActualWidth));
+    Window.Top = Math.Max(area.Top, top);
+  }
+}
+
 // ── the pet ────────────────────────────────────────────────────────────────
 class Pet {
   const string Look = @"
@@ -341,11 +459,6 @@ class Pet {
         Title='Reduction Pet' Width='320' Height='310' WindowStyle='None' AllowsTransparency='True'
         Background='Transparent' Topmost='True' ShowInTaskbar='False' ResizeMode='NoResize'>
   <Grid>
-    <Border Name='Bubble' Visibility='Collapsed' VerticalAlignment='Top' HorizontalAlignment='Center' Margin='6,0,6,0'
-            Background='#F0101010' BorderBrush='#40FFFFFF' BorderThickness='1' CornerRadius='14' Padding='12,8' MaxWidth='300'>
-      <TextBlock Name='BubbleText' Foreground='#F2F2F2' FontSize='13' TextWrapping='Wrap' MaxHeight='96' TextTrimming='CharacterEllipsis'
-                 FontFamily='Microsoft YaHei UI, Segoe UI'/>
-    </Border>
     <Canvas Name='Pet' Width='200' Height='200' VerticalAlignment='Bottom' HorizontalAlignment='Center' Cursor='Hand' Background='#01000000'>
       <!-- The screen behind, bent. -->
       <Image Name='Behind' Width='200' Height='200' Stretch='Fill'/>
@@ -370,14 +483,14 @@ class Pet {
   </Grid>
 </Window>";
 
-  Window window; Canvas pet, face; Ellipse sideL, sideR, gap, core, body, glow; Image behind; Border bubble; TextBlock bubbleText;
+  Window window; Canvas pet, face; Ellipse sideL, sideR, gap, core, body, glow; Image behind; ReplyBox box;
   ScaleTransform gapScale = new ScaleTransform(), coreScale = new ScaleTransform();
   LensEffect lens; Desktop desktop; WriteableBitmap picture;
   volatile string state = "asleep"; string showing = "asleep";
   double t, blend, spinFrom = -10;
 
   string url = "http://localhost:8780", api, browser = "", profile = "", placeFile;
-  long lineId = -1; DateTime bubbleUntil = DateTime.MinValue;
+  long lineId = -1; bool dictating;
   bool down, moved, holding, wants; Point grab; string spaceFile;
   DispatcherTimer poll = new DispatcherTimer(); SpaceKey space = new SpaceKey();
 
@@ -387,7 +500,7 @@ class Pet {
     window = (Window)XamlReader.Parse(Look);
     pet = Find<Canvas>("Pet"); face = Find<Canvas>("Face"); behind = Find<Image>("Behind");
     sideL = Find<Ellipse>("SideL"); sideR = Find<Ellipse>("SideR"); gap = Find<Ellipse>("Gap"); core = Find<Ellipse>("Core");
-    body = Find<Ellipse>("Body"); glow = Find<Ellipse>("Glow"); bubble = Find<Border>("Bubble"); bubbleText = Find<TextBlock>("BubbleText");
+    body = Find<Ellipse>("Body"); glow = Find<Ellipse>("Glow");
     gap.RenderTransform = gapScale; core.RenderTransform = coreScale;
     lens = LensEffect.Create();
   }
@@ -508,25 +621,29 @@ class Pet {
 
     poll.Interval = TimeSpan.FromMilliseconds(350);
     poll.Tick += delegate {
-      if (bubble.Visibility == Visibility.Visible && DateTime.Now > bubbleUntil && state != "listening") bubble.Visibility = Visibility.Collapsed;
+      box.Tick(state == "listening");
       if (!holding) Ask("/pet", "GET", Heard);
     };
     poll.Start();
 
     // Speaking: the space bar held, anywhere. The pet itself is only clicked and dragged.
-    space.Held = delegate {
-      wants = true;
+    box = new ReplyBox();
+    box.Anchor = delegate { return new Point(window.Left + window.Width / 2, window.Top + 118); };
+    window.LocationChanged += delegate { box.Place(); };
+
+    space.Held = delegate(bool dictation) {
+      wants = true; dictating = dictation;
       Ask("/pet/talk?action=start", "POST", delegate(Dictionary<string, object> answer) {
         if (answer != null && (string)answer["state"] == "listening") {
           if (!wants) { Ask("/pet/talk?action=cancel", "POST", null); return; }  // let go before the microphone was open
-          holding = true; state = "listening"; Say("在听…松开空格发送", 600);
+          holding = true; state = "listening"; Say(dictating ? "在听…松开后整理成文字，打在光标处" : "在听…松开空格发送", 600);
         } else if (answer != null && !(bool)answer["ready"]) Say("先点我一下，在面板的设置里填 API Key", 0);
         else Say("用不了麦克风", 0);
       });
     };
     space.LetGo = delegate {
       wants = false;
-      if (holding) { holding = false; Say("识别中…", 8); Ask("/pet/talk?action=stop", "POST", null); }
+      if (holding) { holding = false; Say("识别中…", 8); Ask("/pet/talk?action=stop" + (dictating ? "&mode=dictate" : ""), "POST", null); }
     };
     spaceFile = System.IO.Path.Combine(home, "pet-space.txt");
     try { space.Enabled = File.ReadAllText(spaceFile).Trim() != "off"; } catch { }
@@ -566,7 +683,7 @@ class Pet {
     Add(menu, "收起桌宠", delegate { window.Close(); });
     pet.ContextMenu = menu;
 
-    window.Closed += delegate { space.Stop(); if (desktop != null) desktop.Stop(); };
+    window.Closed += delegate { space.Stop(); box.Window.Close(); if (desktop != null) desktop.Stop(); };
     new Application().Run(window);
   }
 
@@ -593,15 +710,31 @@ class Pet {
     state = (string)now["state"];
     long id = Convert.ToInt64(now["lineId"]);
     if (lineId < 0) lineId = id;                                   // nothing old is repeated when the pet starts
-    else if (id != lineId) { lineId = id; Say((string)now["line"], 0); }
+    else if (id != lineId) {
+      lineId = id;
+      string line = (string)now["line"];
+      object kind; now.TryGetValue("kind", out kind);
+      if ((string)kind == "dictation") Dictate(line); else Say(line, 0);
+    }
   }
 
   void Say(string text, double seconds) {
     if (string.IsNullOrEmpty(text)) return;
-    if (text.Length > 90) text = text.Substring(0, 88) + "…";
-    bubbleText.Text = text; bubble.Visibility = Visibility.Visible;
-    if (seconds <= 0) seconds = Math.Min(12, Math.Max(3.5, text.Length * 0.16));
-    bubbleUntil = DateTime.Now.AddSeconds(seconds);
+    if (seconds <= 0) seconds = Math.Min(40, Math.Max(4, text.Length * 0.25));
+    box.Say(text, seconds);
+  }
+
+  /// A dictation, put in order: typed where the cursor is, and left in the box to be changed or copied.
+  void Dictate(string text) {
+    Say(text, 60);
+    if (box.IsFront || window.IsActive) return;                   // the keyboard is with the pet itself: there is nowhere to type
+    int tries = 0; DispatcherTimer wait = new DispatcherTimer(); wait.Interval = TimeSpan.FromMilliseconds(60);
+    wait.Tick += delegate {
+      if (Typist.CtrlDown && tries++ < 50) return;                // with Ctrl still down the letters would be shortcuts
+      wait.Stop();
+      try { Typist.Type(text); } catch { }
+    };
+    wait.Start();
   }
 
   /// Asks the service off the window's thread, and hands the answer (null when there is none) back on it.
