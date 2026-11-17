@@ -2,10 +2,13 @@
 //
 //   it breathes while idle, opens its wings while listening, spins them while thinking, pulses while speaking
 //   the screen behind it is really bent round it, by the graphics card
+//   the keys it answers to are listed in keys.txt beside it, one "action = key" a line, read again whenever
+//       the file is saved; as it comes:
 //   hold the space bar and speak, let go to send   (anywhere on the computer; its own microphone)
 //   hold Ctrl and the space bar and speak: what was said, put in order and stripped of the spoken filler, is
 //       put on the clipboard, to be pasted where it is wanted (dictation; nothing is sent to the conversation,
 //       and nothing is typed anywhere)
+//   Ctrl+Shift+Space opens or closes the panel; Esc puts away whichever of its windows is in front
 //   what it says appears in a box above it that can be edited, copied with one click, and resized
 //   click it to open or close the panel            (cards, history, settings): a card beside the pet, with no
 //       title bar or frame, that goes where the pet goes. The page in it is drawn by WebView2, the web
@@ -247,11 +250,14 @@ class Desktop {
   }
 }
 
-// ── the space bar, held ───────────────────────────────────────────────────
-// Holding the space bar is how the pet is spoken to, whatever window is in front. A tap is still a space:
-// the key is held back for a moment to see which it is, and a tap is passed on as it was. Typing on fast,
-// with the next key down before the space bar is up, passes the space on at once, ahead of that key.
-class SpaceKey {
+// ── the keys ──────────────────────────────────────────────────────────────
+// What the pet does at a key, whatever window is in front. Which key does what is the user's to say, in a
+// file of lines "action = key"; an action with nothing after the sign has no key.
+//
+// Two actions are held, not pressed: the key held down is speaking, and letting go sends. A tap of such a key
+// is still the key it was: it is held back for a moment to see which it is, and a tap is passed on as it
+// was. Typing on fast, with the next key down before this one is up, passes it on at once, ahead of that key.
+class Keys {
   [StructLayout(LayoutKind.Sequential)] struct Stroke { public uint Key, Scan, Flags, Time; public IntPtr Extra; }
   delegate IntPtr Hook(int code, IntPtr message, IntPtr stroke);
   [DllImport("user32.dll")] static extern IntPtr SetWindowsHookEx(int kind, Hook hook, IntPtr module, uint thread);
@@ -260,29 +266,59 @@ class SpaceKey {
   [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr GetModuleHandle(string name);
   [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
   [DllImport("user32.dll")] static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
+  [DllImport("user32.dll")] static extern uint MapVirtualKey(uint code, uint kind);
 
-  const int Space = 0x20;
+  public class Binding { public string Action; public int Key, Mods; public bool Hold; }
+
+  const int Ctrl = 1, Alt = 2, Shift = 4, Win = 8;
   const uint Up = 2, Extended = 1, Injected = 0x10;
   public const int HoldMs = 350;
 
-  public bool Enabled = true;
-  /// Held is told whether Ctrl was down with it: that is dictation rather than talk.
-  public Action<bool> Held = delegate { };
+  /// The actions there are, and whether each is held rather than pressed.
+  public static readonly Dictionary<string, bool> Actions = new Dictionary<string, bool> {
+    { "talk", true }, { "dictate", true }, { "panel", false }, { "close", false }, { "quiet", false }
+  };
+
+  public const string Default =
+@"# Reduction 桌宠的快捷键。一行一条：动作 = 按键。等号后面留空，这个动作就没有快捷键。保存后立即生效。
+# 按键写法：Ctrl、Alt、Shift、Win 加一个键，用 + 连接。例如 Space、Esc、F8、Alt+Q、Ctrl+Shift+Space
+#
+# talk     按住说话，松开发送（日常聊天）
+# dictate  按住说话，松开后整理成书面文字，放进剪贴板（AI 输入法）
+# panel    打开或收起面板
+# close    收起桌宠最前面的那个窗口（面板或回复框）。只在它们在最前面时生效，其余时候这个键照常
+# quiet    让它安静：停下朗读
+#
+# talk 和 dictate 是按住才算：轻敲一下，这个键还是它原来的作用。
+
+talk = Space
+dictate = Ctrl+Space
+panel = Ctrl+Shift+Space
+close = Esc
+quiet =
+";
+
+  public List<Binding> Bindings = new List<Binding>();
+  /// Whether the held keys are listened for at all.
+  public bool HoldsEnabled = true;
+  public Action<string> Held = delegate { }, Pressed = delegate { };
   public Action LetGo = delegate { };
+  /// Whether a pressed action has anything to do just now; when not, its key is passed on untouched.
+  public Func<string, bool> Applies = delegate { return true; };
 
   readonly Hook keep;                    // kept, or the hook would be collected while Windows still calls it
   IntPtr hook;
   readonly DispatcherTimer wait = new DispatcherTimer();
-  bool pending, talking, passing, withCtrl;
+  Binding pending; bool talking; int active, passing, swallowed;
 
-  public SpaceKey() {
+  public Keys() {
     keep = Each;
     wait.Interval = TimeSpan.FromMilliseconds(HoldMs);
     wait.Tick += delegate {
       wait.Stop();
-      if (!pending) return;
-      pending = false; talking = true;
-      try { Held(withCtrl); } catch { }
+      if (pending == null) return;
+      string action = pending.Action; pending = null; talking = true;
+      try { Held(action); } catch { }
     };
   }
 
@@ -293,50 +329,111 @@ class SpaceKey {
     if (talking) { talking = false; try { LetGo(); } catch { } }
   }
 
+  // ── the file ──
+
+  static int KeyOf(string name) {
+    string n = name.ToLowerInvariant();
+    switch (n) {
+      case "space": return 0x20; case "esc": case "escape": return 0x1B; case "enter": case "return": return 0x0D;
+      case "tab": return 0x09; case "backspace": return 0x08; case "capslock": return 0x14; case "insert": return 0x2D;
+      case "delete": case "del": return 0x2E; case "home": return 0x24; case "end": return 0x23; case "pageup": return 0x21;
+      case "pagedown": return 0x22; case "pause": return 0x13; case "scrolllock": return 0x91; case "left": return 0x25;
+      case "up": return 0x26; case "right": return 0x27; case "down": return 0x28; case "`": return 0xC0;
+    }
+    if (n.Length == 1 && (char.IsLetter(n[0]) && n[0] < 128 || char.IsDigit(n[0]))) return char.ToUpperInvariant(n[0]);
+    int f;
+    if (n.Length >= 2 && n[0] == 'f' && int.TryParse(n.Substring(1), out f) && f >= 1 && f <= 24) return 0x70 + f - 1;
+    return 0;
+  }
+
+  /// Reads the file's text. What cannot be read is told of in [wrong], a line each, and left out.
+  public static List<Binding> Parse(string text, List<string> wrong) {
+    List<Binding> made = new List<Binding>(); int number = 0;
+    foreach (string raw in text.Split('\n')) {
+      number++;
+      string line = raw.Trim();
+      if (line.Length == 0 || line[0] == '#') continue;
+      int sign = line.IndexOf('=');
+      string action = sign < 0 ? line : line.Substring(0, sign).Trim().ToLowerInvariant();
+      if (sign < 0 || !Actions.ContainsKey(action)) { wrong.Add("第 " + number + " 行：不认识的动作 " + action); continue; }
+      string keys = line.Substring(sign + 1).Trim();
+      if (keys.Length == 0) continue;
+      Binding binding = new Binding(); binding.Action = action; binding.Hold = Actions[action];
+      bool good = true;
+      foreach (string part in keys.Split('+')) {
+        string name = part.Trim().ToLowerInvariant();
+        if (name == "ctrl" || name == "control") binding.Mods |= Ctrl;
+        else if (name == "alt") binding.Mods |= Alt;
+        else if (name == "shift") binding.Mods |= Shift;
+        else if (name == "win") binding.Mods |= Win;
+        else if (binding.Key == 0 && KeyOf(name) != 0) binding.Key = KeyOf(name);
+        else good = false;
+      }
+      if (!good || binding.Key == 0) { wrong.Add("第 " + number + " 行：看不懂的按键 " + keys); continue; }
+      foreach (Binding other in made) {
+        if (other.Key == binding.Key && other.Mods == binding.Mods) { wrong.Add("第 " + number + " 行：" + keys + " 已经给了 " + other.Action); good = false; }
+      }
+      if (good) made.Add(binding);
+    }
+    return made;
+  }
+
+  // ── the keyboard ──
+
   static bool IsDown(int key) { return (GetAsyncKeyState(key) & 0x8000) != 0; }
+  static int ModsNow() {
+    return (IsDown(0x11) ? Ctrl : 0) | (IsDown(0x12) ? Alt : 0) | (IsDown(0x10) ? Shift : 0) | (IsDown(0x5B) || IsDown(0x5C) ? Win : 0);
+  }
+  static bool IsModifier(int key) { return key == 0x5B || key == 0x5C || (key >= 0x10 && key <= 0x12) || (key >= 0xA0 && key <= 0xA5); }
+
+  Binding Find(int key, int mods, bool hold) {
+    foreach (Binding binding in Bindings) if (binding.Hold == hold && binding.Key == key && binding.Mods == mods) return binding;
+    return null;
+  }
+
+  static void Send(int key, bool up) { keybd_event((byte)key, (byte)MapVirtualKey((uint)key, 0), up ? Up : 0, UIntPtr.Zero); }
 
   IntPtr Each(int code, IntPtr message, IntPtr at) {
     if (code < 0) return CallNextHookEx(hook, code, message, at);
     Stroke stroke = (Stroke)Marshal.PtrToStructure(at, typeof(Stroke));
     if ((stroke.Flags & Injected) != 0) return CallNextHookEx(hook, code, message, at);       // what this very class passed on
-    int kind = message.ToInt32();
+    int kind = message.ToInt32(), key = (int)stroke.Key;
     bool down = kind == 0x100 || kind == 0x104;
 
-    if (stroke.Key != Space) {
-      if (down && pending) {
-        // Typing on: the space goes first, then this key, both as they were pressed.
-        pending = false; wait.Stop(); passing = true;
-        keybd_event(Space, 0x39, 0, UIntPtr.Zero);
-        keybd_event((byte)stroke.Key, (byte)stroke.Scan, (stroke.Flags & 1) != 0 ? Extended : 0, UIntPtr.Zero);
+    if (down) {
+      if (pending != null && key != active) {
+        // Typing on: the held-back key goes first, then this one, both as they were pressed.
+        pending = null; wait.Stop(); passing = active; Send(active, false); active = 0;
+        keybd_event((byte)key, (byte)stroke.Scan, (stroke.Flags & 1) != 0 ? Extended : 0, UIntPtr.Zero);
         return (IntPtr)1;
       }
+      if (key == swallowed || (key == active && (pending != null || talking))) return (IntPtr)1;   // the key repeating while held
+      if (key == passing || IsModifier(key)) return CallNextHookEx(hook, code, message, at);
+      int mods = ModsNow();
+      Binding hold = HoldsEnabled ? Find(key, mods, true) : null;
+      if (hold != null) { pending = hold; active = key; wait.Start(); return (IntPtr)1; }
+      Binding press = Find(key, mods, false);
+      if (press != null && Applies(press.Action)) {
+        swallowed = key;
+        string action = press.Action;
+        wait.Dispatcher.BeginInvoke(new Action(delegate { try { Pressed(action); } catch { } }));
+        return (IntPtr)1;
+      }
+      // Passed on now, it is passed on until it is let go: it does not turn into something else half way.
+      passing = key;
       return CallNextHookEx(hook, code, message, at);
     }
 
-    if (down) {
-      if (passing) return CallNextHookEx(hook, code, message, at);
-      if (pending || talking) return (IntPtr)1;                                                // the key repeating while held
-      // With Alt, Shift or the Windows key it is a shortcut of someone else's. With Ctrl alone it is
-      // dictation when held, and still Ctrl+Space when tapped.
-      withCtrl = IsDown(0x11);
-      if (!Enabled || IsDown(0x12) || IsDown(0x10) || IsDown(0x5B) || IsDown(0x5C)) {
-        passing = true;
-        return CallNextHookEx(hook, code, message, at);
-      }
-      pending = true; wait.Start();
+    if (key == swallowed) { swallowed = 0; return (IntPtr)1; }
+    if (key == passing) { passing = 0; return CallNextHookEx(hook, code, message, at); }
+    if (key == active && pending != null) {
+      // A tap: the key it was, passed on whole.
+      pending = null; wait.Stop(); active = 0;
+      Send(key, false); Send(key, true);
       return (IntPtr)1;
     }
-
-    if (passing) { passing = false; return CallNextHookEx(hook, code, message, at); }
-    if (pending) {
-      // A tap: the space it was, passed on whole.
-      pending = false; wait.Stop();
-      keybd_event(Space, 0x39, 0, UIntPtr.Zero);
-      keybd_event(Space, 0x39, Up, UIntPtr.Zero);
-      return (IntPtr)1;
-    }
-    if (talking) {
-      talking = false;
+    if (key == active && talking) {
+      talking = false; active = 0;
       try { LetGo(); } catch { }
       return (IntPtr)1;
     }
@@ -457,6 +554,7 @@ class Panel {
   public Action<string> Failed = delegate { };
 
   public bool Open { get { return host != null && host.IsVisible; } }
+  public bool IsFront { get { return host != null && host.IsVisible && host.IsActive; } }
 
   public void Show(string url, string dataFolder) {
     if (host == null) Build(url, dataFolder);
@@ -571,8 +669,8 @@ class Pet {
 
   string url = "http://localhost:8780", api, placeFile, panelData;
   long lineId = -1; bool dictating;
-  bool down, moved, holding, wants; Point grab; string spaceFile;
-  DispatcherTimer poll = new DispatcherTimer(); SpaceKey space = new SpaceKey();
+  bool down, moved, holding, wants; Point grab; string spaceFile, keysFile; DateTime keysRead;
+  DispatcherTimer poll = new DispatcherTimer(); Keys keys = new Keys();
 
   T Find<T>(string name) where T : class { return (T)window.FindName(name); }
 
@@ -702,12 +800,12 @@ class Pet {
 
     poll.Interval = TimeSpan.FromMilliseconds(350);
     poll.Tick += delegate {
-      box.Tick(state == "listening");
+      box.Tick(state == "listening"); ReadKeys(true);
       if (!holding) Ask("/pet", "GET", Heard);
     };
     poll.Start();
 
-    // Speaking: the space bar held, anywhere. The pet itself is only clicked and dragged.
+    // Speaking: a key held, anywhere. The pet itself is only clicked and dragged.
     box = new ReplyBox();
     box.Anchor = delegate { return new Point(window.Left + window.Width / 2, window.Top + 118); };
     window.LocationChanged += delegate { box.Place(); panel.Follow(); };
@@ -729,23 +827,37 @@ class Pet {
     });
     asked.IsBackground = true; asked.Start();
 
-    space.Held = delegate(bool dictation) {
-      wants = true; dictating = dictation;
+    keys.Held = delegate(string action) {
+      wants = true; dictating = action == "dictate";
       Ask("/pet/talk?action=start", "POST", delegate(Dictionary<string, object> answer) {
         if (answer != null && (string)answer["state"] == "listening") {
           if (!wants) { Ask("/pet/talk?action=cancel", "POST", null); return; }  // let go before the microphone was open
-          holding = true; state = "listening"; Say(dictating ? "在听…松开后整理成文字，放进剪贴板" : "在听…松开空格发送", 600);
+          holding = true; state = "listening"; Say(dictating ? "在听…松开后整理成文字，放进剪贴板" : "在听…松开发送", 600);
         } else if (answer != null && !(bool)answer["ready"]) Say("先点我一下，在面板的设置里填 API Key", 0);
         else Say("用不了麦克风", 0);
       });
     };
-    space.LetGo = delegate {
+    keys.LetGo = delegate {
       wants = false;
       if (holding) { holding = false; Say("识别中…", 8); Ask("/pet/talk?action=stop" + (dictating ? "&mode=dictate" : ""), "POST", null); }
     };
     spaceFile = System.IO.Path.Combine(home, "pet-space.txt");
-    try { space.Enabled = File.ReadAllText(spaceFile).Trim() != "off"; } catch { }
-    space.Start();
+    try { keys.HoldsEnabled = File.ReadAllText(spaceFile).Trim() != "off"; } catch { }
+    keys.Pressed = delegate(string action) {
+      if (action == "panel") TogglePanel();
+      else if (action == "quiet") Ask("/bridge/stopSpeaking", "POST", null);
+      else if (action == "close") {
+        if (panel.IsFront) panel.Hide(); else if (box.Shown) box.Hide(); else panel.Hide();
+      }
+    };
+    // Closing is for the pet's own windows: anywhere else the key is whatever it is there.
+    keys.Applies = delegate(string action) {
+      return action != "close" || ((panel.IsFront || box.IsFront || window.IsActive) && (panel.Open || box.Shown));
+    };
+    keysFile = System.IO.Path.Combine(home, "keys.txt");
+    try { if (!File.Exists(keysFile)) File.WriteAllText(keysFile, Keys.Default.Replace("\r\n", "\n").Replace("\n", "\r\n"), new UTF8Encoding(true)); } catch { }
+    ReadKeys(false);
+    keys.Start();
 
     pet.MouseLeftButtonDown += delegate(object sender, MouseButtonEventArgs e) {
       down = true; moved = false; grab = e.GetPosition(window);
@@ -772,16 +884,17 @@ class Pet {
     ContextMenu menu = new ContextMenu();
     Add(menu, "打开或关闭面板", TogglePanel);
     Add(menu, "让它安静", delegate { Ask("/bridge/stopSpeaking", "POST", null); });
-    MenuItem bySpace = new MenuItem(); bySpace.Header = "按住空格说话"; bySpace.IsCheckable = true; bySpace.IsChecked = space.Enabled;
+    MenuItem bySpace = new MenuItem(); bySpace.Header = "按住按键说话"; bySpace.IsCheckable = true; bySpace.IsChecked = keys.HoldsEnabled;
     bySpace.Click += delegate {
-      space.Enabled = bySpace.IsChecked;
-      try { File.WriteAllText(spaceFile, space.Enabled ? "on" : "off"); } catch { }
+      keys.HoldsEnabled = bySpace.IsChecked;
+      try { File.WriteAllText(spaceFile, keys.HoldsEnabled ? "on" : "off"); } catch { }
     };
     menu.Items.Add(bySpace);
+    Add(menu, "快捷键…", delegate { try { Process.Start("notepad.exe", "\"" + keysFile + "\""); } catch { } });
     Add(menu, "收起桌宠", delegate { window.Close(); });
     pet.ContextMenu = menu;
 
-    window.Closed += delegate { panel.Close(); space.Stop(); box.Window.Close(); if (desktop != null) desktop.Stop(); };
+    window.Closed += delegate { panel.Close(); keys.Stop(); box.Window.Close(); if (desktop != null) desktop.Stop(); };
     new Application().Run(window);
   }
 
@@ -845,6 +958,19 @@ class Pet {
       } catch { }
       if (then != null) window.Dispatcher.BeginInvoke(new Action(delegate { then(answer); }));
     });
+  }
+
+  /// Reads the keys from their file when it has been saved since they were last read.
+  void ReadKeys(bool tell) {
+    try {
+      DateTime saved = File.GetLastWriteTimeUtc(keysFile);
+      if (saved == keysRead) return;
+      keysRead = saved;
+      List<string> wrong = new List<string>();
+      keys.Bindings = Keys.Parse(File.ReadAllText(keysFile), wrong);
+      if (wrong.Count > 0) Say("快捷键里有看不懂的，这几行没有生效：\n" + string.Join("\n", wrong.ToArray()), 30);
+      else if (tell) Say("快捷键已更新", 3);
+    } catch { }
   }
 
   void TogglePanel() { if (panel.Open) panel.Hide(); else OpenPanel(); }
