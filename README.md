@@ -48,9 +48,13 @@ Reduction回答一个问题：我们有可能在生活更轻松的同时、可�
 | **多 agent 调度** | Reduction是可以控制一群AI，采用super agent-sub agent架构：super agent分发任务、理解意图；sub agent具体执行、反馈结果 |
 | **工具使用** | 正在不断支持你能想到的一切：联网搜索、计算器、查看电脑上其它编程 agent 会话的状态、手机和耳机电量提醒。 |
 
-## 全站方案
+## 全栈方案
 
 [DeepSeek](https://platform.deepseek.com/) API Key：提供大模型、语音文字互转、网络搜索服务
+
+### 蓝牙耳机
+
+拥有麦克风功能
 
 ### 手机（Android 8.0 及以上，arm64）
 
