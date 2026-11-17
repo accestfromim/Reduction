@@ -97,6 +97,10 @@ window.Native = {
     cards.onChanged(name);
   },
 
+  onMemosChanged() {
+    cards.onMemosChanged();
+  },
+
   onAssetsUpdated(version) {
     ui.toast('界面资源已更新，重启 App 生效');
   },

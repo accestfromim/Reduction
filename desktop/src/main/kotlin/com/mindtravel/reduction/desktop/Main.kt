@@ -7,6 +7,9 @@ import com.mindtravel.reduction.core.settings.AppSettings
 import com.mindtravel.reduction.core.settings.SettingsGateway
 import com.mindtravel.reduction.feature.chat.data.CardRepository
 import com.mindtravel.reduction.feature.chat.data.HistoryRepository
+import com.mindtravel.reduction.feature.memo.MemoCard
+import com.mindtravel.reduction.feature.memo.MemoView
+import com.mindtravel.reduction.feature.memo.data.MemoStore
 import com.mindtravel.reduction.feature.chat.model.ChatSession
 import com.mindtravel.reduction.feature.chat.model.tools.AgentLedger
 import com.mindtravel.reduction.feature.chat.model.tools.AgentRuns
@@ -238,6 +241,8 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     private val page = PageLink()
     private val settings = DesktopSettings(settingsFile)
     private val cards = CardRepository(File(data, "cards"))
+    /** To-dos, kept as the phone keeps them; a computer has no alarms, so the review card is the reminder. */
+    private val memos = MemoStore(File(data, "memos.json"))
     /** REDUCTION_API_BASE points the models somewhere else, which is how this is tested without spending anything. */
     private val models = ModelGraph(System.getenv("REDUCTION_API_BASE")?.takeIf { it.isNotBlank() }?.let { DeepSeekHttp(baseUrl = it) } ?: DeepSeekHttp())
     private val ttsCache = TtsCache(File(data, "tts_cache"))
@@ -269,6 +274,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         approvalHost = this,
         emitter = page,
         cards = cards,
+        memos = memos,
         agentLauncherScript = { resourceText("harness/run-agent.sh") },
         sessionStatusScript = { resourceText("harness/session-status.py") },
         agentRuns = agentRuns
@@ -347,6 +353,10 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         val writeLedger = { cards.writeProgramCard(AgentLedger.CARD, AgentLedger.render(agentRuns.all()), AgentLedger.PURPOSE) }
         agentRuns.onChange = { writeLedger() }
         writeLedger()
+        // The review card for to-dos, written from the store as the phone writes it.
+        val writeMemos = { cards.writeProgramCard(MemoCard.CARD, MemoCard.render(memos), MemoCard.PURPOSE) }
+        memos.onChange = { writeMemos() }
+        writeMemos()
         cards.onChange = { page.emit("onCardsChanged", "") }
         page.onEvent = { function, args ->
             when (function) {
@@ -454,6 +464,9 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
             if (wav == null) page.emit("onAsrResult", id, false, "没有录到声音，请再试一次") else scope.launch(Dispatchers.IO) { transcribe(id, wav) }
         }
         "cancelRecording" -> audio?.cancelRecording()
+        // To-dos as the review card shows them. A computer has no alarms, so nothing here is degraded.
+        "memoView" -> MemoView.json(memos, exact = true, notify = true)
+        "setMemoDone" -> memos.setDone(args.getInt(0), args.getBoolean(1)) != null
         "pcState" -> "connected"
         "pcConnected" -> true
         "voiceState" -> """{"state":"IDLE"}"""

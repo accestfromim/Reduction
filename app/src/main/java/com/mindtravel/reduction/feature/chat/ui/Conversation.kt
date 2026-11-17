@@ -28,6 +28,8 @@ class Conversation(
     private val today: () -> String,
     /** Things about the user's devices worth a sentence in this reply, such as a battery running low. */
     private val deviceNotices: () -> List<String> = { emptyList() },
+    /** To-dos without a date: said once a day, when the user first speaks. */
+    private val todoNotices: () -> List<String> = { emptyList() },
     /** Where the assistant is running, as it should describe itself. */
     private val place: String = "安卓手机"
 ) {
@@ -82,7 +84,15 @@ class Conversation(
                 if (cards.isLocked(card.name)) "【用户已审核并锁定的 prompt】" else ""
         }
         val messages = ArrayList<ChatMessage>()
-        messages += ChatMessage(role = Role.SYSTEM, content = SystemPrompt.build(settings, today(), directory, runCatching(deviceNotices).getOrDefault(emptyList()), place))
+        messages += ChatMessage(
+            role = Role.SYSTEM,
+            content = SystemPrompt.build(
+                settings, today(), directory,
+                runCatching(deviceNotices).getOrDefault(emptyList()),
+                runCatching(todoNotices).getOrDefault(emptyList()),
+                place
+            )
+        )
         lines.takeLast(CONTEXT_LINES).mapTo(messages) { ChatMessage(role = it.role, content = it.content) }
 
         return chat.send(id, messages) { reply -> remember(reply) }

@@ -9,6 +9,9 @@ import * as ui from '../../ui/ui.js';
 
 const LEGACY_KEY = 'dsassist_brief_v1';
 
+/** The review card for to-dos: written by the program, drawn by the page from the memo plugin. */
+const PLAN_CARD = '计划';
+
 /** What the open card page is doing: 'closed', 'read', 'edit' or 'new'. */
 let mode = 'closed';
 
@@ -88,7 +91,9 @@ function show(next) {
   mode = next;
   const editing = mode === 'edit' || mode === 'new';
   ui.els.cardPage.classList.toggle('hidden', mode === 'closed');
-  ui.els.cardBody.classList.toggle('hidden', editing);
+  const plan = state.cardName === PLAN_CARD && mode === 'read';
+  ui.els.cardPlan.classList.toggle('hidden', !plan);
+  ui.els.cardBody.classList.toggle('hidden', editing || plan);
   ui.els.cardEditor.classList.toggle('hidden', !editing);
   // A card the program writes can be read, copied and floated, not edited.
   const open = state.cards.find((card) => card.name === state.cardName) || {};
@@ -109,8 +114,14 @@ function show(next) {
 }
 
 function renderOpenCard() {
-  const text = String(callBridge('readCard', state.cardName) || '').trim();
   ui.els.cardTitle.textContent = state.cardName;
+  if (state.cardName === PLAN_CARD) {
+    renderPlan();
+    return;
+  }
+  ui.els.cardPlan.classList.add('hidden');
+  ui.els.cardBody.classList.remove('hidden');
+  const text = String(callBridge('readCard', state.cardName) || '').trim();
   // A picture or a recording is written as ![说明](media:编号); it is fetched from the app by that id.
   ui.els.cardBody.innerHTML = text ? renderMarkdown(text.replace(/\]\(media:(m[0-9a-f]{12}\.[a-z0-9]{2,5})\)/g, '](/card-media/$1)')) : '';
   for (const image of ui.els.cardBody.querySelectorAll('img')) {
@@ -124,6 +135,99 @@ function renderOpenCard() {
     image.replaceWith(player);
   }
   ui.els.cardBody.scrollTop = 0;
+}
+
+/**
+ * The review card: today, later, no date. Each to-do is a row with its time and state; a
+ * tap finishes it, another opens it again. When the reminders cannot work as they should,
+ * the card says so and offers the two permissions instead of promising anything.
+ */
+function renderPlan() {
+  const plan = ui.els.cardPlan;
+  ui.els.cardBody.classList.add('hidden');
+  plan.classList.remove('hidden');
+  let data;
+  try {
+    data = JSON.parse(callBridge('memoView') || '{}');
+  } catch (_) {
+    data = {};
+  }
+  plan.innerHTML = '';
+
+  if (data.exact !== true || data.notify !== true) {
+    const warning = document.createElement('div');
+    warning.className = 'plan-warning';
+    const lines = [];
+    if (data.notify !== true) lines.push('通知权限没有打开：到点不会弹出提醒。');
+    if (data.exact !== true) lines.push('没有精确闹钟权限：提醒可能晚一些，也可能在省电时被推迟。');
+    lines.push('这两种情况下，App 被系统杀掉后不能保证还会提醒；计划卡片本身始终准确。');
+    warning.textContent = lines.join('');
+    const actions = document.createElement('div');
+    actions.className = 'plan-actions';
+    if (data.notify !== true) actions.appendChild(planButton('打开通知权限', () => callBridge('askForNotifications')));
+    if (data.exact !== true) actions.appendChild(planButton('允许精确闹钟', () => callBridge('askForExactAlarms')));
+    warning.appendChild(actions);
+    plan.appendChild(warning);
+  }
+
+  const blocks = [
+    ['今天', data.today],
+    ['未来', data.future],
+    ['没日期', data.undated],
+  ];
+  for (const [title, items] of blocks) {
+    const head = document.createElement('div');
+    head.className = 'plan-head';
+    head.textContent = title;
+    plan.appendChild(head);
+    if (!Array.isArray(items) || !items.length) {
+      const empty = document.createElement('div');
+      empty.className = 'plan-empty';
+      empty.textContent = '（没有）';
+      plan.appendChild(empty);
+      continue;
+    }
+    for (const item of items) plan.appendChild(planRow(item));
+  }
+}
+
+function planButton(label, onTap) {
+  const button = document.createElement('button');
+  button.className = 'secondary-btn plan-btn';
+  button.textContent = label;
+  button.addEventListener('click', () => {
+    onTap();
+    ui.toast('设置好后回到这里，状态会自动更新');
+  });
+  return button;
+}
+
+function planRow(item) {
+  const row = document.createElement('button');
+  row.className = 'plan-row' + (item.done ? ' done' : '') + (item.overdue ? ' overdue' : '');
+  const box = document.createElement('span');
+  box.className = 'plan-box';
+  box.textContent = item.done ? '✓' : '';
+  const text = document.createElement('span');
+  text.className = 'plan-text';
+  text.textContent = item.text;
+  const when = document.createElement('span');
+  when.className = 'plan-when';
+  when.textContent = item.overdue ? (item.due ? item.due + ' · 已过期' : '已过期') : (item.due || '没日期');
+  row.append(box, text, when);
+  row.addEventListener('click', () => {
+    if (callBridge('setMemoDone', item.id, !item.done) !== true) {
+      ui.toast('改不了这一条');
+      return;
+    }
+    renderPlan();
+  });
+  return row;
+}
+
+/** The to-dos changed in the app: the plan card follows if it is open. */
+export function onMemosChanged() {
+  if (mode === 'read' && state.cardName === PLAN_CARD) renderPlan();
 }
 
 /** An instruction saved by an earlier version becomes the first card. */

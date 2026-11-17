@@ -37,6 +37,18 @@ class SystemBridge(
 
     fun requestBluetoothPermission() = activity.requestBluetoothPermission()
 
+    /** Opens the system page for allowing alarms to the minute. False when this Android has no such page. */
+    fun askForExactAlarms(): Boolean {
+        activity.askForExactAlarms()
+        return true
+    }
+
+    /** Asks for the notification permission, where the system asks the user for it. */
+    fun askForNotifications(): Boolean {
+        activity.askForNotifications()
+        return true
+    }
+
     fun copyText(text: String) {
         activity.runOnUiThread {
             val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager

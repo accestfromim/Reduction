@@ -16,6 +16,9 @@ import com.mindtravel.reduction.feature.chat.model.tools.ChatToolFactory
 import com.mindtravel.reduction.feature.chat.ui.AgentWatch
 import com.mindtravel.reduction.feature.chat.ui.ChatController
 import com.mindtravel.reduction.feature.chat.ui.Conversation
+import com.mindtravel.reduction.feature.memo.MemoCard
+import com.mindtravel.reduction.feature.memo.alarm.MemoAlarms
+import com.mindtravel.reduction.feature.memo.data.MemoStore
 import com.mindtravel.reduction.feature.pc.ui.PcController
 import com.mindtravel.reduction.feature.settings.data.SettingsRepository
 import com.mindtravel.reduction.feature.update.ui.UpdateController
@@ -73,6 +76,10 @@ class AppCore private constructor(context: Context) {
 
     val settingsRepository = SettingsRepository(context)
     val cardRepository = CardRepository(File(context.filesDir, "cards"))
+
+    /** To-dos, their times and their reminders: the memo plugin, and the only place they are kept. */
+    val memoStore = MemoStore(File(context.filesDir, "memos.json"))
+    private val alarms = MemoAlarms(context)
 
     /** One card can float over other apps; see [CardOverlay]. */
     val cardOverlay = CardOverlay(context, cardRepository)
@@ -139,6 +146,7 @@ class AppCore private constructor(context: Context) {
             approvalHost = ui,
             emitter = ui,
             cards = cardRepository,
+            memos = memoStore,
             agentLauncherScript = { harnessScript(context, "run-agent.sh") },
             sessionStatusScript = { harnessScript(context, "session-status.py") },
             agentRuns = agentRuns
@@ -162,6 +170,11 @@ class AppCore private constructor(context: Context) {
         today = { LocalDate.now().toString() },
         deviceNotices = {
             batteryWatch.notices(deviceBattery.readings().map { BatteryWatch.Device(it.name, it.percent, it.charging) })
+        },
+        todoNotices = {
+            memoStore.askAboutUndated().map { memo ->
+                "第 ${memo.id} 条：${memo.text}。可以问一句它该哪天，或者用户说不用管就放着"
+            }
         }
     )
 
@@ -235,6 +248,14 @@ class AppCore private constructor(context: Context) {
         val writeLedger = { cardRepository.writeProgramCard(AgentLedger.CARD, AgentLedger.render(agentRuns.all()), AgentLedger.PURPOSE) }
         agentRuns.onChange = { writeLedger() }
         writeLedger()
+        // The review card is written from the to-dos whenever they change, and the alarms follow them.
+        val writeMemos = {
+            cardRepository.writeProgramCard(MemoCard.CARD, MemoCard.render(memoStore), MemoCard.PURPOSE)
+            mainHandler.post { runCatching { alarms.reschedule(memoStore) } }
+        }
+        memoStore.onChange = { writeMemos() }
+        writeMemos()
+        // A change made on the card is the user's own: the to-dos are read again afterwards.
         cardRepository.onChange = { name ->
             cardOverlay.onCardChanged(name)
             ui.emit("onCardsChanged", "")

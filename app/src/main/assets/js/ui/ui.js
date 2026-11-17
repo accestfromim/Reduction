@@ -63,6 +63,7 @@ export const els = {
   cardCopyAll: byId('cardCopyAll'),
   cardEdit: byId('cardEdit'),
   cardBody: byId('cardBody'),
+  cardPlan: byId('cardPlan'),
   cardEditor: byId('cardEditor'),
   cardNameField: byId('cardNameField'),
   cardNameInput: byId('cardNameInput'),

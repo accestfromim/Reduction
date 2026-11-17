@@ -913,3 +913,63 @@
 .card-read audio { display: block; width: 100%; margin: 10px 0; }
 
 .card-row.prompt::before { content: "🔒 "; }
+
+/* The review card for to-dos: three blocks of rows. A row is a to-do; a tap finishes it. */
+.card-plan {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 20px calc(24px + env(safe-area-inset-bottom));
+  font-size: 15px;
+}
+.card-plan.hidden { display: none; }
+.plan-warning {
+  margin: 4px 0 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.plan-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.plan-btn { margin: 0; padding: 8px 12px; font-size: 13px; border-radius: 10px; }
+.plan-head {
+  padding: 18px 0 6px;
+  color: var(--muted);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+}
+.plan-empty { padding: 2px 0 8px; color: var(--muted); font-size: 13px; }
+.plan-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  width: 100%;
+  padding: 13px 0;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 15px;
+  text-align: left;
+}
+.plan-row:active { opacity: 0.6; }
+.plan-box {
+  flex: none;
+  width: 17px;
+  height: 17px;
+  border: 1.5px solid var(--muted);
+  border-radius: 5px;
+  font-size: 11px;
+  line-height: 17px;
+  text-align: center;
+  transform: translateY(2px);
+}
+.plan-row.done .plan-box { border-color: var(--accent); }
+.plan-row.done .plan-text { color: var(--muted); text-decoration: line-through; }
+.plan-text { flex: 1; min-width: 0; }
+.plan-when { flex: none; color: var(--muted); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.plan-row.overdue .plan-when { color: var(--text); }

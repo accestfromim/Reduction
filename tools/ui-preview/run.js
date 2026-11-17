@@ -151,6 +151,16 @@ await page.evaluateOnNewDocument(() => {
     pcConnect: () => {},
     pcConnected: () => true,
     pcState: () => 'connected',
+    memoView: () => JSON.stringify(window.__plan || {}),
+    setMemoDone: (id, done) => {
+      const all = ['today', 'future', 'undated'].flatMap((block) => window.__plan[block] || []);
+      const item = all.find((each) => each.id === id);
+      if (!item) return false;
+      item.done = done;
+      return true;
+    },
+    askForExactAlarms: () => { window.__asked = (window.__asked || []).concat(['exact']); return true; },
+    askForNotifications: () => { window.__asked = (window.__asked || []).concat(['notify']); return true; },
     updateState: () => 'idle',
     updateVersion: () => ''
   };
@@ -309,6 +319,72 @@ if (folders.title !== '科研/检索' || !folders.kept || !folders.open.includes
   throw new Error('folders did not behave: ' + JSON.stringify(folders));
 }
 await shot('13-card-list.png');
+
+// The review card for to-dos: three blocks, a tap finishes a to-do, and the card says what the
+// reminders cannot do instead of promising anything.
+await page.evaluate(() => {
+  window.__cards['计划'] = { purpose: '待办与时间', text: '由程序写入' };
+  window.__plan = {
+    today: [
+      { id: 4, text: '交周报', done: false, due: '今天 09:00', overdue: true },
+      { id: 7, text: '给医生打电话', done: false, due: '今天 15:30', overdue: false },
+      { id: 2, text: '回邮件', done: true, due: '今天 08:00', overdue: false }
+    ],
+    future: [
+      { id: 9, text: '取快递', done: false, due: '明天 18:00', overdue: false },
+      { id: 10, text: '出差前的准备', done: false, due: '11-21 09:00', overdue: false }
+    ],
+    undated: [
+      { id: 3, text: '想想假期去哪', done: false, due: '', overdue: false }
+    ],
+    exact: false,
+    notify: false
+  };
+  window.Native.onCardsChanged('计划');
+});
+await new Promise((resolve) => setTimeout(resolve, 80));
+const plan = await page.evaluate(async () => {
+  const hidden = (id) => document.getElementById(id).classList.contains('hidden');
+  document.getElementById('tabCards').click();
+  Array.from(document.querySelectorAll('#cardList .card-row')).find((row) => row.textContent === '计划').click();
+  const heads = Array.from(document.querySelectorAll('#cardPlan .plan-head')).map((el) => el.textContent);
+  const rows = Array.from(document.querySelectorAll('#cardPlan .plan-row')).map((row) => ({
+    text: row.querySelector('.plan-text').textContent,
+    when: row.querySelector('.plan-when').textContent,
+    done: row.classList.contains('done'),
+    overdue: row.classList.contains('overdue')
+  }));
+  const degraded = {
+    shown: !hidden('cardPlan') && hidden('cardBody'),
+    warning: (document.querySelector('#cardPlan .plan-warning') || {}).textContent || '',
+    buttons: Array.from(document.querySelectorAll('#cardPlan .plan-btn')).map((b) => b.textContent)
+  };
+  document.querySelector('#cardPlan .plan-btn').click();
+  const tapped = window.__asked && window.__asked.includes('notify');
+  // A tap on an open to-do finishes it; a tap again opens it.
+  const row = Array.from(document.querySelectorAll('#cardPlan .plan-row')).find((r) => r.querySelector('.plan-text').textContent === '交周报');
+  row.click();
+  const finished = window.__plan.today.find((item) => item.id === 4).done &&
+    Array.from(document.querySelectorAll('#cardPlan .plan-row')).find((r) => r.querySelector('.plan-text').textContent === '交周报').classList.contains('done');
+  return { heads, rows, degraded, tapped, finished };
+});
+await shot('14-plan-card.png');
+// With both permissions, the card is only the three blocks.
+const planQuiet = await page.evaluate(async () => {
+  window.__plan.exact = true;
+  window.__plan.notify = true;
+  window.Native.onMemosChanged();
+  return { warning: !!document.querySelector('#cardPlan .plan-warning'), rows: document.querySelectorAll('#cardPlan .plan-row').length };
+});
+console.log('plan:', JSON.stringify(plan), JSON.stringify(planQuiet));
+if (!plan.degraded.shown || plan.heads.join() !== '今天,未来,没日期' || plan.rows.length !== 6 ||
+    plan.rows[0].text !== '交周报' || !plan.rows[0].overdue || plan.rows[2].done !== true ||
+    !plan.degraded.warning.includes('通知权限') || !plan.degraded.warning.includes('精确闹钟') ||
+    plan.degraded.buttons.join() !== '打开通知权限,允许精确闹钟' || !plan.tapped || !plan.finished ||
+    planQuiet.warning || planQuiet.rows !== 6) {
+  throw new Error('plan card did not behave: ' + JSON.stringify(plan) + JSON.stringify(planQuiet));
+}
+await page.evaluate(() => window.onAndroidBack());
 await page.evaluate(() => document.getElementById('tabStream').click());
 
 await page.evaluate(() => window.Native.onUpdateState('available', '1.0.13', 0));

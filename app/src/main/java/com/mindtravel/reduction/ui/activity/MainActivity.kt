@@ -325,6 +325,23 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
         }.onFailure { Logs.add("Battery exemption dialog unavailable: ${it.message}") }
     }
 
+    /** Opens the system page where this app is allowed to set alarms to the minute. */
+    fun askForExactAlarms() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return
+        runCatching {
+            startActivity(Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM, Uri.parse("package:$packageName")))
+        }.onFailure { Logs.add("Exact alarm settings unavailable: ${it.message}") }
+    }
+
+    /** Asks for the notification permission, which reminders need. */
+    fun askForNotifications() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
     /** Opens the system page where this app is allowed to show a card over other apps. */
     fun askToAllowOverlay() {
         runOnUiThread {

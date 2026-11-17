@@ -21,6 +21,8 @@ object SystemPrompt {
         date: String,
         cardDirectory: List<String>,
         deviceNotices: List<String> = emptyList(),
+        /** To-dos still without a date: put to the user once a day, early in the day's first conversation. */
+        todoNotices: List<String> = emptyList(),
         /** Where the assistant is running, as it should describe itself. */
         place: String = "安卓手机"
     ): String {
@@ -31,7 +33,13 @@ object SystemPrompt {
             "  · *** Delete Card: 名称",
             "  · *** Move Card: 旧名称 -> 新名称 —— 给卡片改名，内容和用途不变。",
             "  · 卡片里的列表项本身以“- ”开头：保留它要写成“ - 内容”，删掉它要写成“-- 内容”。",
-            "- read_card：读一张卡片的完整内容。你手里只有目录，需要正文时才读。"
+            "- read_card：读一张卡片的完整内容。你手里只有目录，需要正文时才读。",
+            "- todo：待办与提醒的唯一入口。",
+            "  · 用户说的是待办，就登记成待办（action=add），不要只写进卡片。",
+            "  · 带时间的待办落进时间轴：日期填 yyyy-MM-dd，“明天”“后天”“下周三”这类先按今天 $date 算成具体日期；时间填 HH:mm，没说几点就只填日期。",
+            "  · 没时间的待办也要登记，它挂在计划卡片的最上面，你会在用户当天第一次开口时被问到，请用户补日期。",
+            "  · 改时间、改内容用 update；做完了用 done=true；删掉用 delete；用户问“我有哪些待办”用 list。",
+            "  · 提醒由程序安排：到点提醒一次，过期未完成每天早上提醒一次，直到完成或改期。你不需要也不能自己定提醒。"
         )
         if (settings.webSearchEnabled) tools += "- web_search：需要实时信息时调用。值得留下的来源写进卡片。"
         if (settings.calculatorEnabled) tools += "- calculator：需要精确计算时调用。"
@@ -121,6 +129,10 @@ object SystemPrompt {
             "每次调用工具都填 summary：一句不超过二十个字的话，说明这次调用在做什么。界面上每次调用只显示这一句、完成时间和状态。派发 sub agent 时这一句还会被念出来，其它调用不出声。调用工具之前不另外写话，要说的都放进 summary。"
         )
         lines += tools
+        if (todoNotices.isNotEmpty()) {
+            lines += listOf("", "# 待办补日期", "下面这些待办还没有日期。在今天这轮回复的末尾，用一句话请用户补一个日期，只说一次：")
+            lines += todoNotices.map { "- $it" }
+        }
         if (deviceNotices.isNotEmpty()) {
             lines += listOf("", "# 设备", "下面的情况刚刚出现。回答完用户的话之后，用一句话提醒，只提醒这一次：")
             lines += deviceNotices.map { "- $it" }

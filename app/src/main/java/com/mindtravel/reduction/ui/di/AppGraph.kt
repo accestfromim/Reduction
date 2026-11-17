@@ -2,6 +2,7 @@ package com.mindtravel.reduction.ui.di
 
 import android.webkit.WebView
 import com.mindtravel.reduction.app.AppCore
+import com.mindtravel.reduction.feature.memo.alarm.MemoAlarms
 import com.mindtravel.reduction.feature.update.ui.UpdateController
 import com.mindtravel.reduction.hardware.update.AssetUpdater
 import com.mindtravel.reduction.hardware.update.UpdateClient
@@ -48,7 +49,9 @@ class AppGraph(
         cards = CardBridge(core.cardRepository, core.cardOverlay) { activity.askToAllowOverlay() },
         pc = PcBridge(core.pc),
         update = UpdateBridge(updateController),
-        system = SystemBridge(activity, core.settingsRepository, voiceBridge)
+        system = SystemBridge(activity, core.settingsRepository, voiceBridge),
+        memos = core.memoStore,
+        alarms = MemoAlarms(activity)
     )
 
     init {

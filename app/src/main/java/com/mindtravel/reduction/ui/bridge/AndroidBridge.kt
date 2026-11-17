@@ -1,6 +1,9 @@
 package com.mindtravel.reduction.ui.bridge
 
 import android.webkit.JavascriptInterface
+import com.mindtravel.reduction.feature.memo.MemoView
+import com.mindtravel.reduction.feature.memo.alarm.MemoAlarms
+import com.mindtravel.reduction.feature.memo.data.MemoStore
 
 class AndroidBridge(
     private val settings: SettingsBridge,
@@ -9,7 +12,9 @@ class AndroidBridge(
     private val cards: CardBridge,
     private val pc: PcBridge,
     private val update: UpdateBridge,
-    private val system: SystemBridge
+    private val system: SystemBridge,
+    private val memos: MemoStore,
+    private val alarms: MemoAlarms
 ) {
     @JavascriptInterface
     fun loadSettings(): String = settings.loadSettings()
@@ -76,6 +81,25 @@ class AndroidBridge(
 
     @JavascriptInterface
     fun saveCardMedia(base64: String, extension: String): String = cards.saveMedia(base64, extension)
+
+    /** The to-dos in the review card's three blocks, and how well the reminders can work. */
+    @JavascriptInterface
+    fun memoView(): String = runCatching {
+        val status = alarms.status()
+        MemoView.json(memos, exact = status.exact, notify = status.notify)
+    }.getOrDefault("{}")
+
+    /** Ticking a to-do off on the card: a finished one leaves the reminders and stays in the record. */
+    @JavascriptInterface
+    fun setMemoDone(id: Int, done: Boolean): Boolean = runCatching { memos.setDone(id, done) != null }.getOrDefault(false)
+
+    /** The system page where exact alarms are allowed, for a user who wants them to the minute. */
+    @JavascriptInterface
+    fun askForExactAlarms(): Boolean = system.askForExactAlarms()
+
+    /** The runtime permission for notifications. */
+    @JavascriptInterface
+    fun askForNotifications(): Boolean = system.askForNotifications()
 
     @JavascriptInterface
     fun floatingCard(): String = cards.floating()
