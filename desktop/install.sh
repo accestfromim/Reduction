@@ -19,6 +19,9 @@ fi
 echo "== 构建"
 . "$HERE/../tools/env.sh"
 ( cd "$ROOT" && $GRADLE -q :desktop:installDist )
+# A service still running from before the build would go on with half of the old program and half of
+# the new one, and fail without a word; it is stopped here and started again at the end.
+pkill -f 'com.mindtravel.reduction.desktop.MainK[t]' || true
 
 echo "== 音频工具"
 AUDIO="$DATA/audio"
@@ -85,6 +88,8 @@ foreach ($place in @(@("Desktop", "panel"), @("Startup", ""))) {
   $link.Save()
 }
 '
+# Started now, service and pet, so that what runs is what was just built.
+( cd "$APPDIR" && /mnt/c/Windows/System32/wscript.exe Reduction.vbs ) || true
 echo "桌面图标：$(win '[Environment]::GetFolderPath("Desktop")')\\Reduction.lnk"
 echo "开机自启：$(win '[Environment]::GetFolderPath("Startup")')\\Reduction.lnk"
-echo "装好了。登录 Windows 后桌宠会自己出现；双击桌面上的 Reduction 会同时打开面板。"
+echo "装好了，桌宠已经启动。以后登录 Windows 它会自己出现；双击桌面上的 Reduction 会同时打开面板。"

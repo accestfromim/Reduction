@@ -74,7 +74,13 @@ fun main(args: Array<String>) {
         return
     }
     server.executor = Executors.newCachedThreadPool { Thread(it).apply { isDaemon = true } }
-    server.createContext("/") { exchange -> runCatching { desktop.handle(exchange) }.onFailure { exchange.close() } }
+    server.createContext("/") { exchange ->
+        runCatching { desktop.handle(exchange) }.onFailure {
+            // Said in the log: a request that fails without a word leaves nothing to go on.
+            System.err.println("${exchange.requestMethod} ${exchange.requestURI} failed: $it")
+            exchange.close()
+        }
+    }
     server.start()
     println("Reduction 已启动：http://localhost:$port")
     println(if (desktop.usesSystemAudio) "声音和麦克风：这台电脑自己的设备" else "声音和麦克风：没找到系统音频工具，由打开页面的浏览器代劳（运行 desktop/install.sh 可装上）")
@@ -321,7 +327,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         .put("ready", settings.load().apiKey.isNotBlank())
         .toString()
 
-    /** Talking to the pet directly: hold it, speak, let go. No page is needed. */
+    /** Talking to the pet directly: hold the space bar, speak, let go. No page is needed. */
     private fun petTalk(action: String) {
         val mic = audio ?: return petSays("这台电脑上用不了麦克风")
         when (action) {
@@ -336,11 +342,21 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
             "stop" -> {
                 petListening = false
                 val wav = mic.stopRecording() ?: return petSays("没有录到声音")
+                // Every step says where it is: letting go is always answered by something.
+                petSays("识别中…")
                 scope.launch(Dispatchers.IO) {
                     val key = settings.load().apiKey
-                    val text = runCatching { models.audioGateway.transcribe(key, wav) }.getOrDefault("")
-                        .let { (EndWords.strip(it) ?: it).trim() }
-                    if (text.isBlank()) petSays("没听清，再说一遍？") else scope.launch { conversation.submit(text) }
+                    val heard = runCatching { models.audioGateway.transcribe(key, wav) }
+                    heard.onFailure { System.err.println("Pet: speech not recognised: $it") }
+                    val text = heard.getOrDefault("").let { (EndWords.strip(it) ?: it).trim() }
+                    when {
+                        heard.isFailure -> petSays("识别失败：" + (heard.exceptionOrNull()?.message ?: "网络不通"))
+                        text.isBlank() -> petSays("没听清，再说一遍？")
+                        else -> {
+                            petSays("“$text”")
+                            scope.launch { conversation.submit(text) }
+                        }
+                    }
                 }
             }
         }

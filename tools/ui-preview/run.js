@@ -326,13 +326,13 @@ await page.evaluate(() => {
   window.__cards['计划'] = { purpose: '待办与时间', text: '由程序写入' };
   window.__plan = {
     today: [
-      { id: 4, text: '交周报', done: false, due: '今天 09:00', overdue: true },
-      { id: 7, text: '给医生打电话', done: false, due: '今天 15:30', overdue: false },
-      { id: 2, text: '回邮件', done: true, due: '今天 08:00', overdue: false }
+      { id: 4, text: '交周报', done: false, due: '11-16', overdue: true },
+      { id: 7, text: '给医生打电话', done: false, due: '今天', overdue: false },
+      { id: 2, text: '回邮件', done: true, due: '今天', overdue: false }
     ],
     future: [
-      { id: 9, text: '取快递', done: false, due: '明天 18:00', overdue: false },
-      { id: 10, text: '出差前的准备', done: false, due: '11-21 09:00', overdue: false }
+      { id: 9, text: '取快递', done: false, due: '明天', overdue: false },
+      { id: 10, text: '出差前的准备', done: false, due: '11-21', overdue: false }
     ],
     undated: [
       { id: 3, text: '想想假期去哪', done: false, due: 'empty', empty: true, overdue: false }

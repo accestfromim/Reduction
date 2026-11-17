@@ -2,8 +2,8 @@
 //
 //   it breathes while idle, opens its wings while listening, spins them while thinking, pulses while speaking
 //   the screen behind it is really bent round it, by the graphics card
-//   hold it and speak, let go to send          (the computer's own microphone)
-//   click it to open or close the full panel   (cards, history, settings)
+//   hold the space bar and speak, let go to send   (anywhere on the computer; its own microphone)
+//   click it to open or close the full panel       (cards, history, settings)
 //   drag it anywhere; right-click for the menu
 //
 // It only shows what the service is doing and passes on what is done to it.
@@ -241,6 +241,99 @@ class Desktop {
   }
 }
 
+// ── the space bar, held ───────────────────────────────────────────────────
+// Holding the space bar is how the pet is spoken to, whatever window is in front. A tap is still a space:
+// the key is held back for a moment to see which it is, and a tap is passed on as it was. Typing on fast,
+// with the next key down before the space bar is up, passes the space on at once, ahead of that key.
+class SpaceKey {
+  [StructLayout(LayoutKind.Sequential)] struct Stroke { public uint Key, Scan, Flags, Time; public IntPtr Extra; }
+  delegate IntPtr Hook(int code, IntPtr message, IntPtr stroke);
+  [DllImport("user32.dll")] static extern IntPtr SetWindowsHookEx(int kind, Hook hook, IntPtr module, uint thread);
+  [DllImport("user32.dll")] static extern bool UnhookWindowsHookEx(IntPtr hook);
+  [DllImport("user32.dll")] static extern IntPtr CallNextHookEx(IntPtr hook, int code, IntPtr message, IntPtr stroke);
+  [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr GetModuleHandle(string name);
+  [DllImport("user32.dll")] static extern short GetAsyncKeyState(int key);
+  [DllImport("user32.dll")] static extern void keybd_event(byte key, byte scan, uint flags, UIntPtr extra);
+
+  const int Space = 0x20;
+  const uint Up = 2, Extended = 1, Injected = 0x10;
+  public const int HoldMs = 350;
+
+  public bool Enabled = true;
+  public Action Held = delegate { }, LetGo = delegate { };
+
+  readonly Hook keep;                    // kept, or the hook would be collected while Windows still calls it
+  IntPtr hook;
+  readonly DispatcherTimer wait = new DispatcherTimer();
+  bool pending, talking, passing;
+
+  public SpaceKey() {
+    keep = Each;
+    wait.Interval = TimeSpan.FromMilliseconds(HoldMs);
+    wait.Tick += delegate {
+      wait.Stop();
+      if (!pending) return;
+      pending = false; talking = true;
+      try { Held(); } catch { }
+    };
+  }
+
+  public void Start() { if (hook == IntPtr.Zero) hook = SetWindowsHookEx(13, keep, GetModuleHandle(null), 0); }
+  public void Stop() {
+    if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook);
+    hook = IntPtr.Zero;
+    if (talking) { talking = false; try { LetGo(); } catch { } }
+  }
+
+  static bool IsDown(int key) { return (GetAsyncKeyState(key) & 0x8000) != 0; }
+
+  IntPtr Each(int code, IntPtr message, IntPtr at) {
+    if (code < 0) return CallNextHookEx(hook, code, message, at);
+    Stroke stroke = (Stroke)Marshal.PtrToStructure(at, typeof(Stroke));
+    if ((stroke.Flags & Injected) != 0) return CallNextHookEx(hook, code, message, at);       // what this very class passed on
+    int kind = message.ToInt32();
+    bool down = kind == 0x100 || kind == 0x104;
+
+    if (stroke.Key != Space) {
+      if (down && pending) {
+        // Typing on: the space goes first, then this key, both as they were pressed.
+        pending = false; wait.Stop(); passing = true;
+        keybd_event(Space, 0x39, 0, UIntPtr.Zero);
+        keybd_event((byte)stroke.Key, (byte)stroke.Scan, (stroke.Flags & 1) != 0 ? Extended : 0, UIntPtr.Zero);
+        return (IntPtr)1;
+      }
+      return CallNextHookEx(hook, code, message, at);
+    }
+
+    if (down) {
+      if (passing) return CallNextHookEx(hook, code, message, at);
+      if (pending || talking) return (IntPtr)1;                                                // the key repeating while held
+      // With Ctrl, Alt, Shift or the Windows key it is a shortcut of someone else's.
+      if (!Enabled || IsDown(0x11) || IsDown(0x12) || IsDown(0x10) || IsDown(0x5B) || IsDown(0x5C)) {
+        passing = true;
+        return CallNextHookEx(hook, code, message, at);
+      }
+      pending = true; wait.Start();
+      return (IntPtr)1;
+    }
+
+    if (passing) { passing = false; return CallNextHookEx(hook, code, message, at); }
+    if (pending) {
+      // A tap: the space it was, passed on whole.
+      pending = false; wait.Stop();
+      keybd_event(Space, 0x39, 0, UIntPtr.Zero);
+      keybd_event(Space, 0x39, Up, UIntPtr.Zero);
+      return (IntPtr)1;
+    }
+    if (talking) {
+      talking = false;
+      try { LetGo(); } catch { }
+      return (IntPtr)1;
+    }
+    return CallNextHookEx(hook, code, message, at);
+  }
+}
+
 // ── the pet ────────────────────────────────────────────────────────────────
 class Pet {
   const string Look = @"
@@ -285,8 +378,8 @@ class Pet {
 
   string url = "http://localhost:8780", api, browser = "", profile = "", placeFile;
   long lineId = -1; DateTime bubbleUntil = DateTime.MinValue;
-  bool down, moved, holding; Point grab;
-  DispatcherTimer hold = new DispatcherTimer(), poll = new DispatcherTimer();
+  bool down, moved, holding, wants; Point grab; string spaceFile;
+  DispatcherTimer poll = new DispatcherTimer(); SpaceKey space = new SpaceKey();
 
   T Find<T>(string name) where T : class { return (T)window.FindName(name); }
 
@@ -420,27 +513,34 @@ class Pet {
     };
     poll.Start();
 
-    hold.Interval = TimeSpan.FromMilliseconds(320);
-    hold.Tick += delegate {
-      hold.Stop();
-      if (!down || moved) return;
+    // Speaking: the space bar held, anywhere. The pet itself is only clicked and dragged.
+    space.Held = delegate {
+      wants = true;
       Ask("/pet/talk?action=start", "POST", delegate(Dictionary<string, object> answer) {
         if (answer != null && (string)answer["state"] == "listening") {
-          if (!down) { Ask("/pet/talk?action=stop", "POST", null); return; }      // let go before the microphone was open
-          holding = true; state = "listening"; Say("在听…松开发送", 60);
+          if (!wants) { Ask("/pet/talk?action=cancel", "POST", null); return; }  // let go before the microphone was open
+          holding = true; state = "listening"; Say("在听…松开空格发送", 600);
         } else if (answer != null && !(bool)answer["ready"]) Say("先点我一下，在面板的设置里填 API Key", 0);
         else Say("用不了麦克风", 0);
       });
     };
+    space.LetGo = delegate {
+      wants = false;
+      if (holding) { holding = false; Say("识别中…", 8); Ask("/pet/talk?action=stop", "POST", null); }
+    };
+    spaceFile = System.IO.Path.Combine(home, "pet-space.txt");
+    try { space.Enabled = File.ReadAllText(spaceFile).Trim() != "off"; } catch { }
+    space.Start();
+
     pet.MouseLeftButtonDown += delegate(object sender, MouseButtonEventArgs e) {
-      down = true; moved = false; holding = false; grab = e.GetPosition(window);
-      pet.CaptureMouse(); hold.Start();
+      down = true; moved = false; grab = e.GetPosition(window);
+      pet.CaptureMouse();
     };
     pet.MouseMove += delegate(object sender, MouseEventArgs e) {
-      if (!down || holding || moved) return;
+      if (!down || moved) return;
       Point at = e.GetPosition(window);
       if (Math.Abs(at.X - grab.X) + Math.Abs(at.Y - grab.Y) < 5) return;
-      moved = true; hold.Stop();
+      moved = true;
       // From here Windows itself moves the window with the mouse, until the button is let go.
       pet.ReleaseMouseCapture();
       try { window.DragMove(); } catch { }
@@ -448,20 +548,25 @@ class Pet {
       try { File.WriteAllText(placeFile, string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0},{1}", window.Left, window.Top)); } catch { }
     };
     pet.MouseLeftButtonUp += delegate {
-      hold.Stop(); pet.ReleaseMouseCapture();
+      pet.ReleaseMouseCapture();
       if (!down) return;
       down = false;
-      if (holding) { holding = false; bubble.Visibility = Visibility.Collapsed; Ask("/pet/talk?action=stop", "POST", null); }
-      else if (!moved) TogglePanel();
+      if (!moved) TogglePanel();
     };
 
     ContextMenu menu = new ContextMenu();
     Add(menu, "打开或关闭面板", TogglePanel);
     Add(menu, "让它安静", delegate { Ask("/bridge/stopSpeaking", "POST", null); });
+    MenuItem bySpace = new MenuItem(); bySpace.Header = "按住空格说话"; bySpace.IsCheckable = true; bySpace.IsChecked = space.Enabled;
+    bySpace.Click += delegate {
+      space.Enabled = bySpace.IsChecked;
+      try { File.WriteAllText(spaceFile, space.Enabled ? "on" : "off"); } catch { }
+    };
+    menu.Items.Add(bySpace);
     Add(menu, "收起桌宠", delegate { window.Close(); });
     pet.ContextMenu = menu;
 
-    window.Closed += delegate { if (desktop != null) desktop.Stop(); };
+    window.Closed += delegate { space.Stop(); if (desktop != null) desktop.Stop(); };
     new Application().Run(window);
   }
 

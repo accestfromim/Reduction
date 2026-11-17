@@ -1,5 +1,6 @@
 package com.mindtravel.reduction.feature.memo
 
+import com.mindtravel.reduction.core.events.EventSink
 import com.mindtravel.reduction.feature.memo.data.DueParser
 import com.mindtravel.reduction.feature.memo.data.MemoStore
 import org.junit.Assert.assertEquals
@@ -21,44 +22,30 @@ class MemoStoreTest {
     val temporary = TemporaryFolder()
 
     private val zone = ZoneId.of("Asia/Shanghai")
+    private val today = LocalDate.parse("2026-11-17") // a Tuesday
 
-    /** Noon on 2026-11-17 in the test zone: today, for every test here. */
-    private val noon: Long = LocalDateTime.of(2026, 11, 17, 12, 0).atZone(zone).toInstant().toEpochMilli()
+    private fun at(day: LocalDate, hour: Int = 12): Long =
+        LocalDateTime.of(day.year, day.month, day.dayOfMonth, hour, 0).atZone(zone).toInstant().toEpochMilli()
 
-    private fun store(at: Long = noon): MemoStore {
-        var clock = at
-        return MemoStore(File(temporary.newFolder(), "memos.json"), now = { clock }, zone = zone).also { s ->
-            // Every test reads the clock once; the store keeps its own reference to it.
-        }
+    /** The clock the store under test reads; a test moves it to see another day. */
+    private var clock = at(today)
+
+    private fun store(file: File = File(temporary.newFolder(), "memos.json")) =
+        MemoStore(file, now = { clock }, zone = zone)
+
+    private fun day(date: String): LocalDate = LocalDate.parse(date)
+
+    private class Quiet : EventSink {
+        override fun emit(function: String, vararg args: Any?) {}
     }
 
-    private fun moment(date: String, hour: Int, minute: Int = 0): Long =
-        LocalDate.parse(date).atTime(hour, minute).atZone(zone).toInstant().toEpochMilli()
+    private fun tool(store: MemoStore) = MemoTool(store, Quiet())
 
-    // ── what was said becomes a moment ──────────────────────────────────────
-
-    @Test
-    fun aDateAndATimeBecomeTheMomentTheyMean() {
-        val today = LocalDate.parse("2026-11-17")
-        val parsed = DueParser.parse("2026-11-18", "08:30", today)
-        assertNotNull(parsed)
-        assertEquals(LocalDate.parse("2026-11-18"), parsed!!.date)
-        assertEquals(8, parsed.hour)
-        assertEquals(30, parsed.minute)
-        assertFalse(parsed.assumedTime)
-    }
-
-    @Test
-    fun aDayWithoutAnHourIsTheMorning() {
-        val parsed = DueParser.parse("2026-11-20", null, LocalDate.parse("2026-11-17"))
-        assertNotNull(parsed)
-        assertEquals(DueParser.DEFAULT_HOUR, parsed!!.hour)
-        assertTrue(parsed.assumedTime)
-    }
+    // ── what was said becomes a day ─────────────────────────────────────────
 
     @Test
     fun everydayWordsAreReadAsDates() {
-        val today = LocalDate.parse("2026-11-17") // a Tuesday
+        assertEquals(day("2026-11-18"), DueParser.dayOf("2026-11-18", today))
         assertEquals(today, DueParser.dayOf("今天", today))
         assertEquals(today.plusDays(1), DueParser.dayOf("明天", today))
         assertEquals(today.plusDays(2), DueParser.dayOf("后天", today))
@@ -66,45 +53,38 @@ class MemoStoreTest {
         assertEquals(today.plusDays(5), DueParser.dayOf("5天后", today))
         assertEquals(today.plusDays(1), DueParser.dayOf("周三", today))
         assertEquals(today.plusDays(8), DueParser.dayOf("下周三", today))
-        assertEquals(LocalDate.parse("2026-11-18"), DueParser.dayOf("11-18", today))
+        assertEquals(day("2026-11-18"), DueParser.dayOf("11-18", today))
+        assertNull(DueParser.dayOf("改天吧", today))
+        assertNull(DueParser.dayOf(null, today))
     }
 
     @Test
-    fun anHourSaidInChineseIsRead() {
-        assertEquals(8 * 60, DueParser.timeOf("早上八点")!!.hour * 60 + DueParser.timeOf("早上八点")!!.minute)
-        assertEquals(15, DueParser.timeOf("下午三点")!!.hour)
-        assertEquals(15 * 60 + 30, DueParser.timeOf("下午三点半")!!.hour * 60 + DueParser.timeOf("下午三点半")!!.minute)
-        assertEquals(21, DueParser.timeOf("晚上九点")!!.hour)
-        assertEquals(0, DueParser.timeOf("凌晨十二点")!!.hour)
-        assertEquals(11, DueParser.timeOf("11:00")!!.hour)
-    }
-
-    @Test
-    fun nothingUsableMeansNoMoment() {
-        assertNull(DueParser.parse(null, null, LocalDate.parse("2026-11-17")))
-        assertNull(DueParser.parse("改天吧", null, LocalDate.parse("2026-11-17")))
-        // A time that cannot be read counts as none, not as a failure.
-        val parsed = DueParser.parse("2026-11-18", "下午再说", LocalDate.parse("2026-11-17"))
-        assertNotNull(parsed)
-        assertTrue(parsed!!.assumedTime)
+    fun aDayIsSaidWithoutAnHour() {
+        assertEquals("今天", DueParser.describe(today, today))
+        assertEquals("明天", DueParser.describe(today.plusDays(1), today))
+        assertEquals("11-21", DueParser.describe(day("2026-11-21"), today))
+        assertEquals("2027-01-03", DueParser.describe(day("2027-01-03"), today))
     }
 
     // ── the to-dos themselves ───────────────────────────────────────────────
 
     @Test
-    fun aTodoKeepsItsMomentAndSurvivesARestart() {
+    fun aTodoKeepsItsDayAndSurvivesARestart() {
         val file = File(temporary.newFolder(), "memos.json")
-        val first = MemoStore(file, now = { noon }, zone = zone)
-        val due = moment("2026-11-18", 9)
-        val made = first.add("交周报", due)
-        assertEquals("交周报", made.text)
-        assertEquals(due, made.dueAt)
-
-        val again = MemoStore(file, now = { noon }, zone = zone)
-        val loaded = again.find(made.id)
+        val made = store(file).add("交周报", day("2026-11-18"))
+        val loaded = store(file).find(made.id)
         assertNotNull(loaded)
         assertEquals("交周报", loaded!!.text)
-        assertEquals(due, loaded.dueAt)
+        assertEquals(day("2026-11-18"), loaded.due)
+        assertTrue(file.readText().contains("\"due\":\"2026-11-18\""))
+    }
+
+    @Test
+    fun aTodoStoredWithAnHourIsReadAsItsDay() {
+        val file = File(temporary.newFolder(), "memos.json")
+        val moment = LocalDateTime.of(2026, 11, 19, 15, 30).atZone(zone).toInstant().toEpochMilli()
+        file.writeText("""{"next":2,"items":[{"id":1,"text":"约医生","due":$moment,"done":false}]}""")
+        assertEquals(day("2026-11-19"), store(file).find(1)!!.due)
     }
 
     @Test
@@ -114,79 +94,75 @@ class MemoStoreTest {
         val b = store.add("二", null)
         store.delete(a.id)
         val c = store.add("三", null)
-        assertEquals(1, a.id)
-        assertEquals(2, b.id)
-        assertEquals(3, c.id)
+        assertEquals(listOf(1, 2, 3), listOf(a.id, b.id, c.id))
+    }
+
+    @Test
+    fun theToolWritesOnlyADay() {
+        val store = store()
+        val tool = tool(store)
+        // An hour, if the assistant sends one anyway, is not part of the protocol.
+        val said = tool.execute("""{"action":"add","text":"下午三点开会","date":"2026-11-18","time":"15:00"}""")
+        assertEquals("记下了 #1：下午三点开会，明天", said)
+        assertEquals(day("2026-11-18"), store.find(1)!!.due)
+        assertTrue(tool.spec.parameters.none { it.name == "time" })
+        assertEquals("改好了 #1：下午三点开会，后天", tool.execute("""{"action":"update","id":"1","date":"后天"}"""))
+    }
+
+    // ── the day's reminder ──────────────────────────────────────────────────
+
+    @Test
+    fun theReminderIsAboutTheDayItIsGivenOn() {
+        val store = store()
+        val todays = store.add("今天的", today)
+        val tomorrows = store.add("明天的", today.plusDays(1))
+        assertEquals(listOf(todays.id), store.morningReminder().map { it.id })
+        // The next day it is tomorrow's turn, and yesterday's unfinished one comes along as overdue.
+        clock = at(today.plusDays(1))
+        assertEquals(listOf(todays.id, tomorrows.id), store.morningReminder().map { it.id })
+        assertEquals(listOf(todays.id), store.plan().overdue.map { it.id })
+    }
+
+    @Test
+    fun aTodoIsBroughtUpOnceADay() {
+        val store = store()
+        store.add("甲", today)
+        store.add("乙", today.minusDays(2))
+        val owed = store.morningReminder()
+        assertEquals(2, owed.size)
+        store.markReminded(owed)
+        assertTrue(store.morningReminder().isEmpty())
+        clock = at(today.plusDays(1))
+        // Both are overdue now, and overdue is brought up every day.
+        assertEquals(2, store.morningReminder().size)
     }
 
     @Test
     fun finishingTakesATodoOutOfTheRemindersAndTheRecordStays() {
         val store = store()
-        val memo = store.add("回邮件", moment("2026-11-17", 15))
-        assertTrue(store.plan().due.any { it.id == memo.id })
+        val memo = store.add("回邮件", today)
         store.setDone(memo.id, true)
-        assertFalse(store.plan().due.any { it.id == memo.id })
-        assertTrue(store.plan().overdue.none { it.id == memo.id })
-        // Still in the record.
-        assertNotNull(store.find(memo.id))
+        assertTrue(store.morningReminder().isEmpty())
         assertTrue(store.find(memo.id)!!.done)
-        // Opened again, it reminds again.
         store.setDone(memo.id, false)
-        assertTrue(store.plan().due.any { it.id == memo.id })
+        assertEquals(1, store.morningReminder().size)
     }
 
     @Test
     fun anOverdueTodoIsOverdueUntilFinishedOrMoved() {
         val store = store()
-        val memo = store.add("交材料", moment("2026-11-16", 9))
-        assertTrue(store.plan().overdue.any { it.id == memo.id })
-        assertTrue(store.plan().due.none { it.id == memo.id })
-        store.update(memo.id, dueAt = moment("2026-11-19", 9), changeDue = true)
-        assertTrue(store.plan().overdue.none { it.id == memo.id })
-        assertTrue(store.plan().due.any { it.id == memo.id })
-    }
-
-    @Test
-    fun aNewTimeMeansTheRemindersStartOver() {
-        val store = store()
-        val memo = store.add("约医生", moment("2026-11-17", 15))
-        store.markDueReminded(memo)
-        assertTrue(store.plan().due.none { it.id == memo.id })
-        store.update(memo.id, dueAt = moment("2026-11-20", 9), changeDue = true)
-        assertTrue(store.plan().due.any { it.id == memo.id })
-    }
-
-    @Test
-    fun theOverdueReminderIsGivenOnceADay() {
-        val store = store()
-        val a = store.add("甲", moment("2026-11-16", 9))
-        val b = store.add("乙", moment("2026-11-15", 9))
-        val overdue = store.plan().overdue
-        assertEquals(2, overdue.size)
-        store.markOverdueReminded(overdue)
-        assertEquals("2026-11-17", store.find(a.id)!!.overdueRemindedOn)
-        assertEquals("2026-11-17", store.find(b.id)!!.overdueRemindedOn)
-    }
-
-    @Test
-    fun undatedTodosArePutToTheUserOnceADay() {
-        val store = store()
-        store.add("想想假期去哪", null)
-        store.add("有日期的", moment("2026-11-20", 9))
-        val first = store.askAboutUndated()
-        assertEquals(1, first.size)
-        assertEquals("想想假期去哪", first[0].text)
-        // Asked already today.
-        assertTrue(store.askAboutUndated().isEmpty())
+        val memo = store.add("交材料", today.minusDays(1))
+        assertTrue(store.isOverdue(memo))
+        store.markReminded(store.morningReminder())
+        store.update(memo.id, due = today.plusDays(2), changeDue = true)
+        assertFalse(store.isOverdue(memo))
+        assertTrue(store.morningReminder().isEmpty())
+        // On its new day it is reminded afresh.
+        clock = at(today.plusDays(2))
+        assertEquals(1, store.morningReminder().size)
     }
 
     // ── a date left empty ───────────────────────────────────────────────────
-
-    private class Quiet : com.mindtravel.reduction.core.events.EventSink {
-        override fun emit(function: String, vararg args: Any?) {}
-    }
-
-    private fun tool(store: MemoStore) = MemoTool(store, Quiet())
 
     @Test
     fun aTodoMayBeWrittenWithoutADateAndItsDateIsEmpty() {
@@ -199,8 +175,8 @@ class MemoStoreTest {
         // What empty means stays in the program: the assistant only hears there is no time.
         assertFalse(unsaid.contains("empty") || unsaid.contains("明天"))
         assertFalse(tool.spec.description.contains("empty") || tool.spec.parameters.any { it.description.contains("empty") })
-        assertNull(store.find(1)!!.dueAt)
-        assertNull(store.find(2)!!.dueAt)
+        assertNull(store.find(1)!!.due)
+        assertNull(store.find(2)!!.due)
         assertFalse(MemoCard.render(store).contains("empty"))
         assertTrue(tool.execute("""{"action":"list"}""").contains("#2 买花 · 没有标记时间"))
         assertTrue(MemoView.json(store, exact = true, notify = true).contains("\"due\":\"empty\""))
@@ -215,32 +191,34 @@ class MemoStoreTest {
     }
 
     @Test
-    fun anEmptyDateIsBroughtUpEveryMorningAsTomorrowsUntilItIsFilled() {
+    fun anEmptyDateIsBroughtUpEveryMorningUntilItIsFilled() {
         val store = store()
         val memo = store.add("换灯泡", null)
         assertEquals(listOf(memo.id), store.plan().empty.map { it.id })
-        assertEquals(listOf(memo.id), store.morningReminder().map { it.id })
-        // Once a day.
-        store.markOverdueReminded(store.morningReminder())
+        store.markReminded(store.morningReminder())
         assertTrue(store.morningReminder().isEmpty())
-        // Still owed on later days: the alarm stays set.
-        assertEquals(1, store.plan().morning.size)
-        // A date ends it, and the to-do reminds at its own time instead.
-        tool(store).execute("""{"action":"update","id":"${memo.id}","date":"2026-11-20","time":"10:00"}""")
+        clock = at(today.plusDays(1))
+        assertEquals(1, store.morningReminder().size)
+        // A date ends it: the to-do waits for its own day.
+        tool(store).execute("""{"action":"update","id":"${memo.id}","date":"2026-11-25"}""")
         assertTrue(store.plan().empty.isEmpty())
-        assertTrue(store.plan().due.any { it.id == memo.id })
+        assertTrue(store.morningReminder().isEmpty())
         // And taking the date away makes it empty again.
         tool(store).execute("""{"action":"update","id":"${memo.id}","date":"empty"}""")
-        assertNull(store.find(memo.id)!!.dueAt)
+        assertNull(store.find(memo.id)!!.due)
         assertEquals(1, store.morningReminder().size)
     }
 
     @Test
-    fun aFinishedTodoWithAnEmptyDateIsLeftAlone() {
+    fun undatedTodosArePutToTheUserInTalkOnceADay() {
         val store = store()
-        val memo = store.add("换灯泡", null)
-        store.setDone(memo.id, true)
-        assertTrue(store.plan().morning.isEmpty())
+        store.add("想想假期去哪", null)
+        store.add("有日期的", today.plusDays(3))
+        val first = store.askAboutUndated()
+        assertEquals(listOf("想想假期去哪"), first.map { it.text })
+        assertTrue(store.askAboutUndated().isEmpty())
+        clock = at(today.plusDays(1))
+        assertEquals(1, store.askAboutUndated().size)
     }
 
     // ── the card's three blocks ─────────────────────────────────────────────
@@ -248,13 +226,13 @@ class MemoStoreTest {
     @Test
     fun todayHoldsWhatIsLateAndWhatIsDueToday() {
         val store = store()
-        val late = store.add("昨天的", moment("2026-11-16", 9))
-        val later = store.add("今晚的", moment("2026-11-17", 20))
-        val tomorrow = store.add("明天的", moment("2026-11-18", 9))
+        val todays = store.add("今天的", today)
+        val late = store.add("昨天的", today.minusDays(1))
+        val tomorrow = store.add("明天的", today.plusDays(1))
         val undated = store.add("没日期的", null)
         val view = store.view()
-        // Late first, then by time: what is overdue is the most urgent of today's work.
-        assertEquals(listOf(late.id, later.id), view.today.map { it.id })
+        // Late first: what is overdue is the most urgent of today's work.
+        assertEquals(listOf(late.id, todays.id), view.today.map { it.id })
         assertEquals(listOf(tomorrow.id), view.future.map { it.id })
         assertEquals(listOf(undated.id), view.undated.map { it.id })
     }
@@ -262,25 +240,26 @@ class MemoStoreTest {
     @Test
     fun theCardSaysWhatIsDoneAndWhatIsLate() {
         val store = store()
-        val done = store.add("做完了", moment("2026-11-17", 10))
+        val done = store.add("做完了", today)
         store.setDone(done.id, true)
-        store.add("还没做", moment("2026-11-18", 9))
+        store.add("还没做", today.plusDays(1))
+        store.add("拖着的", today.minusDays(1))
         store.add("没日期", null)
         val text = MemoCard.render(store)
         assertTrue(text.contains("## 今天"))
         assertTrue(text.contains("## 未来"))
         assertTrue(text.contains("## 没日期"))
-        assertTrue(text.contains("[x] #${done.id} 做完了"))
-        assertTrue(text.contains("明天 09:00"))
-        assertTrue(text.contains("没日期"))
+        assertTrue(text.contains("[x] #${done.id} 做完了 · 今天\n"))
+        assertTrue(text.contains("还没做 · 明天\n"))
+        assertTrue(text.contains("拖着的 · 11-16 · 已过期"))
+        assertFalse(Regex("\\d\\d:\\d\\d").containsMatchIn(text))
     }
 
     @Test
-    fun theCardNeverLooksIntoThePastForFinishedWork() {
+    fun todaysFinishedWorkIsAllListed() {
         val store = store()
-        repeat(12) { store.setDone(store.add("第 $it 件", moment("2026-11-17", 9)).id, true) }
+        repeat(12) { store.setDone(store.add("第 $it 件", today).id, true) }
         val text = MemoCard.render(store)
-        // Today's finished ones are all listed, for reading the day back.
         assertTrue(text.contains("[x] #12 第 11 件"))
         assertTrue(text.contains("[x] #1 第 0 件"))
         assertFalse(text.contains("已完成 12 条"))

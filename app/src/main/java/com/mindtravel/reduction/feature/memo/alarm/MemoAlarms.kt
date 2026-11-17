@@ -17,15 +17,14 @@ import java.time.LocalTime
 import java.time.ZoneId
 
 /**
- * Remembers the user of a to-do, through the system's alarms. An alarm goes out at the
- * to-do's time; one that was missed, or that came and went unfinished, is brought up
- * again each morning at [DAILY_HOUR] until it is finished or given a new time. A to-do
- * whose date is empty counts as tomorrow's: it comes up every morning too, asking for its
- * time, until it has one. Finishing
- * a to-do takes it out of the queue; the record stays.
+ * Reminds the user of the day's to-dos, through one system alarm each morning at
+ * [DAILY_HOUR]. The reminder is about that day: what is due today, and what was due
+ * earlier and is still open — brought up again every morning until it is finished or
+ * given a new day. To-dos whose date is empty count as tomorrow's and come with the
+ * question whether to fill it in. Finishing a to-do takes it out; the record stays.
  *
- * Alarms are set again from the to-dos whenever they change, and after a restart. Without
- * the exact-alarm permission they are still set, only not to the minute; without the
+ * The alarm is set again from the to-dos whenever they change, and after a restart.
+ * Without the exact-alarm permission it is still set, only not to the minute; without the
  * notification permission nothing can be shown, and the review card says so.
  */
 class MemoAlarms(private val context: Context) {
@@ -60,29 +59,16 @@ class MemoAlarms(private val context: Context) {
             .setData(android.net.Uri.parse("package:${context.packageName}"))
         else null
 
-    /** Sets every alarm the to-dos call for, replacing what was set before. */
+    /**
+     * Sets the morning alarm the to-dos call for, replacing what was set before. It is set
+     * whenever any to-do is open: one due on a later day needs it on its day.
+     */
     fun reschedule(store: MemoStore) {
         val alarm = manager ?: return
-        cancelAll()
-        val now = System.currentTimeMillis()
-        val today = store.today()
-
-        // The reminder at each to-do's own time, as far ahead as the system likes to plan.
-        for (memo in store.all()) {
-            if (memo.done) continue
-            val due = memo.dueAt ?: continue
-            if (memo.dueReminded && due <= now) continue
-            // A to-do far ahead is still set now: the system holds it, and anything that
-            // changes the to-dos sets the alarms again anyway.
-            val at = if (due > now) due else nextMorning(today)
-            set(alarm, at, memo.id, exact = status().exact)
-        }
-
-        // The morning reminder: whatever is overdue, until it is finished or given a new
-        // time, and whatever has an empty date, which counts as tomorrow until it gets one.
-        val plan = store.plan(now)
-        if (plan.morning.isNotEmpty()) set(alarm, nextMorning(today), OVERDUE_ID, exact = status().exact)
-        Logs.add("Memo alarms set: ${store.open().count { it.dueAt != null }} with times, overdue=${plan.overdue.size}, empty=${plan.empty.size}")
+        alarm.cancel(pending())
+        val open = store.open().size
+        if (open > 0) set(alarm, nextMorning(store.today()), exact = status().exact)
+        Logs.add("Memo alarm: $open open, ${if (open > 0) "set for the next morning" else "none set"}")
     }
 
     private fun nextMorning(today: LocalDate): Long {
@@ -96,28 +82,19 @@ class MemoAlarms(private val context: Context) {
         return at
     }
 
-    private fun set(alarm: AlarmManager, at: Long, memoId: Int, exact: Boolean) {
-        val pending = pending(memoId)
+    private fun set(alarm: AlarmManager, at: Long, exact: Boolean) {
         runCatching {
-            if (exact) alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
-            else alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending)
+            if (exact) alarm.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending())
+            else alarm.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, pending())
         }.onFailure { Logs.add("Memo alarm not set: ${it.message}") }
     }
 
-    private fun pending(id: Int): PendingIntent {
-        val intent = Intent(context, MemoAlarmReceiver::class.java)
-            .setAction(MemoAlarmReceiver.ACTION_REMIND)
-            .putExtra(MemoAlarmReceiver.EXTRA_ID, if (id == OVERDUE_ID) OVERDUE_ID else id)
+    private fun pending(): PendingIntent {
+        val intent = Intent(context, MemoAlarmReceiver::class.java).setAction(MemoAlarmReceiver.ACTION_REMIND)
         return PendingIntent.getBroadcast(
-            context, id, intent,
+            context, MORNING_ID, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-    }
-
-    private fun cancelAll() {
-        val alarm = manager ?: return
-        for (memoId in 1..MAX_ID) alarm.cancel(pending(memoId))
-        alarm.cancel(pending(OVERDUE_ID))
     }
 
     /** Shows the reminder for [memos] now, one notification for the lot. */
@@ -125,21 +102,25 @@ class MemoAlarms(private val context: Context) {
         if (memos.isEmpty()) return
         val managerNotification = context.getSystemService(NotificationManager::class.java) ?: return
         val channel = NotificationChannel(CHANNEL_ID, "待办提醒", NotificationManager.IMPORTANCE_HIGH).apply {
-            description = "到点提醒，以及过期未完成时每天早上的提醒"
+            description = "每天早上提醒当天的待办"
             enableVibration(true)
         }
         managerNotification.createNotificationChannel(channel)
 
         val today = store.today()
-        val unfilled = memos.count { it.dueAt == null }
+        val unfilled = memos.count { it.due == null }
         val title = when {
             unfilled == memos.size -> ASK_TO_FILL
-            memos.size == 1 -> "到点了"
+            memos.size == 1 -> "今天的待办"
             unfilled > 0 -> "${memos.size} 件待办，$unfilled 件没有标记时间，你要补齐吗？"
-            else -> "${memos.size} 件待办"
+            else -> "今天 ${memos.size} 件待办"
         }
         val text = memos.joinToString("\n") { memo ->
-            memo.text + (memo.dueAt?.let { " · " + DueParser.describe(it, today) } ?: " · 没有标记时间")
+            memo.text + when {
+                memo.due == null -> " · 没有标记时间"
+                memo.due!! < today -> " · " + DueParser.describe(memo.due!!, today) + " · 已过期"
+                else -> ""
+            }
         }
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?: Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(context.packageName)
@@ -162,15 +143,12 @@ class MemoAlarms(private val context: Context) {
     }
 
     companion object {
-        /** When the daily reminder for unfinished to-dos goes out. */
+        /** When the day's reminder goes out. */
         const val DAILY_HOUR = 9
         const val DAILY_MINUTE = 0
 
-        /** The id of the daily alarm, distinct from any to-do's number. */
-        const val OVERDUE_ID = -9
-
-        /** To-do numbers are given out from 1; this bounds what is cancelled. */
-        private const val MAX_ID = 100_000
+        /** The request code of the one alarm there is. */
+        private const val MORNING_ID = 9
 
         /** What the reminder says of to-dos whose date is empty. */
         const val ASK_TO_FILL = "这些没有标记时间，你要补齐吗？"

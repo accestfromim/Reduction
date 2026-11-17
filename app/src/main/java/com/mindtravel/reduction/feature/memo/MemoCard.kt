@@ -12,19 +12,18 @@ import java.time.LocalDate
  */
 object MemoCard {
     const val CARD = "计划"
-    const val PURPOSE = "程序写入的待办与时间：今天、未来、没日期。助手用 todo 工具增改，用户在卡片上勾掉"
+    const val PURPOSE = "程序写入的待办与日期：今天、未来、没日期。助手用 todo 工具增改，用户在卡片上勾掉"
 
     fun render(store: MemoStore): String {
         val view = store.view()
         val today = store.today()
-        val now = store.nowMillis()
         return buildString {
             appendLine("这张卡片和待办是同一份数据，由程序写入。点一下就能完成一条；助手的增改通过 todo 工具。")
             // Today's finished to-dos are listed, so a day's work can be read back. Later
             // ones and undated ones are only counted: what matters there is what is still open.
-            section("今天", view.today, today, now, showFinished = true)
-            section("未来", view.future, today, now, showFinished = false)
-            section("没日期", view.undated, today, now, showFinished = false)
+            section("今天", view.today, today, store, showFinished = true)
+            section("未来", view.future, today, store, showFinished = false)
+            section("没日期", view.undated, today, store, showFinished = false)
         }.trimEnd() + "\n"
     }
 
@@ -32,7 +31,7 @@ object MemoCard {
         title: String,
         memos: List<MemoStore.Memo>,
         today: LocalDate,
-        now: Long,
+        store: MemoStore,
         showFinished: Boolean
     ) {
         appendLine("## $title")
@@ -50,11 +49,11 @@ object MemoCard {
             append(memo.id)
             append(' ')
             append(memo.text)
-            val at = memo.dueAt
-            if (at != null) {
+            val day = memo.due
+            if (day != null) {
                 append(" · ")
-                append(DueParser.describe(at, today))
-                if (!memo.done && at < now) append(" · 已过期")
+                append(DueParser.describe(day, today))
+                if (store.isOverdue(memo)) append(" · 已过期")
             }
             appendLine()
         }

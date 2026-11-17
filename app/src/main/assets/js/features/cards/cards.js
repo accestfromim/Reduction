@@ -158,8 +158,8 @@ function renderPlan() {
     const warning = document.createElement('div');
     warning.className = 'plan-warning';
     const lines = [];
-    if (data.notify !== true) lines.push('通知权限没有打开：到点不会弹出提醒。');
-    if (data.exact !== true) lines.push('没有精确闹钟权限：提醒可能晚一些，也可能在省电时被推迟。');
+    if (data.notify !== true) lines.push('通知权限没有打开：早上不会弹出当天的提醒。');
+    if (data.exact !== true) lines.push('没有精确闹钟权限：早上的提醒可能晚一些，也可能在省电时被推迟。');
     lines.push('这两种情况下，App 被系统杀掉后不能保证还会提醒；计划卡片本身始终准确。');
     warning.textContent = lines.join('');
     const actions = document.createElement('div');
