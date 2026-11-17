@@ -20,8 +20,17 @@ class AckCue(
     private val describeOutput: () -> String
 ) : CueOutput {
 
-    /** 16-bit mono PCM at the audio queue's rate. A spoken cue is asked for each time it is needed. */
-    class Sounds(val spoken: (Cue) -> ByteArray, val hum: ByteArray, val humStereo: Boolean = false)
+    /**
+     * 16-bit mono PCM at the audio queue's rate. A spoken cue is asked for each time it is needed.
+     * [humGain] lifts the hum above the level it was recorded at: it has to be heard over what is
+     * going on around the phone, yet stay under the voice.
+     */
+    class Sounds(
+        val spoken: (Cue) -> ByteArray,
+        val hum: ByteArray,
+        val humStereo: Boolean = false,
+        val humGain: Float = 1f
+    )
 
     private var finishPending: (() -> Unit)? = null
     private var timeout: Job? = null
@@ -36,7 +45,7 @@ class AckCue(
         if (!humming) {
             humming = true
             Logs.add("Hum on, output: ${describeOutput()}")
-            queue.setLoop(sounds.hum, stereo = sounds.humStereo)
+            queue.setLoop(sounds.hum, gain = sounds.humGain, stereo = sounds.humStereo)
             // The log should be able to say whether sound actually came out, not just that it was asked for.
             scope.launch {
                 val before = queue.playedFrames()

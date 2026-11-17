@@ -112,7 +112,9 @@ class AppCore private constructor(context: Context) {
         sounds = AckCue.Sounds(
             spoken = spokenCues::sound,
             hum = sound(context, R.raw.ack_hum, channels = 2),
-            humStereo = true
+            humStereo = true,
+            // 4 dB above the recording: the same 24 dB under full scale instead of 20.
+            humGain = 1.585f
         ),
         scope = scope,
         describeOutput = { AudioRoutes.describe(context) }

@@ -65,7 +65,7 @@ object VoiceMachine {
         /** The microphone could not be opened, or failed while recording. */
         data class MicFailed(val turn: Int, val message: String) : Event
 
-        /** Recording ended by itself — end word, silence, time limit — with something said. */
+        /** Recording ended by itself — end word, or nobody speaking — with something said. */
         data class TurnSpoken(val turn: Int) : Event
 
         /** Recording ended because nobody spoke. */

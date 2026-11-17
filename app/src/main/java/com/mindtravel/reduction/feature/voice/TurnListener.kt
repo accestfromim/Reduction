@@ -51,7 +51,6 @@ class TurnListener(
     private var token = 0
     private var apiKey = ""
     private var events: Events? = null
-    private var capJob: Job? = null
     private var settleJob: Job? = null
 
     @Volatile
@@ -160,14 +159,6 @@ class TurnListener(
             },
             onError = { message -> Logs.add("Rolling ASR error: $message") }
         )
-        capJob?.cancel()
-        capJob = scope.launch {
-            delay(MAX_TURN_MS)
-            if (current == token) {
-                Logs.add("Turn reached the ${MAX_TURN_MS / 1000}s cap")
-                end(events)
-            }
-        }
     }
 
     private fun onRollingResult(events: Events, text: String?) {
@@ -193,8 +184,6 @@ class TurnListener(
     private fun reset(cancelRecorder: Boolean) {
         token++
         rollingAsr.stop()
-        capJob?.cancel()
-        capJob = null
         caption = ""
         speechStarted = false
         apiKey = ""
@@ -209,9 +198,6 @@ class TurnListener(
     private fun stripEndWord(raw: String): String = (EndWords.strip(raw) ?: raw).trim()
 
     companion object {
-        /** Longest a single turn may run before it is ended automatically. */
-        const val MAX_TURN_MS = 60_000L
-
         /** The longest to wait for a Bluetooth headset to start delivering microphone audio. */
         private const val ROUTE_SWITCH_LIMIT_MS = 1_500L
 

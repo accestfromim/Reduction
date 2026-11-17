@@ -119,10 +119,19 @@ class TurnRecorder(
         return true
     }
 
-    /** The audio so far, once someone has spoken. */
+    /**
+     * The audio so far, once someone has spoken — for the live caption, which is asked for
+     * every second. A turn can run for minutes, so only its last [CAPTION_TAIL_BYTES] are
+     * handed over: the caption needs what is being said now, and re-sending the whole
+     * recording every second would grow with the turn. The whole recording is kept for the
+     * final transcript.
+     */
     fun snapshotWav(): ByteArray? {
         if (!speechStarted) return null
-        val data = synchronized(pcm) { pcm.toByteArray() }
+        val data = synchronized(pcm) {
+            val all = pcm.toByteArray()
+            if (all.size <= CAPTION_TAIL_BYTES) all else all.copyOfRange(all.size - CAPTION_TAIL_BYTES, all.size)
+        }
         if (data.isEmpty()) return null
         return WavEncoder.pcm16ToWav(data)
     }
@@ -193,6 +202,9 @@ class TurnRecorder(
     private companion object {
         /** Frames are 100 ms: an alive signal with the first frame, then twice a second. */
         const val ALIVE_EVERY_FRAMES = 5
+
+        /** How much of a recording the live caption is given: the last 15 seconds, 480 KB at 16 kHz. */
+        const val CAPTION_TAIL_BYTES = 15 * WavEncoder.SAMPLE_RATE * 2
 
         /** Keyword spotter syntax: the syllables of "完毕". */
         const val END_WORDS = "w án b ì @完毕"
