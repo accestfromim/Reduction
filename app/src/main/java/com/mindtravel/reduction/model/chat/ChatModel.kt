@@ -41,7 +41,28 @@ data class ToolCall(
 }
 
 /** A picture handed to the model to look at: its media type and the file itself, in base64. */
-data class ChatImage(val name: String, val mediaType: String, val base64: String)
+data class ChatImage(val name: String, val mediaType: String, val base64: String) {
+    companion object {
+        const val MAX_PER_MESSAGE = 4
+        private const val MAX_BASE64_CHARS = 6 * 1024 * 1024
+        private val KINDS = setOf("image/png", "image/jpeg", "image/webp", "image/gif")
+
+        /**
+         * Pictures as the page hands them over: a JSON list of {name, mediaType, base64}.
+         * What is not a picture of a kind the model takes, or is too large, is left out.
+         */
+        fun listFromJson(raw: String): List<ChatImage> = runCatching {
+            val list = JSONArray(raw)
+            (0 until list.length()).mapNotNull { index ->
+                val item = list.optJSONObject(index) ?: return@mapNotNull null
+                val type = item.optString("mediaType")
+                val data = item.optString("base64")
+                if (type !in KINDS || data.isEmpty() || data.length > MAX_BASE64_CHARS) null
+                else ChatImage(item.optString("name").ifBlank { "图片 ${index + 1}" }, type, data)
+            }.take(MAX_PER_MESSAGE)
+        }.getOrDefault(emptyList())
+    }
+}
 
 data class ChatMessage(
     val role: Role,

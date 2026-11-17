@@ -514,6 +514,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         "loadHistory" -> conversation.historyJson()
         "clearHistory" -> conversation.clear()
         "submitText" -> conversation.submit(args.getString(0))
+        "submitPictures" -> conversation.submitWithPictures(args.getString(0), args.getString(1))
         "listCards" -> cards.directoryJson()
         "readCard" -> cards.read(args.getString(0)).orEmpty()
         "cardPurpose" -> cards.purpose(args.getString(0))

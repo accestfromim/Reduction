@@ -2,6 +2,7 @@ import { callBridge } from '../../core/bridge.js';
 import { loadHistory } from './history-store.js';
 import { state, uid } from '../../core/state.js';
 import * as ui from '../../ui/ui.js';
+import * as pictures from './pictures.js';
 
 // Draws the conversation. The app owns it: it keeps the history, builds the request and
 // speaks the reply. This page is told what happens and shows it.
@@ -25,15 +26,37 @@ function scheduleAssistantRender() {
 /** Hands what the user typed, or said into push-to-talk, to the app. The app answers with onReplyBegin. */
 export function sendText(raw) {
   const text = String(raw || '').trim();
-  if (!text) return;
-  if (callBridge('submitText', text) !== true && state.settings.apiKey) ui.toast('消息发送失败');
+  const going = pictures.take();
+  if (!text && !going.length) return;
+  if (!going.length) {
+    if (callBridge('submitText', text) !== true && state.settings.apiKey) ui.toast('消息发送失败');
+    return;
+  }
+  // Shown in the bubble of the message they go with, once the app says it has begun.
+  state.sentPictures = going.map((picture) => picture.url);
+  const sent = callBridge('submitPictures', text, JSON.stringify(going.map(({ name, mediaType, base64 }) => ({ name, mediaType, base64 }))));
+  if (sent !== true) {
+    state.sentPictures = null;
+    if (state.settings.apiKey) ui.toast('消息发送失败');
+  }
 }
 
 /** A new exchange has begun, typed or spoken: draw what was said and a place for the reply. */
 export function handleBegin(id, text) {
   if (state.busy) closeReply();
   state.speaking = false;
-  ui.appendMessage('user', text);
+  const said = ui.appendMessage('user', text);
+  if (state.sentPictures && state.sentPictures.length) {
+    const strip = document.createElement('div');
+    strip.className = 'bubble-pictures';
+    for (const url of state.sentPictures) {
+      const image = document.createElement('img');
+      image.src = url;
+      strip.appendChild(image);
+    }
+    said.bubble.appendChild(strip);
+    state.sentPictures = null;
+  }
   state.busy = true;
   ui.updateControls();
 

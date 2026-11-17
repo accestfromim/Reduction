@@ -30,6 +30,7 @@ class ChatToolFactory(
         val tools = buildList {
             add(PatchCardsTool(cards, emitter))
             add(ReadCardTool(cards))
+            add(SearchCardsTool(cards))
             add(MemoTool(memos, emitter))
             if (settings.webSearchEnabled) add(WebSearchTool(searchGateway, settings.apiKey))
             if (settings.calculatorEnabled) add(CalculatorTool())

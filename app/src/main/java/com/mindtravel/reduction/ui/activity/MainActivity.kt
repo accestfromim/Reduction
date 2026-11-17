@@ -63,6 +63,37 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
         }
 
     private var filePicked: ValueCallback<Array<Uri>>? = null
+
+    /** Where a photograph taken for the conversation is put before the page reads it. */
+    private val shot: java.io.File get() = java.io.File(cacheDir, "shots/shot.jpg")
+
+    /** A picture for the conversation: taken now, or picked from what the phone holds. */
+    private val picturePicker = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val picked = result.data?.data
+        val uri = when {
+            result.resultCode != RESULT_OK -> null
+            picked != null -> picked
+            shot.length() > 0 -> androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", shot)
+            else -> null
+        }
+        filePicked?.onReceiveValue(if (uri != null) arrayOf(uri) else null)
+        filePicked = null
+    }
+
+    private fun askForPicture(): Boolean = runCatching {
+        shot.parentFile?.mkdirs()
+        shot.delete()
+        val target = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.files", shot)
+        val camera = android.content.Intent(android.provider.MediaStore.ACTION_IMAGE_CAPTURE)
+            .putExtra(android.provider.MediaStore.EXTRA_OUTPUT, target)
+            .addFlags(android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION or android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        camera.clipData = android.content.ClipData.newRawUri("", target)
+        val gallery = android.content.Intent(android.content.Intent.ACTION_GET_CONTENT)
+            .addCategory(android.content.Intent.CATEGORY_OPENABLE).setType("image/*")
+        picturePicker.launch(
+            android.content.Intent.createChooser(gallery, "图片").putExtra(android.content.Intent.EXTRA_INITIAL_INTENTS, arrayOf(camera))
+        )
+    }.isSuccess
     private val filePicker = registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
         filePicked?.onReceiveValue(if (uri != null) arrayOf(uri) else null)
         filePicked = null
@@ -149,6 +180,8 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
                 filePicked?.onReceiveValue(null)
                 filePicked = callback
                 val kinds = params.acceptTypes.filter { it.isNotBlank() }
+                // Asked for pictures only, as the conversation does: the camera is offered beside the gallery.
+                if (kinds == listOf("image/*")) return askForPicture()
                 return runCatching { filePicker.launch(kinds.singleOrNull() ?: "*/*") }.isSuccess
             }
         }

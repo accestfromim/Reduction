@@ -180,7 +180,7 @@ export function updateHint() {
 }
 
 export function updateControls() {
-  els.sendBtn.disabled = state.busy || !els.textInput.value.trim();
+  els.sendBtn.disabled = state.busy || (!els.textInput.value.trim() && !(state.pictures && state.pictures.length));
   els.micBtn.classList.toggle('recording', state.recording);
 }
 

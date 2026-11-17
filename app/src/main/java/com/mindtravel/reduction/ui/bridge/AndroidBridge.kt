@@ -110,6 +110,10 @@ class AndroidBridge(
     @JavascriptInterface
     fun submitText(text: String): Boolean = chat.submit(text)
 
+    /** What was typed, with pictures: a JSON list of {name, mediaType, base64}. */
+    @JavascriptInterface
+    fun submitPictures(text: String, picturesJson: String): Boolean = chat.submit(text, picturesJson)
+
     @JavascriptInterface
     fun pcConnect() = pc.connect()
 

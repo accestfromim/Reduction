@@ -341,6 +341,18 @@ class AgentHarnessTest {
     }
 
     @Test
+    fun picturesFromThePageAreReadAndWhatIsNotAPictureIsLeftOut() {
+        val read = ChatImage.listFromJson(
+            """[{"name":"照片","mediaType":"image/jpeg","base64":"QUJD"},{"name":"x","mediaType":"text/html","base64":"QUJD"},
+               {"mediaType":"image/png","base64":"REVG"},{"name":"空","mediaType":"image/png","base64":""}]"""
+        )
+        assertEquals(listOf(ChatImage("照片", "image/jpeg", "QUJD"), ChatImage("图片 3", "image/png", "REVG")), read)
+        assertTrue(ChatImage.listFromJson("不是 JSON").isEmpty())
+        val many = "[" + (1..9).joinToString(",") { """{"name":"p$it","mediaType":"image/png","base64":"QUJD"}""" } + "]"
+        assertEquals(ChatImage.MAX_PER_MESSAGE, ChatImage.listFromJson(many).size)
+    }
+
+    @Test
     fun aMessageWithPicturesIsSentAsTextAndPicturesAndOneWithoutIsSentAsBefore() {
         val plain = ChatMessage(Role.USER, "看看").toJson()
         assertEquals("看看", plain.get("content"))

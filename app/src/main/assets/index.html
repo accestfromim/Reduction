@@ -101,6 +101,7 @@
         <div class="composer-hint" id="composerHint"></div>
       </div>
 
+      <div class="picture-strip hidden" id="pictureStrip"></div>
       <div class="text-mode hidden" id="textMode">
         <button class="mode-btn" id="voiceBtn" aria-label="切换到语音">
           <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
@@ -109,6 +110,14 @@
             <path d="M12 18v3"></path>
           </svg>
         </button>
+        <button class="mode-btn" id="pictureBtn" aria-label="发图片">
+          <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="5" width="18" height="14" rx="2.5"></rect>
+            <circle cx="8.5" cy="10" r="1.6"></circle>
+            <path d="m21 15-4.5-4.5L8 19"></path>
+          </svg>
+        </button>
+        <input class="hidden" id="pictureInput" type="file" accept="image/*" multiple />
         <input class="text-input" id="textInput" type="text" placeholder="输入消息" autocomplete="off" />
         <button class="send-btn" id="sendBtn" aria-label="发送" disabled>
           <svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

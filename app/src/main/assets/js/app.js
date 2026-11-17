@@ -1,3 +1,4 @@
+import * as pictures from './features/chat/pictures.js';
 import { callBridge } from './core/bridge.js';
 import * as cards from './features/cards/cards.js';
 import * as chat from './features/chat/chat.js';
@@ -156,6 +157,7 @@ window.onAndroidBack = function () {
   return false;
 };
 
+pictures.bind();
 ui.els.sendBtn.addEventListener('click', () => {
   const text = ui.els.textInput.value;
   ui.els.textInput.value = '';

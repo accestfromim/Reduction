@@ -35,7 +35,14 @@ class Conversation(
     private val place: String = "安卓手机"
 ) {
     /** A line carries a name of its own and the time it was said: that is what lets two devices share one conversation. */
-    private class Line(val id: String, val role: Role, val content: String, val at: Long)
+    private class Line(
+        val id: String, val role: Role, val content: String, val at: Long,
+        /**
+         * Pictures that came with this line. Held while the app runs, so that the next
+         * few replies can still look at them; the record on disk keeps the words only.
+         */
+        val images: List<ChatImage> = emptyList()
+    )
 
     private val lines = ArrayList<Line>()
 
@@ -81,8 +88,9 @@ class Conversation(
     fun submit(raw: String, shown: String): Boolean = submit(raw, shown, emptyList())
 
     /**
-     * As above, with pictures for the assistant to look at in this one reply. They go to
-     * the model with the message and are not kept: the conversation remembers the words.
+     * As above, with pictures for the assistant to look at. They go to the model with the
+     * message, and again with the replies that follow while they are among the latest
+     * [PICTURES_IN_VIEW]; they are not written to the record.
      */
     @Synchronized
     fun submit(raw: String, shown: String, images: List<ChatImage>): Boolean {
@@ -94,7 +102,7 @@ class Conversation(
             return false
         }
 
-        lines += Line(UUID.randomUUID().toString(), Role.USER, text, System.currentTimeMillis())
+        lines += Line(UUID.randomUUID().toString(), Role.USER, text, System.currentTimeMillis(), images)
         save()
         val id = UUID.randomUUID().toString()
         emitter.emit("onReplyBegin", id, shown.trim().ifEmpty { text })
@@ -113,11 +121,32 @@ class Conversation(
                 place
             )
         )
-        lines.takeLast(CONTEXT_LINES).mapTo(messages) { ChatMessage(role = it.role, content = it.content) }
-        // The pictures belong to what was just said: the last message.
-        if (images.isNotEmpty()) messages[messages.lastIndex] = messages.last().copy(images = images)
+        // The latest pictures stay in view; older ones have been spoken of and are let go.
+        val shown = lines.takeLast(CONTEXT_LINES)
+        var room = PICTURES_IN_VIEW
+        val withPictures = HashSet<String>()
+        for (line in shown.asReversed()) {
+            if (line.images.isEmpty() || line.images.size > room) continue
+            room -= line.images.size
+            withPictures += line.id
+        }
+        shown.mapTo(messages) { line ->
+            ChatMessage(role = line.role, content = line.content, images = if (line.id in withPictures) line.images else emptyList())
+        }
 
         return chat.send(id, messages) { reply -> remember(reply) }
+    }
+
+    /**
+     * What the user typed together with pictures picked, photographed or pasted. [picturesJson]
+     * is a list of {name, mediaType, base64}. The words kept say that pictures came along.
+     */
+    @Synchronized
+    fun submitWithPictures(raw: String, picturesJson: String): Boolean {
+        val images = ChatImage.listFromJson(picturesJson)
+        if (images.isEmpty()) return submit(raw)
+        val said = raw.trim().ifEmpty { "请看图。" }
+        return submit("$said\n［随这条消息发来 ${images.size} 张图片］", said, images)
     }
 
     /** Everything said so far, as the JSON the UI draws from. */
@@ -202,5 +231,8 @@ class Conversation(
         /** How much of the conversation the assistant is shown. */
         const val CONTEXT_LINES = 20
         const val KEPT_LINES = 100
+
+        /** How many of the latest pictures the assistant is still shown with each request. */
+        const val PICTURES_IN_VIEW = 4
     }
 }

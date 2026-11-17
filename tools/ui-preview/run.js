@@ -93,6 +93,15 @@ await page.evaluateOnNewDocument(() => {
     voiceFinish: () => {},
     voiceCancel: () => window.Native.onVoiceState('IDLE'),
     setWakeWordEnabled: () => true,
+    submitPictures: (text, pictures) => {
+      window.__sentPictures = JSON.parse(pictures);
+      const id = 'p' + (++window.__replies);
+      window.Native.onReplyBegin(id, text || '请看图。');
+      // The reply is brought to its end, as the app would: nothing is left half drawn for what follows.
+      window.Native.onChatToken(id, '看到了。');
+      window.Native.onChatDone(id, '看到了。');
+      return true;
+    },
     submitText: (text) => {
       const id = 'r' + (++window.__replies);
       window.Native.onReplyBegin(id, text);
@@ -293,6 +302,31 @@ if (!cardsShown.streamFirst || !cardsShown.onCards || cardsShown.before.join() !
     !cardsEdited.followed || !cardsEdited.editing || !cardsEdited.saved || !cardsEdited.backToList || !cardsEdited.nameShown ||
     cardsEdited.after.join() !== '备忘,科研想法·检索,科研想法·评测' || !cardsEdited.backToStream || !cardsEdited.nothingLeft) {
   throw new Error('cards did not behave: ' + JSON.stringify(cardsShown) + JSON.stringify(cardsEdited));
+}
+// A picture in the input box: it waits in the strip, goes out with the message, and shows in its bubble.
+const sentPicture = await page.evaluate(async () => {
+  const pictures = await import('./js/features/chat/pictures.js');
+  document.getElementById('tabChat') && document.getElementById('tabChat').click();
+  const canvas = document.createElement('canvas');
+  canvas.width = 3200; canvas.height = 1600;
+  const ctx = canvas.getContext('2d'); ctx.fillStyle = '#c33'; ctx.fillRect(0, 0, 3200, 1600);
+  const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
+  await pictures.add([new File([blob], '截图.png', { type: 'image/png' }), new File(['x'], 'a.txt', { type: 'text/plain' })]);
+  const waiting = document.querySelectorAll('#pictureStrip .picture-thumb').length;
+  const stripShown = !document.getElementById('pictureStrip').classList.contains('hidden');
+  const canSend = !document.getElementById('sendBtn').disabled;
+  document.getElementById('sendBtn').click();
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  const sent = window.__sentPictures || [];
+  const size = await new Promise((resolve) => { const i = new Image(); i.onload = () => resolve([i.width, i.height]); i.src = 'data:image/jpeg;base64,' + sent[0].base64; });
+  const bubbles = document.querySelectorAll('.msg-row.user .bubble-pictures img').length;
+  return { waiting, stripShown, canSend, count: sent.length, type: sent[0] && sent[0].mediaType, name: sent[0] && sent[0].name, size,
+           after: document.querySelectorAll('#pictureStrip .picture-thumb').length, bubbles };
+});
+console.log('picture in the input box:', JSON.stringify(sentPicture));
+if (sentPicture.waiting !== 1 || !sentPicture.stripShown || !sentPicture.canSend || sentPicture.count !== 1 || sentPicture.type !== 'image/jpeg' ||
+    sentPicture.name !== '截图' || sentPicture.size.join() !== '1600,800' || sentPicture.after !== 0 || sentPicture.bubbles !== 1) {
+  throw new Error('a picture in the input box did not behave: ' + JSON.stringify(sentPicture));
 }
 // Folders: a card renamed to "文件夹/名称" moves under that folder, which can be closed and opened.
 const folders = await page.evaluate(async () => {

@@ -2,8 +2,8 @@
 # Builds the phone app: dist/Reduction-v<version>.apk
 set -euo pipefail
 . "$(dirname "$0")/tools/env.sh"
-VERSION_CODE="${VERSION_CODE:-93}"
-VERSION_NAME="${VERSION_NAME:-1.0.62}"
+VERSION_CODE="${VERSION_CODE:-94}"
+VERSION_NAME="${VERSION_NAME:-1.0.63}"
 
 cd "$ROOT"
 $GRADLE --no-daemon -PappVersionCode="$VERSION_CODE" -PappVersionName="$VERSION_NAME" \
