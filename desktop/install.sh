@@ -57,8 +57,12 @@ fi
 "$PS" -NoProfile -NonInteractive -Command 'Get-Process ReductionPet -ErrorAction SilentlyContinue | Stop-Process -Force' || true
 rm -f "$APPDIR/pet.ps1" "$APPDIR/pet-fps.txt" "$APPDIR/pet.json" || true
 rm -rf "$APPDIR/window" || true
+# The pet that was just stopped may hold its libraries a moment longer; one already in place is left alone.
 for part in lib/net462/Microsoft.Web.WebView2.Core.dll lib/net462/Microsoft.Web.WebView2.Wpf.dll runtimes/win-x64/native/WebView2Loader.dll; do
-  unzip -p "$SDK" "$part" > "$APPDIR/$(basename "$part")"
+  target="$APPDIR/$(basename "$part")"
+  unzip -p "$SDK" "$part" | cmp -s - "$target" && continue
+  for _ in 1 2 3 4 5 6 7 8 9 10; do unzip -p "$SDK" "$part" > "$target" 2>/dev/null && break; sleep 0.5; done
+  unzip -p "$SDK" "$part" | cmp -s - "$target" || { echo "写不进 $target：桌宠还在运行？"; exit 1; }
 done
 cp "$HERE/pet.cs" "$APPDIR/pet.cs"
 FRAMEWORK='C:\Windows\Microsoft.NET\Framework64\v4.0.30319'
