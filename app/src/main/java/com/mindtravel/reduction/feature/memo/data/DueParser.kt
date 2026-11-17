@@ -21,6 +21,9 @@ object DueParser {
     class Parsed(val date: LocalDate, val hour: Int, val minute: Int, val assumedTime: Boolean)
 
     /** The time given to a to-do whose day was said but not its hour. */
+    /** What a date is called when it was left unfilled. */
+    const val EMPTY = "empty"
+
     const val DEFAULT_HOUR = 9
     const val DEFAULT_MINUTE = 0
 

@@ -29,14 +29,14 @@ class MemoStore(
         val id: Int,
         /** What to do, in the user's words. One line. */
         var text: String,
-        /** When it is due, to the minute; null when it has no date yet. */
+        /** When it is due, to the minute; null when the date is empty. */
         var dueAt: Long?,
         var done: Boolean,
         val createdAt: Long,
         var doneAt: Long = 0,
         /** Whether the reminder at the due time has gone out. A changed time clears it. */
         var dueReminded: Boolean = false,
-        /** The last day the overdue reminder was given, as yyyy-MM-dd. */
+        /** The last day the morning reminder was given for it — overdue, or with an empty date — as yyyy-MM-dd. */
         var overdueRemindedOn: String = ""
     )
 
@@ -166,16 +166,31 @@ class MemoStore(
 
     /**
      * What the reminders should be, worked out afresh from the to-dos: the open ones with
-     * a time ahead, and whether there is anything overdue to bring up tomorrow.
+     * a time ahead, the overdue ones, and the ones whose date is empty.
      */
     @Synchronized
     fun plan(moment: Long = now()): Plan {
         val ahead = items.filter { !it.done && it.dueAt != null && it.dueAt!! > moment && !it.dueReminded }
         val overdue = items.filter { !it.done && it.dueAt != null && it.dueAt!! <= moment }
-        return Plan(ahead, overdue)
+        // An empty date counts as tomorrow, every day, until a date is filled in.
+        val empty = items.filter { !it.done && it.dueAt == null }
+        return Plan(ahead, overdue, empty)
     }
 
-    class Plan(val due: List<Memo>, val overdue: List<Memo>)
+    class Plan(val due: List<Memo>, val overdue: List<Memo>, val empty: List<Memo>) {
+        /** What the morning reminder brings up: the overdue ones, and those with an empty date. */
+        val morning: List<Memo> get() = overdue + empty
+    }
+
+    /**
+     * What the morning reminder still owes today: the overdue to-dos and the ones with an
+     * empty date, less those already brought up today.
+     */
+    @Synchronized
+    fun morningReminder(moment: Long = now()): List<Memo> {
+        val day = today().toString()
+        return plan(moment).morning.filter { it.overdueRemindedOn != day }
+    }
 
     // ── the three blocks of the review card ─────────────────────────────────
 

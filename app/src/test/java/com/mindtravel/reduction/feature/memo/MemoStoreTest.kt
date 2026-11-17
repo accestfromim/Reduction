@@ -180,6 +180,66 @@ class MemoStoreTest {
         assertTrue(store.askAboutUndated().isEmpty())
     }
 
+    // ── a date left empty ───────────────────────────────────────────────────
+
+    private class Quiet : com.mindtravel.reduction.core.events.EventSink {
+        override fun emit(function: String, vararg args: Any?) {}
+    }
+
+    private fun tool(store: MemoStore) = MemoTool(store, Quiet())
+
+    @Test
+    fun aTodoMayBeWrittenWithoutADateAndItsDateIsEmpty() {
+        val store = store()
+        val tool = tool(store)
+        val unsaid = tool.execute("""{"action":"add","text":"换灯泡"}""")
+        val named = tool.execute("""{"action":"add","text":"买花","date":"empty"}""")
+        assertTrue(unsaid, unsaid.startsWith("记下了 #1"))
+        assertTrue(named, named.startsWith("记下了 #2"))
+        assertTrue(unsaid.contains("empty") && unsaid.contains("明天") && unsaid.contains("补全时间"))
+        assertNull(store.find(1)!!.dueAt)
+        assertNull(store.find(2)!!.dueAt)
+        assertTrue(MemoCard.render(store).contains("#1 换灯泡 · empty"))
+        assertTrue(tool.execute("""{"action":"list"}""").contains("#2 买花 · empty"))
+    }
+
+    @Test
+    fun aDateThatCannotBeReadIsRefusedRatherThanTakenAsEmpty() {
+        val store = store()
+        val said = tool(store).execute("""{"action":"add","text":"换灯泡","date":"改天吧"}""")
+        assertTrue(said, said.startsWith("没有生效"))
+        assertTrue(store.all().isEmpty())
+    }
+
+    @Test
+    fun anEmptyDateIsBroughtUpEveryMorningAsTomorrowsUntilItIsFilled() {
+        val store = store()
+        val memo = store.add("换灯泡", null)
+        assertEquals(listOf(memo.id), store.plan().empty.map { it.id })
+        assertEquals(listOf(memo.id), store.morningReminder().map { it.id })
+        // Once a day.
+        store.markOverdueReminded(store.morningReminder())
+        assertTrue(store.morningReminder().isEmpty())
+        // Still owed on later days: the alarm stays set.
+        assertEquals(1, store.plan().morning.size)
+        // A date ends it, and the to-do reminds at its own time instead.
+        tool(store).execute("""{"action":"update","id":"${memo.id}","date":"2026-11-20","time":"10:00"}""")
+        assertTrue(store.plan().empty.isEmpty())
+        assertTrue(store.plan().due.any { it.id == memo.id })
+        // And taking the date away makes it empty again.
+        tool(store).execute("""{"action":"update","id":"${memo.id}","date":"empty"}""")
+        assertNull(store.find(memo.id)!!.dueAt)
+        assertEquals(1, store.morningReminder().size)
+    }
+
+    @Test
+    fun aFinishedTodoWithAnEmptyDateIsLeftAlone() {
+        val store = store()
+        val memo = store.add("换灯泡", null)
+        store.setDone(memo.id, true)
+        assertTrue(store.plan().morning.isEmpty())
+    }
+
     // ── the card's three blocks ─────────────────────────────────────────────
 
     @Test

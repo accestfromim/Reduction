@@ -19,7 +19,9 @@ import java.time.ZoneId
 /**
  * Remembers the user of a to-do, through the system's alarms. An alarm goes out at the
  * to-do's time; one that was missed, or that came and went unfinished, is brought up
- * again each morning at [DAILY_HOUR] until it is finished or given a new time. Finishing
+ * again each morning at [DAILY_HOUR] until it is finished or given a new time. A to-do
+ * whose date is empty counts as tomorrow's: it comes up every morning too, asking for its
+ * time, until it has one. Finishing
  * a to-do takes it out of the queue; the record stays.
  *
  * Alarms are set again from the to-dos whenever they change, and after a restart. Without
@@ -76,10 +78,11 @@ class MemoAlarms(private val context: Context) {
             set(alarm, at, memo.id, exact = status().exact)
         }
 
-        // The daily reminder for whatever is overdue, until it is finished or given a new time.
-        val overdue = store.open().any { it.dueAt != null && it.dueAt!! <= now }
-        if (overdue) set(alarm, nextMorning(today), OVERDUE_ID, exact = status().exact)
-        Logs.add("Memo alarms set: ${store.open().count { it.dueAt != null }} with times, overdue=$overdue")
+        // The morning reminder: whatever is overdue, until it is finished or given a new
+        // time, and whatever has an empty date, which counts as tomorrow until it gets one.
+        val plan = store.plan(now)
+        if (plan.morning.isNotEmpty()) set(alarm, nextMorning(today), OVERDUE_ID, exact = status().exact)
+        Logs.add("Memo alarms set: ${store.open().count { it.dueAt != null }} with times, overdue=${plan.overdue.size}, empty=${plan.empty.size}")
     }
 
     private fun nextMorning(today: LocalDate): Long {
@@ -128,9 +131,18 @@ class MemoAlarms(private val context: Context) {
         managerNotification.createNotificationChannel(channel)
 
         val today = store.today()
-        val title = if (memos.size == 1) "到点了" else "${memos.size} 件待办"
+        val unfilled = memos.count { it.dueAt == null }
+        val title = when {
+            unfilled == memos.size && memos.size == 1 -> "明天的待办，请补全时间"
+            unfilled == memos.size -> "${memos.size} 件明天的待办，请补全时间"
+            memos.size == 1 -> "到点了"
+            unfilled > 0 -> "${memos.size} 件待办，其中 $unfilled 件请补全时间"
+            else -> "${memos.size} 件待办"
+        }
         val text = memos.joinToString("\n") { memo ->
-            memo.text + (memo.dueAt?.let { " · " + DueParser.describe(it, today) } ?: "")
+            // An empty date counts as tomorrow, and the reminder asks for the real time.
+            memo.text + (memo.dueAt?.let { " · " + DueParser.describe(it, today) }
+                ?: " · 明天（日期 ${DueParser.EMPTY}，请补全时间）")
         }
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?: Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(context.packageName)

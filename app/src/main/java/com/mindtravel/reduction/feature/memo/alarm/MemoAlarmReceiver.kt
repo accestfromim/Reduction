@@ -23,14 +23,16 @@ class MemoAlarmReceiver : BroadcastReceiver() {
         val id = intent.getIntExtra(EXTRA_ID, 0)
 
         if (id == MemoAlarms.OVERDUE_ID) {
-            // Morning: everything still unfinished whose time has passed, once a day.
-            val today = store.today().toString()
-            val overdue = store.open().filter { it.dueAt != null && it.dueAt!! <= now && it.overdueRemindedOn != today }
-            if (overdue.isNotEmpty()) {
-                alarms.notify(overdue, store)
-                store.markOverdueReminded(overdue)
-                Logs.add("Memo: reminded of ${overdue.size} overdue")
+            // Morning, once a day: everything unfinished whose time has passed, and
+            // everything with an empty date, taken as tomorrow's and asked for its time.
+            val owed = store.morningReminder(now)
+            if (owed.isNotEmpty()) {
+                alarms.notify(owed, store)
+                store.markOverdueReminded(owed)
+                Logs.add("Memo: morning reminder for ${owed.size} (${owed.count { it.dueAt == null }} with an empty date)")
             }
+            // The next morning's alarm: an empty date comes up again until it is filled in.
+            alarms.reschedule(store)
             return
         }
 

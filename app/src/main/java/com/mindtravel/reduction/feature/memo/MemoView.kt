@@ -25,7 +25,8 @@ object MemoView {
                 put("id", memo.id)
                 put("text", memo.text)
                 put("done", memo.done)
-                put("due", memo.dueAt?.let { DueParser.describe(it, today) }.orEmpty())
+                put("due", memo.dueAt?.let { DueParser.describe(it, today) } ?: DueParser.EMPTY)
+                put("empty", memo.dueAt == null)
                 put("overdue", !memo.done && memo.dueAt != null && memo.dueAt!! < now)
             })
         }

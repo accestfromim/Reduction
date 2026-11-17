@@ -173,7 +173,7 @@ class AppCore private constructor(context: Context) {
         },
         todoNotices = {
             memoStore.askAboutUndated().map { memo ->
-                "第 ${memo.id} 条：${memo.text}。可以问一句它该哪天，或者用户说不用管就放着"
+                "第 ${memo.id} 条：${memo.text}"
             }
         }
     )

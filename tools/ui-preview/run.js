@@ -335,7 +335,7 @@ await page.evaluate(() => {
       { id: 10, text: '出差前的准备', done: false, due: '11-21 09:00', overdue: false }
     ],
     undated: [
-      { id: 3, text: '想想假期去哪', done: false, due: '', overdue: false }
+      { id: 3, text: '想想假期去哪', done: false, due: 'empty', empty: true, overdue: false }
     ],
     exact: false,
     notify: false
@@ -381,7 +381,8 @@ if (!plan.degraded.shown || plan.heads.join() !== '今天,未来,没日期' || p
     plan.rows[0].text !== '交周报' || !plan.rows[0].overdue || plan.rows[2].done !== true ||
     !plan.degraded.warning.includes('通知权限') || !plan.degraded.warning.includes('精确闹钟') ||
     plan.degraded.buttons.join() !== '打开通知权限,允许精确闹钟' || !plan.tapped || !plan.finished ||
-    planQuiet.warning || planQuiet.rows !== 6) {
+    planQuiet.warning || planQuiet.rows !== 6 ||
+    plan.rows[5].when !== 'empty · 按明天提醒，待补时间') {
   throw new Error('plan card did not behave: ' + JSON.stringify(plan) + JSON.stringify(planQuiet));
 }
 await page.evaluate(() => window.onAndroidBack());

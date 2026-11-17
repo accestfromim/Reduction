@@ -12,7 +12,7 @@ import java.time.LocalDate
  */
 object MemoCard {
     const val CARD = "计划"
-    const val PURPOSE = "程序写入的待办与时间：今天、未来、没日期。助手用 todo 工具增改，用户在卡片上勾掉"
+    const val PURPOSE = "程序写入的待办与时间：今天、未来、没日期（日期为 empty）。助手用 todo 工具增改，用户在卡片上勾掉"
 
     fun render(store: MemoStore): String {
         val view = store.view()
@@ -55,6 +55,10 @@ object MemoCard {
                 append(" · ")
                 append(DueParser.describe(at, today))
                 if (!memo.done && at < now) append(" · 已过期")
+            } else {
+                append(" · ")
+                append(DueParser.EMPTY)
+                if (!memo.done) append(" · 按明天提醒，待补时间")
             }
             appendLine()
         }
