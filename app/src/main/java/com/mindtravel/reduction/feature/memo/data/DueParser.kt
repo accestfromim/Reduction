@@ -62,6 +62,10 @@ object DueParser {
         return null
     }
 
+    /** A day and, when there is one, the part of it: 明天 下午, 11-18. */
+    fun describe(day: LocalDate, part: MemoStore.Part?, today: LocalDate): String =
+        describe(day, today) + (part?.let { " " + it.label } ?: "")
+
     /** A day as the card and the reminder say it: 今天, 明天, 11-18, 2027-01-03. */
     fun describe(day: LocalDate, today: LocalDate): String = when (day) {
         today -> "今天"

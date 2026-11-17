@@ -119,7 +119,7 @@ class MemoAlarms(private val context: Context) {
             memo.text + when {
                 memo.due == null -> " · 没有标记时间"
                 memo.due!! < today -> " · " + DueParser.describe(memo.due!!, today) + " · 已过期"
-                else -> ""
+                else -> memo.part?.let { " · " + it.label }.orEmpty()
             }
         }
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)

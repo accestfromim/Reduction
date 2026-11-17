@@ -109,6 +109,33 @@ class MemoStoreTest {
         assertEquals("改好了 #1：下午三点开会，后天", tool.execute("""{"action":"update","id":"1","date":"后天"}"""))
     }
 
+    @Test
+    fun aPartOfTheDayIsKeptBesideTheDateAndNoHourStandsBehindIt() {
+        val file = File(temporary.newFolder(), "memos.json")
+        val store = store(file)
+        val tool = tool(store)
+        assertEquals("记下了 #1：交报告，明天 下午", tool.execute("""{"action":"add","text":"交报告","date":"2026-11-18","part":"下午"}"""))
+        assertEquals("记下了 #2：买菜，明天", tool.execute("""{"action":"add","text":"买菜","date":"2026-11-18"}"""))
+        assertEquals(MemoStore.Part.AFTERNOON, store.find(1)!!.part)
+        assertNull(store.find(2)!!.part)
+        // Kept as a date and a part, nothing finer; and read back the same.
+        assertTrue(file.readText().contains("\"due\":\"2026-11-18\",\"part\":\"AFTERNOON\""))
+        assertEquals(MemoStore.Part.AFTERNOON, store(file).find(1)!!.part)
+        // It shows wherever the to-do does.
+        assertTrue(MemoCard.render(store).contains("#1 交报告 · 明天 下午\n"))
+        assertTrue(MemoCard.render(store).contains("#2 买菜 · 明天\n"))
+        assertTrue(tool.execute("""{"action":"list"}""").contains("#1 交报告 · 明天 下午"))
+        assertTrue(MemoView.json(store, exact = true, notify = true).contains("\"due\":\"明天 下午\""))
+        assertFalse(Regex("\\d\\d:\\d\\d").containsMatchIn(MemoCard.render(store)))
+        // Within a day, the whole-day ones first, then by part.
+        tool.execute("""{"action":"add","text":"晨跑","date":"2026-11-18","part":"早上"}""")
+        assertEquals(listOf("买菜", "晨跑", "交报告"), store.view().future.map { it.text })
+        // Changed alone, taken away, and refused when it is not one of the four.
+        assertEquals("改好了 #1：交报告，明天 晚上", tool.execute("""{"action":"update","id":"1","part":"晚上"}"""))
+        assertEquals("改好了 #1：交报告，明天", tool.execute("""{"action":"update","id":"1","part":"none"}"""))
+        assertTrue(tool.execute("""{"action":"update","id":"1","part":"半夜"}""").startsWith("没有生效"))
+    }
+
     // ── the day's reminder ──────────────────────────────────────────────────
 
     @Test

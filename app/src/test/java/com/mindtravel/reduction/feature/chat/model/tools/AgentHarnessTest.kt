@@ -249,25 +249,40 @@ class AgentHarnessTest {
     }
 
     @Test
-    fun theLedgerIsWrittenFromTheRecordWordForWord() {
+    fun theLedgerKeepsOneLineOfTheGoalAndOneOfTheResultAndTheWholeStaysOnRecord() {
         var clock = 1_700_000_000_000L
         val runs = AgentRuns(now = { clock })
         val launcher = FakeLauncher()
         launcher.status("STATE running\n")
         val tool = RunAgentTool(harness(launcher.script), runs, "/home/u/project", "/home/u/agents", true, Approval(true), 300, 20)
-        tool.execute(args("action" to "start", "task" to "查甲\n## 约束：只读", "folder" to "notes"))
+        tool.execute(args("action" to "start", "task" to "## 查甲的出处\n## 约束：只读\n交回原文和链接", "folder" to "notes"))
 
         val during = AgentLedger.render(runs.all())
-        assertTrue(during, during.contains("## 任务 1 · 进行中") && during.contains("- 文件夹：notes · 只读"))
-        // The task's own "##" cannot pass for a heading of the card.
-        assertTrue(during, during.contains("> 查甲\n> ## 约束：只读") && during.contains("（还在做）"))
+        assertTrue(during, during.contains("## 任务 1 · 进行中"))
+        assertTrue(during, during.contains("- 目标：查甲的出处\n- 结果：（还在做）"))
+        // The rest of the task is not on the card.
+        assertFalse(during, during.contains("约束") || during.contains("交回原文"))
 
         clock += 200_000
         launcher.status("STATE done 0\n$textEvent\n")
         tool.execute(args("action" to "status"))
         val after = AgentLedger.render(runs.all())
-        assertTrue(after, after.contains("## 任务 1 · 完成") && after.contains("（用时 3 分钟）") && after.contains("> 做完了。"))
+        assertTrue(after, after.contains("## 任务 1 · 完成") && after.contains("用时 3 分钟") && after.contains("- 结果：做完了。"))
         assertFalse(after, after.contains("（还在做）"))
+
+        // The whole of it is still there for the asking.
+        val record = tool.execute(args("action" to "record", "run" to "1"))
+        assertTrue(record, record.contains("## 约束：只读") && record.contains("交回原文和链接") && record.contains("做完了。"))
+        assertTrue(tool.execute(args("action" to "record")).contains("要填任务编号"))
+    }
+
+    @Test
+    fun aLineOfTheLedgerIsTheFirstThatSaysSomethingCutToLength() {
+        assertEquals("找到三篇", AgentLedger.line("## 依据\n\n- 找到三篇\n- 第二条", 120))
+        assertEquals("错误：超时", AgentLedger.line("错误：超时\n别的", 120))
+        assertEquals("一二三四…", AgentLedger.line("一二三四五六七", 5))
+        assertEquals("", AgentLedger.line("  \n---\n", 120))
+        assertEquals("FAIL", AgentLedger.line("**FAIL**\n理由如下", 120))
     }
 
     @Test

@@ -12,7 +12,8 @@ import java.time.ZoneId
  * assistant writes here through its tool, the review card reads from here, and the
  * reminders are worked out from here. Nothing else keeps to-dos.
  *
- * A to-do is due on a day; it has no hour. What the user said in relative terms —
+ * A to-do is due on a day; it has no hour. It may also say which part of the day —
+ * early morning, morning, afternoon, evening — and that is all the finer it gets. What the user said in relative terms —
  * "明天", "三天后" — is turned into a date when it is written, so a stored to-do means
  * the same thing however it is read later. A to-do may be written without a date; its
  * date is then empty.
@@ -35,6 +36,8 @@ class MemoStore(
         var text: String,
         /** The day it is due; null when the date is empty. */
         var due: LocalDate?,
+        /** The part of the day it belongs to, when one was said; null means the day as a whole. No hour stands behind it. */
+        var part: Part? = null,
         var done: Boolean,
         val createdAt: Long,
         var doneAt: Long = 0,
@@ -45,6 +48,15 @@ class MemoStore(
         /** When what it says, its day, or whether it is done last changed. */
         var updatedAt: Long = createdAt
     )
+
+    /** The parts of a day a to-do may belong to, in the order they come. */
+    enum class Part(val label: String) {
+        EARLY("早上"), MORNING("上午"), AFTERNOON("下午"), EVENING("晚上");
+
+        companion object {
+            fun of(said: String?): Part? = entries.firstOrNull { it.label == said?.trim() || it.name.equals(said?.trim(), ignoreCase = true) }
+        }
+    }
 
     /** The to-dos deleted here and when, by uid: so that another device deletes them too. */
     private val deleted = HashMap<String, Long>()
@@ -82,6 +94,7 @@ class MemoStore(
         id = item.getInt("id"),
         text = item.getString("text"),
         due = dayOf(item.opt("due")),
+        part = Part.of(item.optString("part")),
         done = item.optBoolean("done"),
         createdAt = item.optLong("createdAt"),
         doneAt = item.optLong("doneAt"),
@@ -94,6 +107,7 @@ class MemoStore(
         put("id", memo.id)
         put("text", memo.text)
         put("due", memo.due?.toString() ?: JSONObject.NULL)
+        put("part", memo.part?.name ?: JSONObject.NULL)
         put("done", memo.done)
         put("createdAt", memo.createdAt)
         put("doneAt", memo.doneAt)
@@ -121,8 +135,8 @@ class MemoStore(
 
     /** Registers a to-do. A null [due] means its date is empty. */
     @Synchronized
-    fun add(text: String, due: LocalDate?): Memo {
-        val memo = Memo(nextId++, oneLine(text), due, done = false, createdAt = now())
+    fun add(text: String, due: LocalDate?, part: Part? = null): Memo {
+        val memo = Memo(nextId++, oneLine(text), due, part, done = false, createdAt = now())
         items += memo
         save()
         return memo
@@ -130,8 +144,12 @@ class MemoStore(
 
     /** Changes what a to-do says, the day it is due, or both. The day changes only when [changeDue] is set. */
     @Synchronized
-    fun update(id: Int, text: String? = null, due: LocalDate? = null, changeDue: Boolean = false): Memo? {
+    fun update(
+        id: Int, text: String? = null, due: LocalDate? = null, changeDue: Boolean = false,
+        part: Part? = null, changePart: Boolean = false
+    ): Memo? {
         val memo = find(id) ?: return null
+        if (changePart) memo.part = part
         if (text != null && text.isNotBlank()) memo.text = oneLine(text)
         memo.updatedAt = now()
         if (changeDue && memo.due != due) {
@@ -279,7 +297,7 @@ class MemoStore(
             }
             if (theirsNow.updatedAt > mine.updatedAt) {
                 if (mine.due != theirsNow.due) mine.remindedOn = ""
-                mine.text = theirsNow.text; mine.due = theirsNow.due; mine.done = theirsNow.done
+                mine.text = theirsNow.text; mine.due = theirsNow.due; mine.part = theirsNow.part; mine.done = theirsNow.done
                 mine.doneAt = theirsNow.doneAt; mine.updatedAt = theirsNow.updatedAt
                 changed = true
             }
@@ -313,7 +331,7 @@ class MemoStore(
     fun view(): View {
         val day = today()
         fun listed(memos: List<Memo>): List<Memo> = memos
-            .sortedWith(compareBy<Memo> { it.done }.thenBy { it.due ?: LocalDate.MAX })
+            .sortedWith(compareBy<Memo> { it.done }.thenBy { it.due ?: LocalDate.MAX }.thenBy { it.part?.ordinal ?: -1 })
 
         return View(
             today = listed(items.filter { it.due != null && it.due!! <= day }),

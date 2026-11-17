@@ -52,8 +52,11 @@ object MemoCard {
             val day = memo.due
             if (day != null) {
                 append(" · ")
-                append(DueParser.describe(day, today))
+                append(DueParser.describe(day, memo.part, today))
                 if (store.isOverdue(memo)) append(" · 已过期")
+            } else if (memo.part != null) {
+                append(" · ")
+                append(memo.part!!.label)
             }
             appendLine()
         }

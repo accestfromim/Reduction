@@ -32,9 +32,9 @@ class RunAgentTool(
         name = "run_agent",
         description = "派发 sub agent 并查询它们的进度。sub agent 在电脑上后台运行，能力不设限，但只能写它所属的文件夹。" +
             "start 交出任务卡后立刻返回任务编号，不等它做完；" +
-            "status 报告还没结束的任务各做到哪了，做完的给出结果；stop 结束一个任务。任务编号由程序分配。",
+            "status 报告还没结束的任务各做到哪了，做完的给出结果；stop 结束一个任务；record 取出一个任务存着的全过程，只在用户明确要看原文时用。任务编号由程序分配。",
         parameters = listOf(
-            ToolParam("action", "start：派发新任务；status：查询进度；stop：结束任务", choices = listOf("start", "status", "stop")),
+            ToolParam("action", "start：派发新任务；status：查询进度；stop：结束任务；record：取出一个任务的任务卡原文和结果全文", choices = listOf("start", "status", "stop", "record")),
             ToolParam("task", "start 时必填。任务卡：目标、约束、验收标准，以及希望交回什么", required = false),
             ToolParam(
                 "folder",
@@ -47,7 +47,7 @@ class RunAgentTool(
                 required = false,
                 choices = listOf("read", "write")
             ),
-            ToolParam("run", "status 和 stop 时可选：任务编号，比如 2。不填时，status 报告所有没结束的任务，stop 结束唯一在跑的那个", required = false)
+            ToolParam("run", "record 时必填；status 和 stop 时可选：任务编号，比如 2。不填时，status 报告所有没结束的任务，stop 结束唯一在跑的那个", required = false)
         )
     )
 
@@ -76,7 +76,8 @@ class RunAgentTool(
             }
             "status" -> status(args)
             "stop" -> stop(args)
-            else -> "未知的 action，只能是 start、status 或 stop"
+            "record" -> record(args)
+            else -> "未知的 action，只能是 start、status、stop 或 record"
         }
     }
 
@@ -98,6 +99,25 @@ class RunAgentTool(
         if (raw.isEmpty()) return Result.success(null)
         val run = raw.toIntOrNull()?.let(runs::find)
         return if (run != null) Result.success(run) else Result.failure(IllegalArgumentException("没有任务 $raw。${known()}"))
+    }
+
+    /** The whole of one run as it is kept: the task as handed over and what came back, word for word. */
+    private fun record(args: JSONObject): String {
+        val run = named(args).getOrElse { return it.message.orEmpty() } ?: return "record 要填任务编号 run"
+        return buildString {
+            appendLine("任务 ${run.number} · ${run.outcome.ifEmpty { "进行中" }} · 文件夹 ${run.folderName}")
+            appendLine()
+            appendLine("【任务卡原文】")
+            appendLine(run.task)
+            appendLine()
+            appendLine("【交回的结果原文】")
+            appendLine(run.result.ifBlank { if (run.finished) "（没有交回任何内容）" else "（还在做）" })
+            if (run.diff.isNotBlank()) {
+                appendLine()
+                appendLine("【改动的文件】")
+                appendLine(run.diff)
+            }
+        }.trim()
     }
 
     private fun known(): String {
