@@ -29,7 +29,7 @@ Reduction回答一个问题：我们有可能在生活更轻松的同时、可�
     <td align="center" valign="bottom"><img src="docs/opening-animation.gif" width="130" alt="启动动画" /></td>
     <td align="center" valign="bottom"><img src="tools/ui-preview/screenshots/08-tool-trace.png" width="130" alt="对话" /></td>
     <td align="center" valign="bottom"><img src="tools/ui-preview/screenshots/13-card-list.png" width="130" alt="卡片" /></td>
-    <td align="center" valign="bottom"><img src="docs/pet.png" width="130" alt="电脑上的桌宠" /></td>
+    <td align="center" valign="bottom"><img src="docs/pet.png" width="130" alt="电脑桌宠" /></td>
   </tr>
   <tr>
     <td align="center"><sub>启动动画</sub></td>
