@@ -17,3 +17,17 @@
 #pcBtn, #pcPill, #cardFloat { display: none !important; }
 label:has(#wakeWordInput), label:has(#bargeInInput), label:has(#headsetMicInput),
 label:has(#opencodeSessionInput), #shareDiagnostics { display: none; }
+/* The panel is a card beside the pet, short and bare: the page's own header gives its room to the conversation. */
+@media (max-height: 640px) {
+  .topbar { padding: 8px 14px 4px; }
+  .logo { width: 28px; height: 28px; border-radius: 8px; }
+  .logo .glyph { width: 19px; height: 12.9px; }
+  .app-title { font-size: 14px; }
+  .tabs { padding: 0 16px 2px; gap: 18px; }
+  .tab { padding: 4px 0; font-size: 14px; }
+  .composer { padding: 4px 12px 8px; }
+  .mic-btn.big { width: 52px; height: 52px; flex: 0 0 52px; }
+  .toast { bottom: 84px; }
+}
+/* On a card the scroll bars would be most of what there is to see: it scrolls without them. */
+::-webkit-scrollbar { width: 0; height: 0; }

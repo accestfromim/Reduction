@@ -6,7 +6,8 @@
 //   hold Ctrl and the space bar and speak: what was said, put in order and stripped of the spoken filler, is
 //       typed where the cursor is                   (dictation; nothing is sent to the conversation)
 //   what it says appears in a box above it that can be edited, copied with one click, and resized
-//   click it to open or close the full panel       (cards, history, settings)
+//   click it to open or close the panel            (cards, history, settings): a card beside the pet, with no
+//       title bar or frame, that goes where the pet goes
 //   drag it anywhere; right-click for the menu
 //
 // It only shows what the service is doing and passes on what is done to it.
@@ -452,6 +453,134 @@ class ReplyBox {
   }
 }
 
+// ── the panel ─────────────────────────────────────────────────────────────
+// The full page — conversation, cards, settings — as a card beside the pet. The page is drawn by the
+// browser in a window of its own; that window is put inside a bare one of ours, shifted so that its title
+// bar and frame fall outside and only the page shows. It has no handle of its own: it goes where the pet goes.
+class Panel {
+  [StructLayout(LayoutKind.Sequential)] struct Box { public int L, T, R, B; }
+  delegate bool Each(IntPtr window, IntPtr extra);
+  [DllImport("user32.dll")] static extern bool EnumWindows(Each each, IntPtr extra);
+  [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr parent, Each each, IntPtr extra);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowText(IntPtr window, StringBuilder text, int size);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassName(IntPtr window, StringBuilder text, int size);
+  [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr window);
+  [DllImport("user32.dll")] static extern bool IsWindow(IntPtr window);
+  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr window, out Box box);
+  [DllImport("user32.dll")] static extern IntPtr SetParent(IntPtr child, IntPtr parent);
+  [DllImport("user32.dll")] static extern bool MoveWindow(IntPtr window, int x, int y, int width, int height, bool repaint);
+  [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+  [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr window, IntPtr region, bool redraw);
+  [DllImport("gdi32.dll")] static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int width, int height);
+  [DllImport("user32.dll")] static extern bool PostMessage(IntPtr window, uint message, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] static extern bool SetForegroundWindow(IntPtr window);
+
+  /// The page's size, in the units the rest of the pet is measured in: a card, not a phone screen.
+  public const int Width = 400, Height = 520;
+
+  Window host; IntPtr hostHandle, page;
+  readonly DispatcherTimer wait = new DispatcherTimer();
+  int tries;
+  /// Where the card's top left corner goes, in screen pixels, for a card of the given size in pixels.
+  public Func<int, int, Point> Place;
+  public double Scale = 1;
+
+  public bool Open { get { return page != IntPtr.Zero || wait.IsEnabled; } }
+
+  static string TextOf(IntPtr window) { StringBuilder text = new StringBuilder(200); GetWindowText(window, text, 200); return text.ToString(); }
+  static string ClassOf(IntPtr window) { StringBuilder text = new StringBuilder(200); GetClassName(window, text, 200); return text.ToString(); }
+
+  /// The browser's window showing the page, once the page is in it.
+  static IntPtr FindPage() {
+    IntPtr found = IntPtr.Zero;
+    EnumWindows(delegate(IntPtr window, IntPtr extra) {
+      if (IsWindowVisible(window) && ClassOf(window).StartsWith("Chrome_WidgetWin") && TextOf(window) == "Reduction") found = window;
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
+
+  /// The part of the browser's window the page itself is drawn in.
+  static bool PageArea(IntPtr window, out Box area) {
+    IntPtr found = IntPtr.Zero;
+    EnumChildWindows(window, delegate(IntPtr child, IntPtr extra) {
+      if (found == IntPtr.Zero && ClassOf(child) == "Chrome_RenderWidgetHostHWND") found = child;
+      return true;
+    }, IntPtr.Zero);
+    area = new Box();
+    return found != IntPtr.Zero && GetWindowRect(found, out area) && area.R > area.L && area.B > area.T;
+  }
+
+  public void Show(string browser, string url, string profile) {
+    if (Open) return;
+    // Started out of sight: it is seen first as the card.
+    Process.Start(browser, string.Format("--app={0} \"--proxy-bypass-list=localhost;127.0.0.1\" \"--user-data-dir={1}\" --window-size={2},{3} --window-position=-4000,-4000 --no-first-run",
+        url, profile, Width + 26, Height + 70));
+    tries = 0;
+    wait.Interval = TimeSpan.FromMilliseconds(120);
+    wait.Tick -= Look; wait.Tick += Look;
+    wait.Start();
+  }
+
+  void Look(object sender, EventArgs e) {
+    if (page == IntPtr.Zero) {
+      IntPtr window = FindPage();
+      if (window == IntPtr.Zero) {
+        if (++tries > 120) wait.Stop();                           // the browser never came: nothing is shown
+        return;
+      }
+      // Taken in where the card will be, but with nothing of it showing yet: the browser only lays the
+      // page out once its window is on the screen, and only then can the title bar be measured.
+      host = new Window();
+      host.WindowStyle = WindowStyle.None; host.ResizeMode = ResizeMode.NoResize; host.ShowInTaskbar = false; host.ShowActivated = false;
+      host.Background = Brushes.Black; host.Title = "Reduction Panel"; host.Left = -4000; host.Top = -4000; host.Width = Width; host.Height = Height;
+      host.Show();
+      hostHandle = new WindowInteropHelper(host).Handle;
+      SetWindowRgn(hostHandle, CreateRoundRectRgn(0, 0, 2, 2, 0, 0), true);
+      page = window;
+      SetParent(page, hostHandle);
+      MoveWindow(page, 0, 0, (int)Math.Round((Width + 26) * Scale), (int)Math.Round((Height + 70) * Scale), true);
+      Follow();
+      tries = 0;
+      return;
+    }
+    Box area;
+    bool measured = PageArea(page, out area);
+    if (!measured && ++tries < 40) return;
+    wait.Stop();
+    int width = (int)Math.Round(Width * Scale), height = (int)Math.Round(Height * Scale);
+    if (measured) {
+      // The title bar and the frame fall outside the card.
+      Box whole; GetWindowRect(page, out whole);
+      int left = area.L - whole.L, top = area.T - whole.T, right = whole.R - area.R, bottom = whole.B - area.B;
+      MoveWindow(page, -left, -top, width + left + right, height + top + bottom, true);
+    } else {
+      MoveWindow(page, 0, 0, width, height, true);                // not measured: shown whole, title bar and all
+    }
+    int round = (int)Math.Round(18 * Scale);
+    SetWindowRgn(hostHandle, CreateRoundRectRgn(0, 0, width + 1, height + 1, round, round), true);
+    SetForegroundWindow(hostHandle);
+  }
+
+  /// Puts the card where it belongs, beside the pet.
+  public void Follow() {
+    if (page == IntPtr.Zero || Place == null) return;
+    int width = (int)Math.Round(Width * Scale), height = (int)Math.Round(Height * Scale);
+    Point at = Place(width, height);
+    SetWindowPos(hostHandle, IntPtr.Zero, (int)at.X, (int)at.Y, width, height, 0x0004 | 0x0010);   // order and focus as they are
+  }
+
+  public void Close() {
+    wait.Stop();
+    if (page != IntPtr.Zero) PostMessage(page, 0x0010, IntPtr.Zero, IntPtr.Zero);
+    page = IntPtr.Zero;
+    if (host != null) { try { host.Close(); } catch { } host = null; }
+  }
+
+  /// Called now and then: a page that has gone by itself takes its card with it.
+  public void Tick() { if (page != IntPtr.Zero && !IsWindow(page)) Close(); }
+}
+
 // ── the pet ────────────────────────────────────────────────────────────────
 class Pet {
   const string Look = @"
@@ -483,7 +612,7 @@ class Pet {
   </Grid>
 </Window>";
 
-  Window window; Canvas pet, face; Ellipse sideL, sideR, gap, core, body, glow; Image behind; ReplyBox box;
+  Window window; Canvas pet, face; Ellipse sideL, sideR, gap, core, body, glow; Image behind; ReplyBox box; Panel panel = new Panel(); bool wantPanel;
   ScaleTransform gapScale = new ScaleTransform(), coreScale = new ScaleTransform();
   LensEffect lens; Desktop desktop; WriteableBitmap picture;
   volatile string state = "asleep"; string showing = "asleep";
@@ -581,6 +710,7 @@ class Pet {
   public void Run(string[] args) {
     for (int i = 0; i + 1 < args.Length; i += 2) {
       if (args[i] == "--url") url = args[i + 1]; else if (args[i] == "--browser") browser = args[i + 1]; else if (args[i] == "--profile") profile = args[i + 1];
+      else if (args[i] == "--panel") wantPanel = true;
     }
     // Asked by number: under the name "localhost" Windows first tries an address the service does not listen on, and waits.
     api = url.Replace("localhost", "127.0.0.1");
@@ -621,7 +751,7 @@ class Pet {
 
     poll.Interval = TimeSpan.FromMilliseconds(350);
     poll.Tick += delegate {
-      box.Tick(state == "listening");
+      box.Tick(state == "listening"); panel.Tick();
       if (!holding) Ask("/pet", "GET", Heard);
     };
     poll.Start();
@@ -629,7 +759,22 @@ class Pet {
     // Speaking: the space bar held, anywhere. The pet itself is only clicked and dragged.
     box = new ReplyBox();
     box.Anchor = delegate { return new Point(window.Left + window.Width / 2, window.Top + 118); };
-    window.LocationChanged += delegate { box.Place(); };
+    window.LocationChanged += delegate { box.Place(); panel.Follow(); };
+    // The card sits beside the pet, its foot level with the pet's, on whichever side there is room.
+    panel.Place = delegate(int width, int height) {
+      double scale = panel.Scale; Rect work = SystemParameters.WorkArea;
+      double x = (window.Left + 52) * scale - width;
+      if (x < work.Left * scale) x = (window.Left + 268) * scale;
+      double y = (window.Top + 300) * scale - height;
+      y = Math.Max(work.Top * scale, Math.Min(y, work.Bottom * scale - height));
+      return new Point(x, y);
+    };
+    window.SourceInitialized += delegate { panel.Scale = PresentationSource.FromVisual(window).CompositionTarget.TransformToDevice.M11; };
+    // Started again while already running, to ask for the panel: the one that runs is told.
+    Thread asked = new Thread(delegate() {
+      while (true) { PanelAsked.WaitOne(); window.Dispatcher.BeginInvoke(new Action(delegate { OpenPanel(); })); }
+    });
+    asked.IsBackground = true; asked.Start();
 
     space.Held = delegate(bool dictation) {
       wants = true; dictating = dictation;
@@ -683,7 +828,7 @@ class Pet {
     Add(menu, "收起桌宠", delegate { window.Close(); });
     pet.ContextMenu = menu;
 
-    window.Closed += delegate { space.Stop(); box.Window.Close(); if (desktop != null) desktop.Stop(); };
+    window.Closed += delegate { panel.Close(); space.Stop(); box.Window.Close(); if (desktop != null) desktop.Stop(); };
     new Application().Run(window);
   }
 
@@ -707,6 +852,7 @@ class Pet {
   void Heard(Dictionary<string, object> now) {
     if (holding) return;
     if (now == null) { state = "asleep"; return; }
+    if (wantPanel) { wantPanel = false; OpenPanel(); }            // asked for at the start: opened once the service answers
     state = (string)now["state"];
     long id = Convert.ToInt64(now["lineId"]);
     if (lineId < 0) lineId = id;                                   // nothing old is repeated when the pet starts
@@ -754,19 +900,15 @@ class Pet {
     });
   }
 
-  void TogglePanel() {
-    foreach (Process process in Process.GetProcesses()) {
-      try {
-        if (process.MainWindowTitle == "Reduction" && (process.ProcessName == "msedge" || process.ProcessName == "chrome")) { process.CloseMainWindow(); return; }
-      } catch { }
-    }
+  void TogglePanel() { if (panel.Open) panel.Close(); else OpenPanel(); }
+
+  void OpenPanel() {
+    if (panel.Open) return;
     if (browser == "") { MessageBox.Show("没有找到可以开面板的程序。可以在浏览器里打开 " + url); return; }
-    Rect area = SystemParameters.WorkArea;
-    // Beside the pet, on whichever side there is room.
-    int x = (int)(window.Left - 410); if (x < area.Left) x = (int)(window.Left + 330);
-    int y = (int)Math.Max(area.Top, Math.Min(window.Top - 560, area.Bottom - 800));
-    Process.Start(browser, string.Format("--app={0} \"--proxy-bypass-list=localhost;127.0.0.1\" \"--user-data-dir={1}\" --window-size=420,780 --window-position={2},{3} --no-first-run", url, profile, x, y));
+    panel.Show(browser, url, profile);
   }
+
+  static readonly EventWaitHandle PanelAsked = new EventWaitHandle(false, EventResetMode.AutoReset, "ReductionPetPanel");
 
   [STAThread] static void Main(string[] args) {
     string snapshot = null, pose = "idle"; double at = 3;
@@ -776,7 +918,7 @@ class Pet {
     }
     if (snapshot != null) { new Pet().Snapshot(snapshot, pose, at); return; }
     bool first; Mutex one = new Mutex(true, "ReductionPet", out first);
-    if (!first) return;
+    if (!first) { if (Array.IndexOf(args, "--panel") >= 0) PanelAsked.Set(); return; }
     new Pet().Run(args);
     GC.KeepAlive(one);
   }

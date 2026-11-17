@@ -55,24 +55,21 @@ cp "$HERE/pet.cs" "$APPDIR/pet.cs"
 FRAMEWORK='C:\Windows\Microsoft.NET\Framework64\v4.0.30319'
 ( cd "$APPDIR" && "$(wslpath "$FRAMEWORK")/csc.exe" /nologo /target:winexe /platform:x64 /optimize+ /out:ReductionPet.exe /win32icon:reduction.ico \
     "/r:$FRAMEWORK\\WPF\\PresentationCore.dll" "/r:$FRAMEWORK\\WPF\\PresentationFramework.dll" "/r:$FRAMEWORK\\WPF\\WindowsBase.dll" \
-    "/r:$FRAMEWORK\\System.Xaml.dll" "/r:$FRAMEWORK\\System.Web.Extensions.dll" pet.cs ) | tr -d '\r' || true
-[ -f "$APPDIR/ReductionPet.exe" ] && rm -f "$APPDIR/pet.cs" || echo "桌宠没有编译出来：见上面的输出"
-# The launcher: starts the service inside this Linux system with no console window, puts the pet on the
-# desktop, and, when asked for the panel, opens it once the service answers. The panel is a window with
-# no address bar or tabs and a profile of its own, so it is its own entry on the taskbar.
+    "/r:$FRAMEWORK\\System.Xaml.dll" "/r:$FRAMEWORK\\System.Web.Extensions.dll" pet.cs ) | iconv -f GBK -t UTF-8 -c | tr -d '\r' || true
+# A pet that did not compile must not pass for the one already there.
+if [ "$APPDIR/ReductionPet.exe" -nt "$APPDIR/pet.cs" ]; then rm -f "$APPDIR/pet.cs"; else echo "桌宠没有编译出来，仍是上一次的：见上面的输出"; exit 1; fi
+# The launcher: starts the service inside this Linux system with no console window and puts the pet on the
+# desktop. Asked for the panel, it has the pet open it: a card beside the pet, drawn by the browser under a
+# profile of its own.
 cat > "$APPDIR/Reduction.vbs" <<VBS
 Set shell = CreateObject("WScript.Shell")
 url = "http://localhost:8780"
 browser = "$BROWSER"
 profile = "$APPDIR_WIN\\window"
 shell.Run "wsl.exe -d ${WSL_DISTRO_NAME:-Ubuntu} -- $HERE/start.sh", 0, False
-shell.Run """$APPDIR_WIN\\ReductionPet.exe"" --url " & url & " --browser """ & browser & """ --profile """ & profile & """", 1, False
-If WScript.Arguments.Count = 0 Then WScript.Quit
-For attempt = 1 To 80
-  If shell.Run("curl.exe -s -m 2 --noproxy * -o NUL " & url & "/icon.png", 0, True) = 0 Then Exit For
-  WScript.Sleep 500
-Next
-shell.Run """" & browser & """ --app=" & url & " ""--proxy-bypass-list=localhost;127.0.0.1"" ""--user-data-dir=" & profile & """ --window-size=420,780 --no-first-run", 1, False
+panel = ""
+If WScript.Arguments.Count > 0 Then panel = " --panel 1"
+shell.Run """$APPDIR_WIN\\ReductionPet.exe"" --url " & url & " --browser """ & browser & """ --profile """ & profile & """" & panel, 1, False
 VBS
 rm -f "$HOME/.config/reduction/window.env"
 win '
