@@ -213,7 +213,7 @@ function planRow(item) {
   text.textContent = item.text;
   const when = document.createElement('span');
   when.className = 'plan-when';
-  when.textContent = item.overdue ? (item.due ? item.due + ' · 已过期' : '已过期') : (item.empty && !item.done ? 'empty · 按明天提醒，待补时间' : (item.due || 'empty'));
+  when.textContent = item.overdue ? (item.due ? item.due + ' · 已过期' : '已过期') : (item.due || 'empty');
   row.append(box, text, when);
   row.addEventListener('click', () => {
     if (callBridge('setMemoDone', item.id, !item.done) !== true) {

@@ -196,11 +196,14 @@ class MemoStoreTest {
         val named = tool.execute("""{"action":"add","text":"买花","date":"empty"}""")
         assertTrue(unsaid, unsaid.startsWith("记下了 #1"))
         assertTrue(named, named.startsWith("记下了 #2"))
-        assertTrue(unsaid.contains("empty") && unsaid.contains("明天") && unsaid.contains("补全时间"))
+        // What empty means stays in the program: the assistant only hears there is no time.
+        assertFalse(unsaid.contains("empty") || unsaid.contains("明天"))
+        assertFalse(tool.spec.description.contains("empty") || tool.spec.parameters.any { it.description.contains("empty") })
         assertNull(store.find(1)!!.dueAt)
         assertNull(store.find(2)!!.dueAt)
-        assertTrue(MemoCard.render(store).contains("#1 换灯泡 · empty"))
-        assertTrue(tool.execute("""{"action":"list"}""").contains("#2 买花 · empty"))
+        assertFalse(MemoCard.render(store).contains("empty"))
+        assertTrue(tool.execute("""{"action":"list"}""").contains("#2 买花 · 没有标记时间"))
+        assertTrue(MemoView.json(store, exact = true, notify = true).contains("\"due\":\"empty\""))
     }
 
     @Test

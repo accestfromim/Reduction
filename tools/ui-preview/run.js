@@ -382,7 +382,7 @@ if (!plan.degraded.shown || plan.heads.join() !== '今天,未来,没日期' || p
     !plan.degraded.warning.includes('通知权限') || !plan.degraded.warning.includes('精确闹钟') ||
     plan.degraded.buttons.join() !== '打开通知权限,允许精确闹钟' || !plan.tapped || !plan.finished ||
     planQuiet.warning || planQuiet.rows !== 6 ||
-    plan.rows[5].when !== 'empty · 按明天提醒，待补时间') {
+    plan.rows[5].when !== 'empty') {
   throw new Error('plan card did not behave: ' + JSON.stringify(plan) + JSON.stringify(planQuiet));
 }
 await page.evaluate(() => window.onAndroidBack());

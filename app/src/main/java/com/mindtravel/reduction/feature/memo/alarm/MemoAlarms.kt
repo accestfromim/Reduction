@@ -133,16 +133,13 @@ class MemoAlarms(private val context: Context) {
         val today = store.today()
         val unfilled = memos.count { it.dueAt == null }
         val title = when {
-            unfilled == memos.size && memos.size == 1 -> "明天的待办，请补全时间"
-            unfilled == memos.size -> "${memos.size} 件明天的待办，请补全时间"
+            unfilled == memos.size -> ASK_TO_FILL
             memos.size == 1 -> "到点了"
-            unfilled > 0 -> "${memos.size} 件待办，其中 $unfilled 件请补全时间"
+            unfilled > 0 -> "${memos.size} 件待办，$unfilled 件没有标记时间，你要补齐吗？"
             else -> "${memos.size} 件待办"
         }
         val text = memos.joinToString("\n") { memo ->
-            // An empty date counts as tomorrow, and the reminder asks for the real time.
-            memo.text + (memo.dueAt?.let { " · " + DueParser.describe(it, today) }
-                ?: " · 明天（日期 ${DueParser.EMPTY}，请补全时间）")
+            memo.text + (memo.dueAt?.let { " · " + DueParser.describe(it, today) } ?: " · 没有标记时间")
         }
         val launch = context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?: Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER).setPackage(context.packageName)
@@ -174,6 +171,9 @@ class MemoAlarms(private val context: Context) {
 
         /** To-do numbers are given out from 1; this bounds what is cancelled. */
         private const val MAX_ID = 100_000
+
+        /** What the reminder says of to-dos whose date is empty. */
+        const val ASK_TO_FILL = "这些没有标记时间，你要补齐吗？"
 
         private const val CHANNEL_ID = "memo_reminder"
         private const val NOTIFICATION_ID = 4201
