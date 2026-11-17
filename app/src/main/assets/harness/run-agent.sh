@@ -11,6 +11,11 @@
 #
 # Every run is given a folder of its own, ~/.reduction-result, to leave its final result in:
 # result.md there is the second way a result comes back, beside what the agent prints.
+# Pictures left in that folder (png, jpg, jpeg, webp, gif) come back with the result, to be
+# looked at by whoever receives it: after the result file, for each picture, a line
+# "=====IMAGE <name> <media type>=====" and the file in base64. At most 4 pictures of at
+# most 3 MB each, in the order of their names; the rest are named on a line
+# "=====IMAGE SKIPPED <name>=====" and not sent.
 #   run-agent.sh stop   <folder> <id>                    prints: STOPPED
 #
 # The agent may do anything opencode can do — run commands, use the network, write
@@ -161,6 +166,29 @@ status)
   if [ -s "$run/result/result.md" ]; then
     printf '\n=====RESULT FILE=====\n'
     head -c 60000 "$run/result/result.md"
+  fi
+  # Pictures are handed over once the run is over, not while it may still be drawing them.
+  if [ -f "$run/exit" ]; then
+    sent=0
+    for picture in "$run/result"/*; do
+      [ -f "$picture" ] && [ ! -L "$picture" ] || continue
+      name=$(basename "$picture")
+      case "$name" in *[!A-Za-z0-9._-]*) continue ;; esac
+      case "$name" in
+        *.png|*.PNG) kind=image/png ;;
+        *.jpg|*.jpeg|*.JPG|*.JPEG) kind=image/jpeg ;;
+        *.webp|*.WEBP) kind=image/webp ;;
+        *.gif|*.GIF) kind=image/gif ;;
+        *) continue ;;
+      esac
+      if [ "$sent" -ge 4 ] || [ "$(wc -c < "$picture")" -gt 3145728 ]; then
+        printf '\n=====IMAGE SKIPPED %s=====\n' "$name"
+        continue
+      fi
+      sent=$((sent + 1))
+      printf '\n=====IMAGE %s %s=====\n' "$name" "$kind"
+      base64 -w 0 "$picture"
+    done
   fi
   ;;
 

@@ -906,6 +906,8 @@
 .card-folder.closed::before { content: "▸"; }
 .card-folder .count { margin-left: auto; font-variant-numeric: tabular-nums; }
 .card-row.inside { padding-left: 18px; }
+/* A folder inside a folder sits closer to what is above it. */
+.card-folder.inside { padding-top: 10px; }
 .card-row .locked { margin-left: 8px; color: var(--muted); font-size: 12px; }
 
 /* Pictures and sound in a card. */

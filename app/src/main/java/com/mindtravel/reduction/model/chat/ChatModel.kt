@@ -40,11 +40,16 @@ data class ToolCall(
     }
 }
 
+/** A picture handed to the model to look at: its media type and the file itself, in base64. */
+data class ChatImage(val name: String, val mediaType: String, val base64: String)
+
 data class ChatMessage(
     val role: Role,
     val content: String? = null,
     val toolCalls: List<ToolCall> = emptyList(),
-    val toolCallId: String? = null
+    val toolCallId: String? = null,
+    /** Pictures that go with a user message. The model is given the pictures themselves. */
+    val images: List<ChatImage> = emptyList()
 ) {
     init {
         when (role) {
@@ -75,7 +80,20 @@ data class ChatMessage(
                 put("content", content)
                 put("tool_call_id", toolCallId)
             }
-            else -> put("content", content)
+            else -> if (images.isEmpty()) {
+                put("content", content)
+            } else {
+                // Text and pictures side by side, as the chat API takes them.
+                put("content", JSONArray().apply {
+                    put(JSONObject().put("type", "text").put("text", content))
+                    for (image in images) {
+                        put(
+                            JSONObject().put("type", "image_url")
+                                .put("image_url", JSONObject().put("url", "data:${image.mediaType};base64,${image.base64}"))
+                        )
+                    }
+                })
+            }
         }
     }
 

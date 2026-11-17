@@ -434,12 +434,16 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         }
         AgentWatch(
             finished = {
-                toolFactory.endedRuns(settings.load()).map { (number, report) ->
-                    AgentWatch.Report("任务 $number 结束了", "【任务 $number 已结束】下面是它交回的结果，请向用户汇报。\n\n$report")
+                toolFactory.endedRuns(settings.load()).map { ended ->
+                    AgentWatch.Report(
+                        "任务 ${ended.number} 结束了",
+                        "【任务 ${ended.number} 已结束】下面是它交回的结果，请向用户汇报。\n\n${ended.report}",
+                        ended.images
+                    )
                 }
             },
             quiet = { !chat.isBusy() },
-            deliver = { report -> conversation.submit(report.text, report.title) },
+            deliver = { report -> conversation.submit(report.text, report.title, report.images) },
             scope = scope
         ).start()
         cues.prepare()

@@ -5,6 +5,7 @@ import com.mindtravel.reduction.core.host.ToolApprovalHost
 import com.mindtravel.reduction.core.stringOrNull
 import com.mindtravel.reduction.model.chat.ToolParam
 import com.mindtravel.reduction.model.chat.ToolSpec
+import com.mindtravel.reduction.model.chat.ChatImage
 import org.json.JSONObject
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -85,13 +86,18 @@ class RunAgentTool(
      * Looks at every run not yet known to be over and returns the report of each one that
      * has ended, with its number. A run is reported this way once.
      */
-    fun endedRuns(): List<Pair<Int, String>> {
+    fun endedRuns(): List<Ended> {
         if (!harness.isConfigured) return emptyList()
-        return runs.unfinished().mapNotNull { run ->
+        // Pictures of a run the assistant asked about itself: its answer then was words, the pictures follow now.
+        val held = runs.takePictures().map { (number, report, images) -> Ended(number, report, images) }
+        return held + runs.unfinished().mapNotNull { run ->
             val progress = harness.progress(run.folder, run.launcherId)
-            if (progress.state == AgentHarness.State.RUNNING) null else run.number to report(run, progress)
+            if (progress.state == AgentHarness.State.RUNNING) null else Ended(run.number, report(run, progress, attached = true), progress.images)
         }
     }
+
+    /** A run that has ended: its number, its report in words, and the pictures it handed back with it. */
+    data class Ended(val number: Int, val report: String, val images: List<ChatImage> = emptyList())
 
     /** The run a call is about: the one it names, or null when it names none. A wrong number is an error. */
     private fun named(args: JSONObject): Result<AgentRuns.Run?> {
@@ -154,11 +160,11 @@ class RunAgentTool(
         val brief = if (write) {
             "你是执行任务的 sub agent。当前目录是你唯一能写的文件夹。" +
                 "交回结果时分两块：依据（只放原文、出处、链接、文件路径、实际 diff、命令输出）和分析（只放推断和判断）。" +
-                "你只做执行、预筛和整理，不替人下结论。\n\n$task"
+                "你只做执行、预筛和整理，不替人下结论。$PICTURES\n\n$task"
         } else {
             "你是只读的 sub agent，禁止修改任何文件。" +
                 "交回结果时分两块：依据（只放原文、出处、文件路径和行号、命令输出）和分析（只放推断和判断）。" +
-                "如果任务是验收：你不是执行者，逐条对照任务卡；第一行只写 PASS 或 FAIL，随后列直接证据，最后指出最值得人亲自看的一个判决点。\n\n$task"
+                "如果任务是验收：你不是执行者，逐条对照任务卡；第一行只写 PASS 或 FAIL，随后列直接证据，最后指出最值得人亲自看的一个判决点。$PICTURES\n\n$task"
         }
 
         val id = try {
@@ -179,7 +185,13 @@ class RunAgentTool(
         return "【已派发】任务 ${run.number}：${run.title}\n它在电脑上后台运行。现在就回复用户，不要等它；之后用 action=status 查进度和结果。"
     }
 
-    private fun report(run: AgentRuns.Run, progress: AgentHarness.Progress): String = buildString {
+    /**
+     * What a run has come to, in words. [attached] says the pictures travel with these words,
+     * as they do when the watch delivers them; a tool's answer cannot carry pictures, so
+     * there they are held back and follow in a message of their own.
+     */
+    private fun report(run: AgentRuns.Run, progress: AgentHarness.Progress, attached: Boolean = false): String = buildString {
+        val wasOpen = !run.finished
         val name = "任务 ${run.number}"
         when (progress.state) {
             AgentHarness.State.RUNNING -> {
@@ -205,6 +217,25 @@ class RunAgentTool(
                     appendLine()
                     appendLine("git diff --stat:")
                     appendLine(diff.take(4_000))
+                }
+                if (progress.images.isNotEmpty()) {
+                    appendLine()
+                    val names = progress.images.joinToString("、") { it.name }
+                    if (attached) {
+                        appendLine("附图 ${progress.images.size} 张，图片本身就在这条消息里：$names")
+                    } else {
+                        appendLine("附图 ${progress.images.size} 张（$names）：这次查询的回答里带不了图，图片随后会单独发给你，那时再看图说话。")
+                        if (wasOpen) {
+                            runs.holdPictures(
+                                run.number,
+                                "任务 ${run.number} 的附图 ${progress.images.size} 张，图片本身就在这条消息里：$names",
+                                progress.images
+                            )
+                        }
+                    }
+                }
+                if (progress.skippedImages.isNotEmpty()) {
+                    appendLine("没有带回来的图（太多或太大）：" + progress.skippedImages.joinToString("、"))
                 }
             }
             AgentHarness.State.LOST -> {
@@ -234,6 +265,11 @@ class RunAgentTool(
     private companion object {
         const val PROJECT = "project"
         const val DEFAULT_FOLDER = "research"
+
+        /** How a sub agent hands back pictures to be looked at. */
+        const val PICTURES = "需要让对方亲眼看的图（图表、截图、生成的图片），把图片文件放进 ${AgentHarness.RESULT_FOLDER}/，" +
+            "png、jpg、webp 或 gif，文件名只用字母、数字、点、横线、下划线，最多 ${AgentHarness.MAX_IMAGES} 张、每张不超过 3 MB；" +
+            "对方收到的是图片本身。这个文件夹任何时候都可写。"
         val FOLDER_NAME = Regex("^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$")
     }
 }

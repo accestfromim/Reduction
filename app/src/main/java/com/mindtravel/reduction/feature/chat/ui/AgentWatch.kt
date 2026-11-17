@@ -1,6 +1,7 @@
 package com.mindtravel.reduction.feature.chat.ui
 
 import com.mindtravel.reduction.core.Logs
+import com.mindtravel.reduction.model.chat.ChatImage
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -22,8 +23,8 @@ class AgentWatch(
     private val scope: CoroutineScope,
     private val everyMillis: Long = 15_000
 ) {
-    /** [title] is what the user is shown; [text] is what the assistant is given. */
-    class Report(val title: String, val text: String)
+    /** [title] is what the user is shown; [text] is what the assistant is given, with [images] to look at. */
+    class Report(val title: String, val text: String, val images: List<ChatImage> = emptyList())
 
     private val waiting = ArrayDeque<Report>()
 

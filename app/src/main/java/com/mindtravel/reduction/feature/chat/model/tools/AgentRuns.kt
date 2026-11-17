@@ -47,6 +47,22 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
         val title: String get() = task.trim().lineSequence().firstOrNull().orEmpty().take(TITLE_CHARS)
     }
 
+    /**
+     * Pictures of runs whose end was learnt by asking, not by the watch: a tool's answer is
+     * words only, so they wait here for the watch to hand them to the assistant. Not kept
+     * across a restart.
+     */
+    private val waitingPictures = ArrayList<Triple<Int, String, List<com.mindtravel.reduction.model.chat.ChatImage>>>()
+
+    @Synchronized
+    fun holdPictures(number: Int, report: String, images: List<com.mindtravel.reduction.model.chat.ChatImage>) {
+        waitingPictures += Triple(number, report, images)
+    }
+
+    @Synchronized
+    fun takePictures(): List<Triple<Int, String, List<com.mindtravel.reduction.model.chat.ChatImage>>> =
+        waitingPictures.toList().also { waitingPictures.clear() }
+
     /** Told after every change, so that what is shown of the runs can follow. */
     @Volatile
     var onChange: () -> Unit = {}

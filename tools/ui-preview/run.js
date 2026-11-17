@@ -311,12 +311,38 @@ const folders = await page.evaluate(async () => {
   document.querySelector('#cardList .card-folder').click();
   const closed = rows();
   document.querySelector('#cardList .card-folder').click();
-  return { title, open, closed, kept: !!window.__cards['科研/检索'] && !window.__cards['科研想法·检索'] };
+  // Every "/" is a folder: a folder inside a folder is drawn inside it, and closes on its own.
+  window.__cards['科研/基准/代码/SWE'] = { purpose: '', text: '' };
+  window.__cards['科研/基准/综述'] = { purpose: '', text: '' };
+  window.Native.onCardsChanged('');
+  const tree = () => Array.from(document.querySelectorAll('#cardList > *')).map((el) => {
+    const pad = Math.round((parseFloat(getComputedStyle(el).paddingLeft) || 0) / 18);
+    return '>'.repeat(pad) + (el.classList.contains('card-folder') ? '[' + el.firstChild.textContent + ' ' + el.lastChild.textContent + ']' : el.textContent);
+  });
+  const deep = tree();
+  document.querySelector('#cardList .card-folder[data-folder="科研/基准"]').click();
+  const deepClosed = tree();
+  document.querySelector('#cardList .card-folder[data-folder="科研/基准"]').click();
+  delete window.__cards['科研/基准/代码/SWE'];
+  delete window.__cards['科研/基准/综述'];
+  window.Native.onCardsChanged('');
+  return { title, open, closed, deep, deepClosed, kept: !!window.__cards['科研/检索'] && !window.__cards['科研想法·检索'] };
 });
 console.log('folders:', JSON.stringify(folders));
 if (folders.title !== '科研/检索' || !folders.kept || !folders.open.includes('[科研 2]') || !folders.open.includes('  检索') || !folders.open.includes('  评测') ||
     folders.closed.includes('  检索') || !folders.closed.includes('[科研 2]') || folders.open.indexOf('备忘') > folders.open.indexOf('[科研 2]')) {
   throw new Error('folders did not behave: ' + JSON.stringify(folders));
+}
+{
+  const at = folders.deep.indexOf('[科研 4]');
+  const want = ['[科研 4]', '>检索', '>评测', '>[基准 2]', '>>综述', '>>[代码 1]', '>>>SWE'];
+  const got = folders.deep.slice(at, at + want.length);
+  if (at < 0 || got.slice().sort().join('|') !== want.slice().sort().join('|') ||
+      got.indexOf('>[基准 2]') > got.indexOf('>>综述') || got.indexOf('>>[代码 1]') > got.indexOf('>>>SWE') ||
+      !folders.deepClosed.includes('>[基准 2]') || folders.deepClosed.includes('>>综述') || folders.deepClosed.includes('>>>SWE') ||
+      !folders.deepClosed.includes('>检索')) {
+    throw new Error('nested folders did not behave: ' + JSON.stringify(folders.deep) + JSON.stringify(folders.deepClosed));
+  }
 }
 await shot('13-card-list.png');
 

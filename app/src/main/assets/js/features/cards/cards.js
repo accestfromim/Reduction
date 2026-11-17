@@ -34,10 +34,30 @@ function closedFolders() {
   try { return new Set(JSON.parse(localStorage.getItem(CLOSED_KEY) || '[]')); } catch (_) { return new Set(); }
 }
 
-/** A card's folder is what comes before the last "/" in its name; a card with none is at the top. */
+/** A card's name is a path: every "/" in it is a folder, to any depth; a card with none is at the top. */
 function placeOf(name) {
   const at = name.lastIndexOf('/');
   return at < 0 ? { folder: '', leaf: name } : { folder: name.slice(0, at), leaf: name.slice(at + 1) };
+}
+
+/** The cards as a tree of folders: each folder holds its own cards and the folders inside it. */
+function folderTree(cards) {
+  const root = { path: '', name: '', cards: [], folders: new Map(), count: 0 };
+  for (const card of cards) {
+    const parts = card.name.split('/');
+    const leaf = parts.pop();
+    let at = root;
+    at.count += 1;
+    for (const part of parts) {
+      if (!at.folders.has(part)) {
+        at.folders.set(part, { path: at.path ? at.path + '/' + part : part, name: part, cards: [], folders: new Map(), count: 0 });
+      }
+      at = at.folders.get(part);
+      at.count += 1;
+    }
+    at.cards.push({ card, leaf });
+  }
+  return root;
 }
 
 function renderList() {
@@ -50,41 +70,45 @@ function renderList() {
     list.appendChild(empty);
     return;
   }
-  const row = (card, leaf, inside) => {
+  const INDENT = 18;
+  const row = (card, leaf, depth) => {
     const button = document.createElement('button');
-    button.className = 'card-row' + (inside ? ' inside' : '') + (card.prompt ? ' prompt' : '');
+    button.className = 'card-row' + (depth ? ' inside' : '') + (card.prompt ? ' prompt' : '');
     button.textContent = leaf;
     button.dataset.name = card.name;
+    if (depth > 1) button.style.paddingLeft = depth * INDENT + 'px';
     button.addEventListener('click', () => openCard(card.name));
     return button;
   };
-  // Cards at the top first, then each folder with its cards under it.
-  const folders = new Map();
-  for (const card of state.cards) {
-    const { folder, leaf } = placeOf(card.name);
-    if (!folder) list.appendChild(row(card, leaf, false));
-    else folders.set(folder, (folders.get(folder) || []).concat([{ card, leaf }]));
-  }
   const closed = closedFolders();
-  for (const folder of Array.from(folders.keys()).sort((a, b) => a.localeCompare(b, 'zh'))) {
-    const inside = folders.get(folder);
-    const head = document.createElement('button');
-    head.className = 'card-folder' + (closed.has(folder) ? ' closed' : '');
-    const label = document.createElement('span');
-    label.textContent = folder;
-    const count = document.createElement('span');
-    count.className = 'count';
-    count.textContent = String(inside.length);
-    head.append(label, count);
-    head.addEventListener('click', () => {
-      const now = closedFolders();
-      if (now.has(folder)) now.delete(folder); else now.add(folder);
-      localStorage.setItem(CLOSED_KEY, JSON.stringify(Array.from(now)));
-      renderList();
-    });
-    list.appendChild(head);
-    if (!closed.has(folder)) for (const item of inside) list.appendChild(row(item.card, item.leaf, true));
-  }
+  // In each folder its own cards first, then the folders inside it, each with what it holds under it.
+  const draw = (folder, depth) => {
+    for (const item of folder.cards) list.appendChild(row(item.card, item.leaf, depth));
+    const names = Array.from(folder.folders.keys()).sort((a, b) => a.localeCompare(b, 'zh'));
+    for (const name of names) {
+      const inner = folder.folders.get(name);
+      const shut = closed.has(inner.path);
+      const head = document.createElement('button');
+      head.className = 'card-folder' + (shut ? ' closed' : '') + (depth ? ' inside' : '');
+      head.dataset.folder = inner.path;
+      if (depth) head.style.paddingLeft = depth * INDENT + 'px';
+      const label = document.createElement('span');
+      label.textContent = inner.name;
+      const count = document.createElement('span');
+      count.className = 'count';
+      count.textContent = String(inner.count);
+      head.append(label, count);
+      head.addEventListener('click', () => {
+        const now = closedFolders();
+        if (now.has(inner.path)) now.delete(inner.path); else now.add(inner.path);
+        localStorage.setItem(CLOSED_KEY, JSON.stringify(Array.from(now)));
+        renderList();
+      });
+      list.appendChild(head);
+      if (!shut) draw(inner, depth + 1);
+    }
+  };
+  draw(folderTree(state.cards), 0);
 }
 
 function show(next) {

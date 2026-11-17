@@ -6,6 +6,7 @@ import com.mindtravel.reduction.core.settings.SettingsGateway
 import com.mindtravel.reduction.feature.chat.data.CardRepository
 import com.mindtravel.reduction.feature.chat.data.HistoryRepository
 import com.mindtravel.reduction.feature.chat.model.SystemPrompt
+import com.mindtravel.reduction.model.chat.ChatImage
 import com.mindtravel.reduction.model.chat.ChatMessage
 import com.mindtravel.reduction.model.chat.Role
 import org.json.JSONArray
@@ -77,7 +78,14 @@ class Conversation(
      * report of a finished sub agent: the assistant is given [raw], the screen shows [shown].
      */
     @Synchronized
-    fun submit(raw: String, shown: String): Boolean {
+    fun submit(raw: String, shown: String): Boolean = submit(raw, shown, emptyList())
+
+    /**
+     * As above, with pictures for the assistant to look at in this one reply. They go to
+     * the model with the message and are not kept: the conversation remembers the words.
+     */
+    @Synchronized
+    fun submit(raw: String, shown: String, images: List<ChatImage>): Boolean {
         val text = raw.trim()
         if (text.isEmpty()) return false
         val settings = settingsRepository.load()
@@ -106,6 +114,8 @@ class Conversation(
             )
         )
         lines.takeLast(CONTEXT_LINES).mapTo(messages) { ChatMessage(role = it.role, content = it.content) }
+        // The pictures belong to what was just said: the last message.
+        if (images.isNotEmpty()) messages[messages.lastIndex] = messages.last().copy(images = images)
 
         return chat.send(id, messages) { reply -> remember(reply) }
     }

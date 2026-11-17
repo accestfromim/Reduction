@@ -1,6 +1,7 @@
 package com.mindtravel.reduction.feature.chat.model.tools
 
 import com.mindtravel.reduction.hardware.pc.PcGateway
+import com.mindtravel.reduction.model.chat.ChatImage
 import com.mindtravel.reduction.hardware.pc.PcProfile
 import org.json.JSONObject
 import java.util.Base64
@@ -49,7 +50,11 @@ class AgentHarness(
         /** What the agent returned as its answer, when its engine says so separately from what it said along the way. */
         val returned: String = "",
         /** What the agent left in its result file. */
-        val resultFile: String = ""
+        val resultFile: String = "",
+        /** The pictures the agent left beside its result file, to be looked at. */
+        val images: List<ChatImage> = emptyList(),
+        /** Pictures it left that were not brought back: too many, or too large. */
+        val skippedImages: List<String> = emptyList()
     ) {
         val succeeded: Boolean get() = state == State.DONE && exitCode == 0 && errors.isEmpty()
 
@@ -103,6 +108,13 @@ class AgentHarness(
         const val TIMEOUT_EXIT = 124
         private const val RESULT_FILE_MARK = "\n=====RESULT FILE=====\n"
 
+        /** "=====IMAGE name type=====" before a picture in base64; "=====IMAGE SKIPPED name=====" for one left behind. */
+        private val IMAGE_MARK = Regex("\\n=====IMAGE (SKIPPED )?([A-Za-z0-9._-]+)(?: (image/[a-z]+))?=====\\n")
+        const val MAX_IMAGES = 4
+
+        /** Where a run leaves its result and its pictures, as the agent sees it. */
+        const val RESULT_FOLDER = "~/.reduction-result"
+
         /** A path as the computer's shell should read it: "~/" at its start is the home directory there. */
         fun path(value: String): String = if (value.startsWith("~/")) "\"\$HOME\"/" + quote(value.removePrefix("~/")) else quote(value)
 
@@ -110,7 +122,19 @@ class AgentHarness(
 
         /** Reads the launcher's status output: a STATE line, then opencode's JSON events. */
         fun parse(output: String): Progress {
-            val (events, resultFile) = output.split(RESULT_FILE_MARK, limit = 2).let { it[0] to it.getOrElse(1) { "" }.trim() }
+            // Pictures come last, each under a line of its own; what is before them is as it always was.
+            val images = ArrayList<ChatImage>()
+            val skipped = ArrayList<String>()
+            val marks = IMAGE_MARK.findAll(output).toList()
+            for ((index, mark) in marks.withIndex()) {
+                val name = mark.groupValues[2]
+                if (mark.groupValues[1].isNotEmpty()) { skipped += name; continue }
+                val end = marks.getOrNull(index + 1)?.range?.first ?: output.length
+                val data = output.substring(mark.range.last + 1, end).filterNot { it.isWhitespace() }
+                if (data.isNotEmpty() && images.size < MAX_IMAGES) images += ChatImage(name, mark.groupValues[3], data) else skipped += name
+            }
+            val text = if (marks.isEmpty()) output else output.substring(0, marks.first().range.first)
+            val (events, resultFile) = text.split(RESULT_FILE_MARK, limit = 2).let { it[0] to it.getOrElse(1) { "" }.trim() }
             val lines = events.lines()
             var returned = ""
             val header = lines.firstOrNull { it.startsWith("STATE ") }?.removePrefix("STATE ")?.trim().orEmpty()
@@ -181,7 +205,7 @@ class AgentHarness(
                     }
                 }
             }
-            return Progress(state, exitCode, said.joinToString("\n"), steps.values.toList(), errors, returned, resultFile)
+            return Progress(state, exitCode, said.joinToString("\n"), steps.values.toList(), errors, returned, resultFile, images, skipped)
         }
     }
 }

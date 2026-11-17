@@ -1,5 +1,8 @@
 package com.mindtravel.reduction.feature.chat.model.tools
 
+import com.mindtravel.reduction.model.chat.Role
+import com.mindtravel.reduction.model.chat.ChatMessage
+import com.mindtravel.reduction.model.chat.ChatImage
 import com.mindtravel.reduction.core.host.ToolApprovalHost
 import com.mindtravel.reduction.hardware.pc.PcGateway
 import com.mindtravel.reduction.hardware.pc.PcInfo
@@ -217,11 +220,11 @@ class AgentHarnessTest {
         val launcher = FakeLauncher()
         launcher.status("STATE running\n")
         tool(launcher).execute(args("action" to "start", "task" to "查甲"))
-        assertEquals(emptyList<Pair<Int, String>>(), tool(launcher).endedRuns())
+        assertEquals(emptyList<RunAgentTool.Ended>(), tool(launcher).endedRuns())
 
         launcher.status("STATE done 0\n$textEvent\n")
-        assertEquals(listOf(1 to "【完成】任务 1\n做完了。"), tool(launcher).endedRuns())
-        assertEquals(emptyList<Pair<Int, String>>(), tool(launcher).endedRuns())
+        assertEquals(listOf(RunAgentTool.Ended(1, "【完成】任务 1\n做完了。")), tool(launcher).endedRuns())
+        assertEquals(emptyList<RunAgentTool.Ended>(), tool(launcher).endedRuns())
     }
 
     @Test
@@ -283,6 +286,69 @@ class AgentHarnessTest {
         assertEquals("一二三四…", AgentLedger.line("一二三四五六七", 5))
         assertEquals("", AgentLedger.line("  \n---\n", 120))
         assertEquals("FAIL", AgentLedger.line("**FAIL**\n理由如下", 120))
+    }
+
+    @Test
+    fun picturesLeftBesideTheResultComeBackAsPicturesAndTheWordsAreAsBefore() {
+        val plain = "STATE done 0\n$textEvent\n\n=====RESULT FILE=====\n结果文件"
+        val before = AgentHarness.parse(plain)
+        val after = AgentHarness.parse(
+            plain + "\n=====IMAGE chart.png image/png=====\nQUJD\nREVG\n=====IMAGE SKIPPED huge.png=====\n" +
+                "\n=====IMAGE photo.jpg image/jpeg=====\nR0hJ"
+        )
+        // What came back in words is untouched by the pictures after it.
+        assertEquals(listOf(before.said, before.resultFile, before.content), listOf(after.said, after.resultFile, after.content))
+        assertEquals("结果文件", after.resultFile)
+        assertTrue(before.images.isEmpty() && before.skippedImages.isEmpty())
+        assertEquals(
+            listOf(ChatImage("chart.png", "image/png", "QUJDREVG"), ChatImage("photo.jpg", "image/jpeg", "R0hJ")),
+            after.images
+        )
+        assertEquals(listOf("huge.png"), after.skippedImages)
+    }
+
+    @Test
+    fun aFinishedRunHandsItsPicturesOnWithItsReport() {
+        val runs = AgentRuns()
+        val launcher = FakeLauncher()
+        launcher.status("STATE running\n")
+        val tool = RunAgentTool(harness(launcher.script), runs, "/home/u/project", "/home/u/agents", true, Approval(true), 300, 20)
+        tool.execute(args("action" to "start", "task" to "画一张图", "folder" to "notes"))
+        launcher.status("STATE done 0\n$textEvent\n\n=====IMAGE chart.png image/png=====\nQUJD")
+        val ended = tool.endedRuns().single()
+        assertEquals(listOf(ChatImage("chart.png", "image/png", "QUJD")), ended.images)
+        assertTrue(ended.report, ended.report.startsWith("【完成】任务 1\n做完了。") && ended.report.contains("附图 1 张") && ended.report.contains("chart.png"))
+        // The record keeps the words; the picture is not stored in it.
+        assertFalse(runs.find(1)!!.result.contains("QUJD"))
+    }
+
+    @Test
+    fun picturesOfARunTheAssistantAskedAboutFollowInAMessageOfTheirOwn() {
+        val runs = AgentRuns()
+        val launcher = FakeLauncher()
+        launcher.status("STATE running\n")
+        val tool = RunAgentTool(harness(launcher.script), runs, "/home/u/project", "/home/u/agents", true, Approval(true), 300, 20)
+        tool.execute(args("action" to "start", "task" to "画一张图", "folder" to "notes"))
+        launcher.status("STATE done 0\n$textEvent\n\n=====IMAGE chart.png image/png=====\nQUJD")
+        // A tool's answer is words: it says the picture is on its way, and does not claim to hold it.
+        val answer = tool.execute(args("action" to "status"))
+        assertTrue(answer, answer.contains("chart.png") && answer.contains("随后会单独发给你") && !answer.contains("就在这条消息里"))
+        val ended = tool.endedRuns().single()
+        assertEquals(listOf(ChatImage("chart.png", "image/png", "QUJD")), ended.images)
+        assertTrue(ended.report, ended.report.contains("任务 1 的附图 1 张"))
+        // Handed over once.
+        assertTrue(tool.endedRuns().isEmpty())
+    }
+
+    @Test
+    fun aMessageWithPicturesIsSentAsTextAndPicturesAndOneWithoutIsSentAsBefore() {
+        val plain = ChatMessage(Role.USER, "看看").toJson()
+        assertEquals("看看", plain.get("content"))
+        val parts = ChatMessage(Role.USER, "看看", images = listOf(ChatImage("a.png", "image/png", "QUJD"))).toJson().getJSONArray("content")
+        assertEquals(2, parts.length())
+        assertEquals("看看", parts.getJSONObject(0).getString("text"))
+        assertEquals("image_url", parts.getJSONObject(1).getString("type"))
+        assertEquals("data:image/png;base64,QUJD", parts.getJSONObject(1).getJSONObject("image_url").getString("url"))
     }
 
     @Test

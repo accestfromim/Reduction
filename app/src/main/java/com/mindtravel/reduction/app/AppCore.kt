@@ -220,12 +220,16 @@ class AppCore private constructor(context: Context) {
     /** A sub agent's result reaches the conversation by itself, in a quiet moment. */
     private val agentWatch = AgentWatch(
         finished = {
-            toolFactory.endedRuns(settingsRepository.load()).map { (number, report) ->
-                AgentWatch.Report("任务 $number 结束了", "【任务 $number 已结束】下面是它交回的结果，请向用户汇报。\n\n$report")
+            toolFactory.endedRuns(settingsRepository.load()).map { ended ->
+                AgentWatch.Report(
+                    "任务 ${ended.number} 结束了",
+                    "【任务 ${ended.number} 已结束】下面是它交回的结果，请向用户汇报。\n\n${ended.report}",
+                    ended.images
+                )
             }
         },
         quiet = { voice.state.phase == VoiceState.IDLE && !chatController.isBusy() && !pushToTalk.isActive() },
-        deliver = { report -> conversation.submit(report.text, report.title) },
+        deliver = { report -> conversation.submit(report.text, report.title, report.images) },
         scope = scope
     )
 

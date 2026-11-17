@@ -54,7 +54,7 @@ class ChatToolFactory(
     fun hasOpenRuns(): Boolean = agentRuns.unfinished().isNotEmpty()
 
     /** The reports of runs that have ended since they were last looked at, each with its number. */
-    fun endedRuns(settings: AppSettings): List<Pair<Int, String>> {
+    fun endedRuns(settings: AppSettings): List<RunAgentTool.Ended> {
         if (!hasOpenRuns()) return emptyList()
         return RunAgentTool(harness(settings), agentRuns, settings.pcProject, AGENTS_ROOT, settings.opencodeWriteEnabled, approvalHost)
             .endedRuns()
