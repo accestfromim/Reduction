@@ -1,0 +1,54 @@
+/* How an article looks. Read together with template.html; nothing of the app's own styles reaches an article. */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; background: #ffffff; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+body {
+  width: 540px;
+  color: #2b2b2b;
+  font-family: "PingFang SC", "HarmonyOS Sans SC", "MiSans", "Noto Sans CJK SC", "Noto Sans SC", "Source Han Sans SC",
+    "Microsoft YaHei", "WenQuanYi Micro Hei", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 17px;
+  line-height: 1.8;
+  letter-spacing: 0.02em;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  text-rendering: geometricPrecision;
+}
+.article { padding: 44px 32px 40px; }
+
+.article-head { margin-bottom: 30px; }
+.article-head:has(.article-title:empty) { display: none; }
+.article-title { margin: 0; font-size: 27px; line-height: 1.4; font-weight: 700; letter-spacing: 0.01em; color: #111111; }
+.article-rule { width: 44px; height: 4px; margin-top: 18px; border-radius: 2px; background: #1f6feb; }
+
+.article-body > :first-child { margin-top: 0; }
+.article-body > :last-child { margin-bottom: 0; }
+p { margin: 0 0 20px; text-align: justify; }
+h1, h2, h3, h4 { color: #111111; font-weight: 700; line-height: 1.45; }
+h1 { margin: 40px 0 18px; font-size: 23px; }
+h2 { margin: 38px 0 16px; padding-left: 12px; border-left: 4px solid #1f6feb; font-size: 20px; }
+h3 { margin: 30px 0 12px; font-size: 18px; }
+h4 { margin: 24px 0 10px; font-size: 17px; color: #444444; }
+strong { color: #111111; font-weight: 700; }
+/* Chinese has no italic: what is stressed is marked under, as it is in print. */
+em { font-style: normal; text-emphasis: none; border-bottom: 2px solid rgba(31, 111, 235, 0.45); padding-bottom: 1px; }
+a { color: #1f6feb; text-decoration: none; border-bottom: 1px solid rgba(31, 111, 235, 0.35); }
+ul, ol { margin: 0 0 20px; padding-left: 24px; }
+li { margin: 6px 0; }
+li > p { margin: 0 0 8px; }
+blockquote { margin: 0 0 20px; padding: 14px 18px; border-left: 4px solid #d0d7de; border-radius: 0 6px 6px 0; background: #f6f8fa; color: #57606a; }
+blockquote > :last-child { margin-bottom: 0; }
+hr { height: 1px; margin: 34px 0; border: 0; background: #e3e6ea; }
+img { display: block; max-width: 100%; height: auto; margin: 24px auto; border-radius: 6px; }
+code { padding: 2px 6px; border-radius: 4px; background: #f0f2f5; color: #c7254e; font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace; font-size: 14px; letter-spacing: 0; }
+pre { margin: 0 0 20px; padding: 16px 18px; border-radius: 8px; background: #1e2227; overflow: hidden; }
+pre code { display: block; padding: 0; background: transparent; color: #e6edf3; font-size: 13.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-all; }
+table { width: 100%; margin: 0 0 20px; border-collapse: collapse; font-size: 15px; line-height: 1.6; }
+th, td { padding: 9px 10px; border: 1px solid #dfe3e8; text-align: left; vertical-align: top; }
+th { background: #f6f8fa; font-weight: 700; color: #111111; }
+.katex { font-size: 1.05em; letter-spacing: 0; }
+.katex-display { margin: 0 0 20px; overflow: hidden; }
+.attachment { margin: 0 0 20px; padding: 10px 14px; border: 1px dashed #c9d1d9; border-radius: 6px; color: #6e7781; font-size: 14px; }
+
+.article-foot { margin-top: 44px; text-align: center; }
+.article-foot span { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #c9d1d9; box-shadow: -16px 0 0 #c9d1d9, 16px 0 0 #c9d1d9; }

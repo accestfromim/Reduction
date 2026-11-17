@@ -26,7 +26,7 @@ class AssetUpdater(
          * The app version whose JS bridge the web assets must be written for.
          * A pack declaring a lower assetsMinVersionCode targets an earlier bridge and is not used.
          */
-        const val BRIDGE_VERSION_CODE = 94
+        const val BRIDGE_VERSION_CODE = 95
         private const val MAX_TOTAL_BYTES = 80L * 1024 * 1024
 
         fun activeDir(context: Context): File? {

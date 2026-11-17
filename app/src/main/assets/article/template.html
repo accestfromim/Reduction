@@ -1,0 +1,30 @@
+<!doctype html>
+<!--
+  The template an article is set in. Three places, each written once below in double curly brackets, are
+  filled in when an article is rendered:
+    style  the stylesheet, article.css, put inline so that the page stands on its own
+    title  the article's title: its first "# " heading
+    body   the rest of the article, as HTML
+  The page is 540 CSS pixels wide and is drawn at twice that: a long picture 1080 pixels wide.
+  To give articles another look, change this file and article.css; nothing else knows how they look.
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=540" />
+<title>{{title}}</title>
+<style>{{style}}</style>
+</head>
+<body>
+<article class="article">
+  <header class="article-head">
+    <h1 class="article-title">{{title}}</h1>
+    <div class="article-rule"></div>
+  </header>
+  <main class="article-body">
+{{body}}
+  </main>
+  <footer class="article-foot"><span></span></footer>
+</article>
+</body>
+</html>

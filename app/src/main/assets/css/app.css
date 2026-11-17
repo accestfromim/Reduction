@@ -305,9 +305,12 @@
   .mini-btn:active { color: var(--accent); }
 
   .composer {
+    flex: none;
     padding: 8px 14px calc(12px + env(safe-area-inset-bottom));
     background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,0.96) 28%);
   }
+  /* While a card is being edited the screen is the editor's: the input waits, with what is in it. */
+  .app:has(#cardEditor:not(.hidden)):has(#cardPage:not(.hidden)) .composer { display: none; }
 
   .voice-mode {
     display: flex;
@@ -781,7 +784,7 @@
   .card-row:active { opacity: 0.6; }
   .card-empty { padding: 28px 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
   .card-new {
-    margin: 10px 20px calc(18px + env(safe-area-inset-bottom));
+    margin: 10px 20px 6px;
     padding: 12px;
     border: 1px dashed var(--border);
     border-radius: 14px;
@@ -806,7 +809,7 @@
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 4px 20px calc(24px + env(safe-area-inset-bottom));
+    padding: 4px 20px 12px;
     font-size: 15px;
     line-height: 1.65;
     user-select: text;
@@ -928,7 +931,7 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 4px 20px calc(24px + env(safe-area-inset-bottom));
+  padding: 4px 20px 12px;
   font-size: 15px;
 }
 .card-plan.hidden { display: none; }
@@ -1000,3 +1003,8 @@
 .pdf-head { margin-bottom: 6px; color: var(--muted); font-size: 12px; }
 .card-read .pdf-pages img { margin: 0 0 8px; border-radius: 4px; background: #fff; border: 1px solid var(--border); }
 .card-read video { display: block; max-width: 100%; margin: 10px 0; border-radius: 10px; }
+
+/* The card as the article it is published as: the page itself, on a dark table, scaled to the width there is. */
+.card-article { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; background: #1b1b1b; }
+.card-article.hidden { display: none; }
+.card-article iframe { display: block; border: 0; background: #fff; transform-origin: 0 0; border-radius: 4px; }

@@ -216,15 +216,14 @@ ui.els.pcTest.addEventListener('click', pc.testPc);
 ui.els.pcCopyKey.addEventListener('click', pc.copyPublicKey);
 ui.els.pcRunCommand.addEventListener('click', pc.runPcCommand);
 ui.els.tabStream.addEventListener('click', () => ui.showPage('stream'));
-// "卡片" from speech returns to whatever was there, an open card included; pressed on the cards page it goes to the list.
-ui.els.tabCards.addEventListener('click', () => {
-  if (state.page === 'cards') cards.toList(); else ui.showPage('cards');
-});
+// The two tabs only change which page shows. What is open on each — a card, its folders, what is being typed — stays as it was.
+ui.els.tabCards.addEventListener('click', () => ui.showPage('cards'));
 ui.whenPageShown(cards.onPage);
 ui.els.cardNew.addEventListener('click', cards.newCard);
 ui.els.cardLock.addEventListener('click', cards.toggleLock);
 ui.els.cardFloat.addEventListener('click', cards.toggleFloat);
 ui.els.cardCopyAll.addEventListener('click', cards.copyCard);
+document.getElementById('cardPreview').addEventListener('click', cards.togglePreview);
 ui.els.cardEdit.addEventListener('click', cards.editCard);
 ui.els.cardSave.addEventListener('click', cards.saveCard);
 ui.els.cardAttach.addEventListener('click', () => ui.els.cardMediaInput.click());

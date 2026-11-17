@@ -16,6 +16,9 @@ const PLAN_CARD = '计划';
 /** What the open card page is doing: 'closed', 'read', 'edit' or 'new'. */
 let mode = 'closed';
 
+/** Whether the open card is shown as the article it is published as, rather than as its text. */
+let asArticle = false;
+
 function load() {
   try {
     const list = JSON.parse(callBridge('listCards') || '[]');
@@ -62,8 +65,9 @@ function folderTree(cards) {
 }
 
 /**
- * Where the open card is, written beside the tabs: its folders and then its own name. A folder
- * named there is a way back to the list with that folder open; the tabs themselves stay as they are.
+ * Where the open card is, written beside the tabs: the list, its folders, and then its own name.
+ * Each step before the name is a way back to the list — the first to the whole of it, a folder to
+ * the list with that folder open. The tabs only change the page: they leave the card as it is.
  * [instead] stands in for a name that is not there yet, as for a card being made.
  */
 function setTitle(name, instead = '', locked = false) {
@@ -78,6 +82,12 @@ function setTitle(name, instead = '', locked = false) {
   };
   const parts = instead ? [] : (name || '').split('/');
   const leaf = instead || (locked ? '🔒 ' : '') + (parts.pop() || '');
+  // The first step is the list itself: the tabs do not close a card, this does.
+  const all = document.createElement('button');
+  all.className = 'crumb';
+  all.textContent = '全部';
+  all.addEventListener('click', () => backToFolder(''));
+  crumbs.append(mark(), all);
   let path = '';
   for (const part of parts) {
     path = path ? path + '/' + part : part;
@@ -96,12 +106,12 @@ function setTitle(name, instead = '', locked = false) {
   crumbs.scrollLeft = crumbs.scrollWidth;
 }
 
-/** Back to the list, with [folder] and the folders it lies in open and in view. */
+/** Back to the list, with [folder] and the folders it lies in open and in view; a blank [folder] is the list as it stands. */
 function backToFolder(folder) {
   if (mode === 'edit' || mode === 'new') return;
   const closed = closedFolders();
   let path = '';
-  for (const part of folder.split('/')) {
+  for (const part of folder.split('/').filter(Boolean)) {
     path = path ? path + '/' + part : part;
     closed.delete(path);
   }
@@ -174,7 +184,12 @@ function show(next) {
   if (open_) document.getElementById('cardCrumbs').scrollLeft = 1e6;
   const plan = state.cardName === PLAN_CARD && mode === 'read';
   ui.els.cardPlan.classList.toggle('hidden', !plan);
-  ui.els.cardBody.classList.toggle('hidden', editing || plan);
+  if (mode !== 'read' || plan) asArticle = false;
+  ui.els.cardBody.classList.toggle('hidden', editing || plan || asArticle);
+  document.getElementById('cardArticle').classList.toggle('hidden', !asArticle);
+  const preview = document.getElementById('cardPreview');
+  preview.classList.toggle('hidden', mode !== 'read' || plan);
+  preview.textContent = asArticle ? '原文' : '预览';
   ui.els.cardEditor.classList.toggle('hidden', !editing);
   // A card the program writes can be read, copied and floated, not edited.
   const open = state.cards.find((card) => card.name === state.cardName) || {};
@@ -230,6 +245,42 @@ function renderOpenCard() {
     image.replaceWith(player);
   }
   ui.els.cardBody.scrollTop = 0;
+  if (asArticle) drawArticle();
+}
+
+/** The other view of the open card: the article it is published as. The card's text is read and nothing more. */
+export function togglePreview() {
+  if (mode !== 'read') return;
+  asArticle = !asArticle;
+  show('read');
+  if (asArticle) drawArticle();
+}
+
+/** Sets the open card in the article template and fits the page to the width there is. */
+async function drawArticle() {
+  const name = state.cardName;
+  const box = document.getElementById('cardArticle');
+  const frame = document.getElementById('cardArticleFrame');
+  try {
+    const article = await import('../article/article.js');
+    const height = await article.show(frame, String(callBridge('readCard', name) || ''));
+    if (name !== state.cardName || !asArticle) return;
+    // The page is laid out at its own width, the one it is published at, and scaled as a whole: what is
+    // seen is the published picture, smaller or larger, never a different layout.
+    const fit = () => {
+      const scale = Math.min(1, (box.clientWidth - 24) / article.WIDTH);
+      frame.style.width = article.WIDTH + 'px';
+      frame.style.height = height + 'px';
+      frame.style.transform = 'scale(' + scale + ')';
+      frame.style.marginBottom = -(height * (1 - scale)) + 'px';
+      frame.style.marginRight = -(article.WIDTH * (1 - scale)) + 'px';
+    };
+    fit();
+    box.scrollTop = 0;
+    window.onresize = () => { if (asArticle) fit(); };
+  } catch (error) {
+    ui.toast('预览不了：' + (error && error.message ? error.message : '渲染失败'));
+  }
 }
 
 /**
@@ -352,9 +403,10 @@ export function onChanged(name) {
   if (name) ui.toast('卡片“' + name + '”已更新');
 }
 
-/** Opens a card over the whole screen, to be read. */
+/** Opens a card, to be read: as its text. The article view is asked for each time. */
 export function openCard(name) {
   if (!exists(name)) return;
+  asArticle = false;
   state.cardName = name;
   renderOpenCard();
   show('read');
@@ -385,11 +437,6 @@ export function isOpen() {
 /** The page under the tabs changed: the open card shows only on the cards page, and waits there meanwhile. */
 export function onPage() {
   show(mode);
-}
-
-/** The "卡片" tab while a card is open: back to the list. Unsaved edits are kept by going back to reading first. */
-export function toList() {
-  while (mode !== 'closed') back();
 }
 
 /** One step back: from editing to reading, from reading to the list. False when no card is open. */

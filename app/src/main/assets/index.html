@@ -83,6 +83,47 @@
       <div class="empty-title">你的随身语音助手</div>
     </section>
 
+    </section>
+
+    <section class="page hidden" id="cardsPage">
+      <div class="card-list" id="cardList"></div>
+      <button class="card-new" id="cardNew">＋ 新卡片</button>
+    </section>
+    <!-- A card that is open. It lies under the tabs like the other two pages, so that the tabs stay where they are. -->
+    <section class="page card-page hidden" id="cardPage">
+      <!-- What can be done with the card. Where it is, and the way back, are in the row of tabs above. -->
+      <div class="card-page-tools" id="cardTools">
+        <button class="text-btn" id="cardPreview">预览</button>
+        <button class="text-btn" id="cardLock">审核并锁定</button>
+        <button class="text-btn" id="cardFloat">悬浮</button>
+        <button class="text-btn" id="cardCopyAll">复制全文</button>
+        <button class="text-btn" id="cardEdit">编辑</button>
+      </div>
+      <div class="card-read markdown" id="cardBody"></div>
+      <div class="card-plan hidden" id="cardPlan"></div>
+      <!-- The card as an article: the page it is published as, drawn to fit. Looked at, never written to. -->
+      <div class="card-article hidden" id="cardArticle"><iframe id="cardArticleFrame" title="文章预览" scrolling="no"></iframe></div>
+      <div class="card-editor hidden" id="cardEditor">
+        <label class="field hidden" id="cardNameField">
+          <span>名称</span>
+          <input id="cardNameInput" placeholder="比如：科研想法/检索（“/”前面是文件夹）" autocomplete="off" maxlength="60" />
+        </label>
+        <label class="field">
+          <span>用途（这张卡片收什么）</span>
+          <input id="cardPurposeInput" placeholder="比如：向量检索方向的想法和待验证的假设" autocomplete="off" maxlength="120" />
+        </label>
+        <textarea class="brief-text" id="cardText" placeholder="卡片内容（Markdown）。新卡片可以留空。" spellcheck="false"></textarea>
+        <input class="hidden" id="cardMediaInput" type="file" accept="image/*,audio/*,video/*,application/pdf" />
+        <div class="actions">
+          <button class="primary-btn" id="cardSave">保存</button>
+          <button class="secondary-btn" id="cardAttach">加附件</button>
+          <button class="secondary-btn" id="cardCopy">复制</button>
+          <button class="secondary-btn" id="cardDelete">删除</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- One input for the whole app, under whichever page is showing: what is typed, attached or being said stays put when the page changes. -->
     <footer class="composer">
       <div class="recording-bar hidden" id="recordingBar">
         <span class="recording-dot"></span>
@@ -129,42 +170,6 @@
         </button>
       </div>
     </footer>
-    </section>
-
-    <section class="page hidden" id="cardsPage">
-      <div class="card-list" id="cardList"></div>
-      <button class="card-new" id="cardNew">＋ 新卡片</button>
-    </section>
-    <!-- A card that is open. It lies under the tabs like the other two pages, so that the tabs stay where they are. -->
-    <section class="page card-page hidden" id="cardPage">
-      <!-- What can be done with the card. Where it is, and the way back, are in the row of tabs above. -->
-      <div class="card-page-tools" id="cardTools">
-        <button class="text-btn" id="cardLock">审核并锁定</button>
-        <button class="text-btn" id="cardFloat">悬浮</button>
-        <button class="text-btn" id="cardCopyAll">复制全文</button>
-        <button class="text-btn" id="cardEdit">编辑</button>
-      </div>
-      <div class="card-read markdown" id="cardBody"></div>
-      <div class="card-plan hidden" id="cardPlan"></div>
-      <div class="card-editor hidden" id="cardEditor">
-        <label class="field hidden" id="cardNameField">
-          <span>名称</span>
-          <input id="cardNameInput" placeholder="比如：科研想法/检索（“/”前面是文件夹）" autocomplete="off" maxlength="60" />
-        </label>
-        <label class="field">
-          <span>用途（这张卡片收什么）</span>
-          <input id="cardPurposeInput" placeholder="比如：向量检索方向的想法和待验证的假设" autocomplete="off" maxlength="120" />
-        </label>
-        <textarea class="brief-text" id="cardText" placeholder="卡片内容（Markdown）。新卡片可以留空。" spellcheck="false"></textarea>
-        <input class="hidden" id="cardMediaInput" type="file" accept="image/*,audio/*,video/*,application/pdf" />
-        <div class="actions">
-          <button class="primary-btn" id="cardSave">保存</button>
-          <button class="secondary-btn" id="cardAttach">加附件</button>
-          <button class="secondary-btn" id="cardCopy">复制</button>
-          <button class="secondary-btn" id="cardDelete">删除</button>
-        </div>
-      </div>
-    </section>
   </div>
 
   <div class="backdrop hidden" id="settingsBackdrop"></div>

@@ -262,15 +262,27 @@ const cardsShown = await page.evaluate(async () => {
   const lockedNow = window.__cards['科研想法·检索'].prompt === true && hidden('cardEdit') && lock.textContent === '解锁' && crumbs.querySelector('.crumb.here').textContent.startsWith('🔒');
   lock.click();
   opened.locks = lockedNow && window.__cards['科研想法·检索'].prompt === false && !hidden('cardEdit') && lock.textContent === '审核并锁定';
-  // One tap on "朗读" goes to speech with the card left open; "卡片" comes back to it, and once more goes to the list.
+  // The tabs only change the page. "朗读" goes to speech with the card left open; "卡片" comes back to it; pressed
+  // again it changes nothing. What is being typed is in the one input under both pages, and stays.
+  document.getElementById('micBtn').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+  window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+  document.getElementById('textInput').value = '写到一半的话';
+  const composerOnCard = document.querySelector('.composer').getBoundingClientRect().height > 0 && !hidden('textMode');
   document.getElementById('tabStream').click();
   const atSpeech = !hidden('streamPage') && hidden('cardPage') && hidden('cardCrumbs') && document.getElementById('tabStream').classList.contains('active');
+  const keptAtSpeech = document.getElementById('textInput').value === '写到一半的话' && !hidden('textMode');
   document.getElementById('tabCards').click();
   const cameBack = !hidden('cardPage') && !hidden('cardCrumbs') && hidden('streamPage') && crumbs.querySelector('.crumb.here').textContent === '科研想法·检索';
   document.getElementById('tabCards').click();
-  const atList = hidden('cardPage') && !hidden('cardsPage') && hidden('cardCrumbs');
+  const stayed = !hidden('cardPage') && hidden('cardsPage') && document.getElementById('textInput').value === '写到一半的话';
+  // The first step of the path is the list.
+  crumbs.querySelector('button.crumb').click();
+  const atList = hidden('cardPage') && !hidden('cardsPage') && hidden('cardCrumbs') && document.getElementById('textInput').value === '写到一半的话';
+  document.getElementById('textInput').value = '';
+  document.getElementById('voiceBtn').click();
   Array.from(document.querySelectorAll('#cardList .card-row')).find((row) => row.textContent === '科研想法·检索').click();
-  opened.tabs = atSpeech && cameBack && atList && !hidden('cardPage') && tabsBefore.join() === [top('tabStream'), top('tabCards')].join();
+  opened.tabs = composerOnCard && atSpeech && keptAtSpeech && cameBack && stayed && atList && !hidden('cardPage') &&
+    tabsBefore.join() === [top('tabStream'), top('tabCards')].join();
   // One tap on the reading page copies the whole card.
   window.__copied = '';
   document.getElementById('cardCopyAll').click();
@@ -341,6 +353,38 @@ if (sentPicture.waiting !== 1 || !sentPicture.stripShown || !sentPicture.canSend
     sentPicture.name !== '截图' || sentPicture.size.join() !== '1600,800' || sentPicture.after !== 0 || sentPicture.bubbles !== 1) {
   throw new Error('a picture in the input box did not behave: ' + JSON.stringify(sentPicture));
 }
+// The other view of a card: the article it is published as. Asked for each time; the card's text is left alone.
+const articleView = await page.evaluate(async () => {
+  const hidden = (id) => document.getElementById(id).classList.contains('hidden');
+  window.__cards['文章'] = { purpose: '稿子', text: '# 标题在这里\n\n第一段，**重点**。\n\n## 小节\n\n- 一\n- 二' };
+  window.Native.onCardsChanged('');
+  document.getElementById('tabCards').click();
+  Array.from(document.querySelectorAll('#cardList .card-row')).find((row) => row.dataset.name === '文章').click();
+  const asText = !hidden('cardBody') && hidden('cardArticle') && document.getElementById('cardPreview').textContent === '预览';
+  document.getElementById('cardPreview').click();
+  const frame = document.getElementById('cardArticleFrame');
+  for (let i = 0; i < 100 && !(frame.contentDocument && frame.contentDocument.querySelector('.article-title') && frame.style.height); i++) await new Promise((r) => setTimeout(r, 50));
+  const doc = frame.contentDocument;
+  const shown = { title: doc.querySelector('.article-title').textContent, h2: doc.querySelector('.article-body h2').textContent, width: frame.style.width,
+                  inPreview: hidden('cardBody') && !hidden('cardArticle') && document.getElementById('cardPreview').textContent === '原文' };
+  const untouched = window.__cards['文章'].text.startsWith('# 标题在这里');
+  document.getElementById('cardPreview').click();
+  const back = !hidden('cardBody') && hidden('cardArticle');
+  // Opened again, a card is its text.
+  document.getElementById('cardPreview').click();
+  document.querySelector('#cardCrumbs button.crumb').click();
+  Array.from(document.querySelectorAll('#cardList .card-row')).find((row) => row.dataset.name === '文章').click();
+  const reopened = !hidden('cardBody') && hidden('cardArticle');
+  document.querySelector('#cardCrumbs button.crumb').click();
+  delete window.__cards['文章'];
+  window.Native.onCardsChanged('');
+  return { asText, shown, untouched, back, reopened };
+});
+console.log('article view:', JSON.stringify(articleView));
+if (!articleView.asText || articleView.shown.title !== '标题在这里' || articleView.shown.h2 !== '小节' || articleView.shown.width !== '540px' ||
+    !articleView.shown.inPreview || !articleView.untouched || !articleView.back || !articleView.reopened) {
+  throw new Error('the article view did not behave: ' + JSON.stringify(articleView));
+}
 // Folders: a card renamed to "文件夹/名称" moves under that folder, which can be closed and opened.
 const folders = await page.evaluate(async () => {
   const hidden = (id) => document.getElementById(id).classList.contains('hidden');
@@ -351,7 +395,7 @@ const folders = await page.evaluate(async () => {
   document.getElementById('cardSave').click();
   // The page shows the card's own name large and its folders above it; the whole name is on the title itself.
   const title = document.getElementById('cardCrumbs').title;
-  const shownAs = Array.from(document.querySelectorAll('#cardCrumbs .crumb')).map((el) => el.textContent);
+  const shownAs = Array.from(document.querySelectorAll('#cardCrumbs .crumb')).map((el) => el.textContent).slice(1);
   window.onAndroidBack();
   window.__cards['科研/评测'] = { purpose: '评测', text: '指标' };
   window.Native.onCardsChanged('');
@@ -379,7 +423,7 @@ const folders = await page.evaluate(async () => {
   Array.from(document.querySelectorAll('#cardList .card-row')).find((row) => row.dataset.name === '科研/检索').click();
   document.querySelector('#cardList .card-folder') && null;
   localStorage.setItem('reduction_closed_folders', JSON.stringify(['科研']));
-  document.querySelector('#cardCrumbs button.crumb').click();
+  document.querySelectorAll('#cardCrumbs button.crumb')[1].click();
   const crumbBack = document.getElementById('cardPage').classList.contains('hidden') && !document.getElementById('cardsPage').classList.contains('hidden') &&
     Array.from(document.querySelectorAll('#cardList .card-row')).some((row) => row.dataset.name === '科研/检索');
   return { title, shownAs, crumbBack, open, closed, deep, deepClosed, kept: !!window.__cards['科研/检索'] && !window.__cards['科研想法·检索'] };
