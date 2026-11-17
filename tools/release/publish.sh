@@ -1,11 +1,14 @@
 #!/usr/bin/env bash
 # Publishes a new version of the phone app, start to finish:
-#   tools/release/publish.sh 1.0.57
+#   tools/release/publish.sh            the next patch version:  1.0.62 -> 1.0.63
+#   tools/release/publish.sh minor      the next minor version:  1.0.62 -> 1.1.0
+#   tools/release/publish.sh major      the next major version:  1.0.62 -> 2.0.0
+#   tools/release/publish.sh 1.4.0      this very version
 # Bumps the version everywhere it is written, runs the tests and lint, builds, makes the
 # patch from the version now live, uploads, and checks the live files with the app's own
 # update code. The manifest is swapped last, so a failure before that publishes nothing.
 set -euo pipefail
-NEW="${1:?usage: publish.sh <new version name, e.g. 1.0.57>}"
+STEP="${1:-patch}"
 . "$(dirname "$0")/../env.sh"
 cd "$ROOT"
 SERVER="${REDUCTION_UPDATE_HOST:?set REDUCTION_UPDATE_HOST in local.env: the ssh host updates are served from}"
@@ -17,6 +20,16 @@ OLD_CODE="$(sed -n 's/.*appVersionCode.*?: \([0-9]*\)$/\1/p' app/build.gradle.kt
 CODE=$((OLD_CODE + 1))
 [ -n "$OLD" ] && [ -n "$OLD_CODE" ] || { echo "cannot read the current version"; exit 1; }
 [ -f "dist/Reduction-v$OLD.apk" ] || { echo "dist/Reduction-v$OLD.apk is missing: the patch is made from it"; exit 1; }
+IFS=. read -r MAJOR MINOR PATCH_NUMBER <<< "$OLD"
+case "$STEP" in
+  patch) NEW="$MAJOR.$MINOR.$((PATCH_NUMBER + 1))" ;;
+  minor) NEW="$MAJOR.$((MINOR + 1)).0" ;;
+  major) NEW="$((MAJOR + 1)).0.0" ;;
+  [0-9]*.[0-9]*.[0-9]*) NEW="$STEP" ;;
+  *) echo "usage: publish.sh [patch|minor|major|<version such as 1.4.0>]"; exit 1 ;;
+esac
+[ "$NEW" != "$OLD" ] || { echo "$NEW is the version already published"; exit 1; }
+[ "$(printf '%s\n%s\n' "$OLD" "$NEW" | sort -V | tail -1)" = "$NEW" ] || { echo "$NEW is lower than the published $OLD"; exit 1; }
 echo "== $OLD ($OLD_CODE) -> $NEW ($CODE)"
 
 sed -i "s/?: $OLD_CODE\$/?: $CODE/; s/?: \"$OLD\"/?: \"$NEW\"/" app/build.gradle.kts

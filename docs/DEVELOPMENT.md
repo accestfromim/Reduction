@@ -233,7 +233,7 @@ assets/js/ui/ui.js, markdown.js, splash.js（启动动画落进图标框）
 - SSE 中 `content: null` 不会变成字符串 `"null"`。
 - 工具参数只接受字符串片段，缺 id/name 会直接失败。
 - 协议层不把 `JSONObject` 传给业务层。
-- 资源热更新包的 `assetsMinVersionCode` 必须不低于 92（当前桥接协议的起始版本），否则不会被使用。
+- 资源热更新包的 `assetsMinVersionCode` 必须不低于 93（当前桥接协议的起始版本），否则不会被使用。
 - 设置升级会自动从旧版本迁移，不会丢 API Key。
 
 测试：
@@ -246,7 +246,10 @@ cd tools/ui-preview && node run.js     # 前端截图 + 免按住状态渲染检
 发版（需要在 `local.env` 里填好更新服务器，见 `local.env.example`）：
 
 ```bash
-tools/release/publish.sh 1.0.58
+tools/release/publish.sh          # 小版本号加一，例如 1.0.62 -> 1.0.63
+tools/release/publish.sh minor    # 中版本号加一：1.1.0
+tools/release/publish.sh major    # 大版本号加一：2.0.0
+tools/release/publish.sh 1.4.0    # 指定版本号
 ```
 
 它改版本号、跑测试和 lint、构建、从线上版本生成补丁、上传、最后用 App 自己的更新代码验证线上文件。清单 `manifest.json` 最后才替换，之前任何一步失败都不会发布出去。更新服务器只需要能静态提供三个文件：APK、补丁、`manifest.json`。不填更新地址构建出来的 App 不检查更新。

@@ -2,7 +2,7 @@
 # Builds the phone app: dist/Reduction-v<version>.apk
 set -euo pipefail
 . "$(dirname "$0")/tools/env.sh"
-VERSION_CODE="${VERSION_CODE:-92}"
+VERSION_CODE="${VERSION_CODE:-93}"
 VERSION_NAME="${VERSION_NAME:-1.0.62}"
 
 cd "$ROOT"
