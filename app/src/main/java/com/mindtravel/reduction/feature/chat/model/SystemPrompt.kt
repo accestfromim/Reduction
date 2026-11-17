@@ -42,6 +42,9 @@ object SystemPrompt {
             "  · 改日期、改内容用 update；做完了用 done=true；删掉用 delete；用户问“我有哪些待办”用 list。",
             "  · 提醒由程序安排：到点提醒一次，过期未完成每天早上提醒一次，直到完成或改期。你不需要也不能自己定提醒。"
         )
+        if (settings.pcHost.isNotBlank() && settings.pcUser.isNotBlank()) {
+            tools += "- render_article：把一张卡片按文章模板出成发布用的长图，几秒钟，图会给你看。用户要看稿子排出来的样子、要出图发布时用它，不要为此派 sub agent。要改版式，先 action=template 把模板写成卡片，再改那两张卡片。"
+        }
         if (settings.webSearchEnabled) tools += "- web_search：需要实时信息时调用。值得留下的来源写进卡片。"
         if (settings.calculatorEnabled) tools += "- calculator：需要精确计算时调用。"
         if (settings.opencodeEnabled || settings.opencodeWriteEnabled) {

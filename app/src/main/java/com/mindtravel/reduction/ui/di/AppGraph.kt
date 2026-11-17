@@ -46,7 +46,7 @@ class AppGraph(
         settings = SettingsBridge(core.settingsRepository, core.conversation),
         voice = voiceBridge,
         chat = ChatBridge(core.conversation),
-        cards = CardBridge(core.cardRepository, core.cardOverlay) { activity.askToAllowOverlay() },
+        cards = CardBridge(core.cardRepository, core.cardOverlay, { activity.askToAllowOverlay() }, core.articles),
         pc = PcBridge(core.pc),
         update = UpdateBridge(updateController),
         system = SystemBridge(activity, core.settingsRepository, voiceBridge),

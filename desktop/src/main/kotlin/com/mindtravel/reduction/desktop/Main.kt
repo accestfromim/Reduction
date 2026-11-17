@@ -7,6 +7,7 @@ import com.mindtravel.reduction.core.settings.AppSettings
 import com.mindtravel.reduction.core.settings.SettingsGateway
 import com.mindtravel.reduction.feature.chat.data.CardRepository
 import com.mindtravel.reduction.feature.chat.data.HistoryRepository
+import com.mindtravel.reduction.feature.article.ArticleBuilder
 import com.mindtravel.reduction.feature.memo.MemoCard
 import com.mindtravel.reduction.feature.memo.MemoView
 import com.mindtravel.reduction.feature.memo.data.MemoStore
@@ -279,6 +280,12 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         scope = scope
     )
     private val agentRuns = AgentRuns(File(data, "agent-runs.json"))
+    /** Sets cards as articles: for the assistant's tool, and for the page's preview, which asks for the template in use. */
+    private val articles = ArticleBuilder(
+        asset = { resourceText(it) },
+        assetBytes = { path -> javaClass.classLoader.getResourceAsStream(path)!!.use { it.readBytes() } },
+        card = { cards.read(it) }
+    )
     private val toolFactory = ChatToolFactory(
         searchGateway = models.searchGateway,
         pcGateway = LocalShell(),
@@ -288,7 +295,9 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         memos = memos,
         agentLauncherScript = { resourceText("harness/run-agent.sh") },
         sessionStatusScript = { resourceText("harness/session-status.py") },
-        agentRuns = agentRuns
+        agentRuns = agentRuns,
+        articles = articles,
+        renderArticleScript = { resourceText("harness/render-article.sh") }
     )
     private val chat = ChatController(
         settingsRepository = settings,
@@ -523,6 +532,8 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         "renameCard" -> cards.rename(args.getString(0), args.getString(1))
         "lockCard" -> cards.setLocked(args.getString(0), args.getBoolean(1))
         "saveCardMedia" -> runCatching { cards.saveMedia(Base64.getDecoder().decode(args.getString(0)), args.getString(1)) }.getOrNull().orEmpty()
+        "articleTemplate" -> JSONObject().put("template", articles.template()).put("style", articles.style())
+            .put("problem", articles.templateProblem() ?: JSONObject.NULL).toString()
         "saveCardPage" -> runCatching { cards.savePage(args.getString(0), args.getInt(1), Base64.getDecoder().decode(args.getString(2))) }.getOrDefault(false)
         "cardPages" -> cards.pages(args.getString(0)).size
         "speak" -> speech.speak(args.getString(0), args.getString(1))

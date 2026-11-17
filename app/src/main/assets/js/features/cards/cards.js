@@ -263,8 +263,9 @@ async function drawArticle() {
   const frame = document.getElementById('cardArticleFrame');
   try {
     const article = await import('../article/article.js');
-    const height = await article.show(frame, String(callBridge('readCard', name) || ''));
+    const { height, problem } = await article.show(frame, String(callBridge('readCard', name) || ''));
     if (name !== state.cardName || !asArticle) return;
+    if (problem) ui.toast(problem);
     // The page is laid out at its own width, the one it is published at, and scaled as a whole: what is
     // seen is the published picture, smaller or larger, never a different layout.
     const fit = () => {

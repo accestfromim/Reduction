@@ -44,10 +44,13 @@
   - PDF 挂进来时由页面里的 PDF.js 逐页渲染成 JPEG（长边 1600 像素，最多 200 页），和 PDF 存在一起。卡片里显示的就是这些页面，一页接一页；手机和电脑用的是同一套渲染。从另一台设备同步来的 PDF 连同页面一起过来；缺页面时，打开卡片会当场渲染并存下
   - 助手 `read_card` 时，卡片原文原样返回，后面附一段说明有哪些附件；图片和 PDF 页面作为画面紧跟在工具结果后面给模型（工具结果本身只能是文字，所以画面放在随后的一条“程序补充”消息里，同一轮回复内）。PDF 一次给 4 页，一次读卡最多 6 张画面；看后面的页用 `pages` 参数
   - 录音和视频只能在卡片页播放，助手看不到内容
-- 文章的两个视图：任何一张卡片在阅读时都有“预览”按钮，把卡片的 Markdown（或 HTML）排进文章模板，显示它发布时的样子；再点“原文”回到正文。打开卡片时总是原文。预览只读卡片，不写回；卡片被改动时预览跟着重排
-  - 模板是 `app/src/main/assets/article/template.html` 和 `article.css`：版心 540 像素宽，按两倍出图，长图宽 1080 像素。标题取正文第一个 `# ` 标题。要换文章的样子只改这两个文件
-  - 排版只有一处代码：`js/features/article/article.js` 的 `page()`。卡片里的预览和发布用的长图显示的都是它生成的同一个页面，所以是同一张图
-  - 出长图：`node tools/article/render.mjs 稿子.md -o 长图.png [--media 附件目录] [--html 页面.html]`，在电脑上用 Chrome 画。同一份稿子两次出图逐字节相同
+- 文章：任何一张卡片都可以排进文章模板，看它发布时的样子，出成发布用的长图。卡片的 Markdown（或 HTML）是唯一的来源，排版只读它，不写回
+  - **排版只有一处代码**：`app/src/main/assets/article/build.js` 的 `ArticleBuild.page()`。卡片里的预览、助手的出图工具、命令行出图，用的都是它和同一份模板，所以三处是同一个页面
+  - **模板**：自带的是 `article/template.html` 和 `article.css`，版心 540 像素宽，按两倍出图，长图宽 1080 像素；标题取正文第一个 `# ` 标题。有卡片「文章模板/template.html」「文章模板/article.css」时用卡片里的，删掉卡片就回到自带的。模板里 `{{style}}`、`{{body}}` 各一处，`{{title}}` 两处，不满足时退回自带模板并说明
+  - **预览**：卡片阅读时的“预览”按钮；再点“原文”回到正文。打开卡片时总是原文；卡片被改动时预览跟着重排
+  - **出图**：`ArticleBuilder` 把库、排版脚本、模板、样式（公式字体内嵌）和稿子连同图片装进一个自足的页面（`article/builder.html`），交给电脑上的 `harness/render-article.sh`，由它用 Chrome 的命令行无头模式画出来。电脑上只需要 Chrome 或 Chromium。图存在 `~/reduction-agents/articles/<卡片名>.png`，旁边是画它用的页面
+  - **助手的工具 `render_article`**：`card` 指定卡片，几秒出图，画面随工具结果给助手看（长图给开头一段）；`action=template` 把自带模板写成那两张卡片，已有的不覆盖。助手改版式就是用 `patch_cards` 改这两张卡片再出图。连着电脑时才有这个工具
+  - **命令行**：`node tools/article/render.mjs 稿子.md -o 长图.png [--media 附件目录] [--html 页面.html] [--template 模板 --style 样式]`，走的是同一个页面和同一个脚本。同一份稿子两次出图逐字节相同
 - 卡片搜索：助手的 `search_cards` 工具按关键词搜所有卡片的正文，返回卡片名、命中行的原文、行号和所在小节（最近的一个标题）。多个关键词用空格分开，默认一行里全都出现才算，`match=any` 是出现任意一个；`folder` 只搜某个文件夹及其子文件夹；不分大小写；名称里含关键词的卡片另列一行。最多返回 60 行
 - sub agent 的结果怎么回到助手手里：电脑上的 `harness/run-agent.sh status` 打印一段文本——`STATE` 行、执行过程的事件、`=====RESULT FILE=====` 之后是结果文件，再之后每张图一段 `=====IMAGE 文件名 类型=====` 加 base64。`AgentHarness.parse` 把它读成 `Progress`（文字和图片分开）；`RunAgentTool.report` 拼出给助手的文字；`AgentWatch` 每 15 秒查一次，任务结束就把它作为一条“【任务 N 已结束】”的消息交给 `Conversation.submit`，图片挂在这条消息上，以 `image_url` 的形式和文字一起发给模型
   - sub agent 把要给人看的图放进 `~/.reduction-result/`（png、jpg、webp、gif，最多 4 张、每张不超过 3 MB），助手拿到的是图片本身。图片只用于这一轮回复，不进对话历史，也不进任务存档

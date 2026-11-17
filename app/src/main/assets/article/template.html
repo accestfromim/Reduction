@@ -26,5 +26,19 @@
   </main>
   <footer class="article-foot"><span></span></footer>
 </article>
+<!-- The page says how long it is once everything in it has arrived: whoever draws it reads the height from here. -->
+<script>
+(function () {
+  function measure() { document.documentElement.setAttribute('data-article-height', String(Math.ceil(document.documentElement.getBoundingClientRect().height))); }
+  function ready() {
+    var waits = Array.prototype.map.call(document.images, function (image) {
+      return image.complete ? null : new Promise(function (done) { image.onload = image.onerror = done; });
+    });
+    if (document.fonts && document.fonts.ready) waits.push(document.fonts.ready);
+    Promise.all(waits).then(measure, measure);
+  }
+  if (document.readyState === 'complete') ready(); else window.addEventListener('load', ready);
+})();
+</script>
 </body>
 </html>

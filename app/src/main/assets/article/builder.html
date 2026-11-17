@@ -1,0 +1,44 @@
+<!doctype html>
+<!--
+  Builds an article's page from its source, on its own: opened by a browser with nothing else to hand, it
+  turns the source below into the finished page and becomes that page. This is the one way an article is
+  set outside the app — the publishing command and the assistant's tool both open this file — and the app's
+  preview uses the very same script (article/build.js) and template.
+
+  Whoever makes this file fills in the places named below between double square brackets. The libraries
+  and the build script go in as they are. Everything that is text for the page to read — the template,
+  the two stylesheets, and the article's source and pictures as JSON — goes in as base64 of its UTF-8,
+  so that nothing in it can be taken for part of this file.
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=540" />
+<title>article</title>
+<script>[[libraries]]</script>
+<script>[[build]]</script>
+<script id="article-template" type="text/plain">[[template]]</script>
+<script id="article-style" type="text/plain">[[style]]</script>
+<script id="article-katex" type="text/plain">[[katex-style]]</script>
+<script id="article-data" type="text/plain">[[data]]</script>
+</head>
+<body>
+<script>
+(function () {
+  // Each is base64 of UTF-8 text.
+  var text = function (id) {
+    var bytes = Uint8Array.from(atob(document.getElementById(id).textContent.trim()), function (c) { return c.charCodeAt(0); });
+    return new TextDecoder('utf-8').decode(bytes);
+  };
+  var data = JSON.parse(text('article-data'));
+  var html = ArticleBuild.page(data.source, {
+    template: text('article-template'), style: text('article-style'), katexStyle: text('article-katex'),
+    media: function (id) { return data.media[id] || ''; }
+  });
+  document.open();
+  document.write(html);
+  document.close();
+})();
+</script>
+</body>
+</html>

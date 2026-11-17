@@ -22,6 +22,7 @@ sourceSets {
             include("com/mindtravel/reduction/model/voice/TtsCache.kt")
             include("com/mindtravel/reduction/feature/chat/**")
             include("com/mindtravel/reduction/feature/sync/DataSync.kt")
+            include("com/mindtravel/reduction/feature/article/**")
             include("com/mindtravel/reduction/feature/memo/data/**")
             include("com/mindtravel/reduction/feature/memo/MemoCard.kt")
             include("com/mindtravel/reduction/feature/memo/MemoTool.kt")

@@ -6,6 +6,7 @@ import android.os.Looper
 import com.mindtravel.reduction.R
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.feature.chat.data.CardRepository
+import com.mindtravel.reduction.feature.article.ArticleBuilder
 import com.mindtravel.reduction.feature.chat.data.HistoryRepository
 import com.mindtravel.reduction.feature.sync.DataSync
 import com.mindtravel.reduction.feature.sync.PhoneSync
@@ -142,6 +143,13 @@ class AppCore private constructor(context: Context) {
 
     // ── features: chat ──────────────────────────────────────────────────────
     private val chatEngine: ChatEngine = ChatSession(models.chatGateway)
+    /** Sets cards as articles: for the assistant's tool, and for the page's preview, which asks for the template in use. */
+    val articles = ArticleBuilder(
+        asset = { path -> context.assets.open(path).bufferedReader().use { it.readText() } },
+        assetBytes = { path -> context.assets.open(path).use { it.readBytes() } },
+        card = { name -> cardRepository.read(name) }
+    )
+
     private val toolFactory = ChatToolFactory(
             searchGateway = models.searchGateway,
             pcGateway = pcGateway,
@@ -151,7 +159,9 @@ class AppCore private constructor(context: Context) {
             memos = memoStore,
             agentLauncherScript = { harnessScript(context, "run-agent.sh") },
             sessionStatusScript = { harnessScript(context, "session-status.py") },
-            agentRuns = agentRuns
+            agentRuns = agentRuns,
+            articles = articles,
+            renderArticleScript = { harnessScript(context, "render-article.sh") }
         )
     private val chatController = ChatController(
         settingsRepository = settingsRepository,

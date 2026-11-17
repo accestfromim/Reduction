@@ -82,6 +82,10 @@ class AndroidBridge(
     @JavascriptInterface
     fun saveCardMedia(base64: String, extension: String): String = cards.saveMedia(base64, extension)
 
+    /** The article template and stylesheet in use: {template, style, problem}. */
+    @JavascriptInterface
+    fun articleTemplate(): String = cards.articleTemplate()
+
     /** One page of a PDF kept in a card, as the page drew it: a JPEG in base64. */
     @JavascriptInterface
     fun saveCardPage(pdfId: String, page: Int, base64: String): Boolean = cards.savePage(pdfId, page, base64)

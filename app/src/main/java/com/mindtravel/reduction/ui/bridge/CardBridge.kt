@@ -1,5 +1,6 @@
 package com.mindtravel.reduction.ui.bridge
 
+import com.mindtravel.reduction.feature.article.ArticleBuilder
 import com.mindtravel.reduction.feature.chat.data.CardRepository
 import com.mindtravel.reduction.ui.overlay.CardOverlay
 
@@ -7,8 +8,13 @@ class CardBridge(
     private val cards: CardRepository,
     private val overlay: CardOverlay,
     /** Takes the user to the system page where drawing over other apps is switched on. */
-    private val askToAllowOverlay: () -> Unit
+    private val askToAllowOverlay: () -> Unit,
+    private val articles: ArticleBuilder
 ) {
+    /** The article template and stylesheet in use, and why the user's own could not be used, if so. */
+    fun articleTemplate(): String = org.json.JSONObject().put("template", articles.template()).put("style", articles.style())
+        .put("problem", articles.templateProblem() ?: org.json.JSONObject.NULL).toString()
+
     fun list(): String = cards.directoryJson()
     fun read(name: String): String = cards.read(name).orEmpty()
     fun purpose(name: String): String = cards.purpose(name)

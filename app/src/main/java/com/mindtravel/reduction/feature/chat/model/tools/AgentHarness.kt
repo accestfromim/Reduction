@@ -93,6 +93,17 @@ class AgentHarness(
         return pcGateway.exec(profile, command)
     }
 
+    /**
+     * Runs [script] on the computer with [input] as what it reads. The script is written to a file
+     * of its own first, since its standard input is taken by [input].
+     */
+    fun runScript(interpreter: String, script: String, vararg args: String, input: ByteArray): String {
+        val encoded = Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_8))
+        val command = "f=\$(mktemp) && echo $encoded | base64 -d > \"\$f\" && " +
+            "${interpreter.replace(" -s --", "")} \"\$f\" " + args.joinToString(" ") { quote(it) } + "; s=\$?; rm -f \"\$f\"; exit \$s"
+        return pcGateway.send(profile, command, input)
+    }
+
     private fun launcher(vararg args: String, withModel: Boolean = false, engine: Engine = Engine.OPENCODE): String {
         val environment = if (withModel) {
             "AGENT_KEY=${quote(apiKey)} AGENT_MODEL=${quote("deepseek/$model")} " +

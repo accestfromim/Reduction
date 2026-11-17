@@ -3,6 +3,8 @@ package com.mindtravel.reduction.feature.chat.model.tools
 import com.mindtravel.reduction.core.events.EventSink
 import com.mindtravel.reduction.core.host.ToolApprovalHost
 import com.mindtravel.reduction.core.settings.AppSettings
+import com.mindtravel.reduction.feature.article.ArticleBuilder
+import com.mindtravel.reduction.feature.article.RenderArticleTool
 import com.mindtravel.reduction.feature.chat.data.CardRepository
 import com.mindtravel.reduction.feature.memo.MemoTool
 import com.mindtravel.reduction.feature.memo.data.MemoStore
@@ -23,7 +25,10 @@ class ChatToolFactory(
     /** The script that reports how the sessions on the computer are doing. */
     private val sessionStatusScript: () -> String,
     /** The runs started so far; they outlive any one reply. */
-    private val agentRuns: AgentRuns
+    private val agentRuns: AgentRuns,
+    /** Sets a card as an article; with [renderArticleScript], draws it on the computer. Null: no such tool. */
+    private val articles: ArticleBuilder? = null,
+    private val renderArticleScript: () -> String = { "" }
 ) {
     fun create(settings: AppSettings): ToolRegistry {
         val harness = harness(settings)
@@ -34,6 +39,8 @@ class ChatToolFactory(
             add(MemoTool(memos, emitter))
             if (settings.webSearchEnabled) add(WebSearchTool(searchGateway, settings.apiKey))
             if (settings.calculatorEnabled) add(CalculatorTool())
+            // Drawing an article is done by the computer's browser: offered when there is a computer to ask.
+            if (articles != null && harness.isConfigured) add(RenderArticleTool(cards, articles, harness, renderArticleScript))
             if (harness.isConfigured && (settings.opencodeEnabled || settings.opencodeWriteEnabled)) {
                 add(SessionStatusTool(harness, sessionStatusScript))
                 add(
