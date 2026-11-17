@@ -104,6 +104,7 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
         "png" -> "image/png"
         "webp" -> "image/webp"
         "gif" -> "image/gif"
+        "svg" -> "image/svg+xml"
         "pdf" -> "application/pdf"
         "mp4" -> "video/mp4"
         "mov" -> "video/quicktime"

@@ -145,9 +145,20 @@ export function renderMarkdown(text) {
   }
 
   try {
-    const protectedMath = protectMath(source);
-    const html = window.marked.parse(protectedMath.text, { gfm: true, breaks: true });
-    const clean = window.DOMPurify.sanitize(html, { USE_PROFILES: { html: true } });
+    // Drawings written into the text — a block of code marked svg, or an <svg> element — are shown as
+    // drawings. They are taken out before the Markdown is read and put back after, so that what is inside
+    // one is not read as Markdown; scripts in them are cleaned away with everything else.
+    const drawings = [];
+    const keepDrawing = (svg) => { drawings.push(svg.trim()); return '\n\n\u0000S' + (drawings.length - 1) + '\u0000\n\n'; };
+    const withoutDrawings = source
+      .replace(/(^|\n)```svg[^\n]*\n([\s\S]*?)\n```(?=\n|$)/g, (_, before, svg) => before + keepDrawing(svg))
+      .split(/(\n```[\s\S]*?\n```|^```[\s\S]*?\n```)/)
+      .map((part, index) => (index % 2 ? part : part.replace(/<svg[\s\S]*?<\/svg>/gi, keepDrawing)))
+      .join('');
+    const protectedMath = protectMath(withoutDrawings);
+    const parsed = window.marked.parse(protectedMath.text, { gfm: true, breaks: true })
+      .replace(/(?:<p>)?\u0000S(\d+)\u0000(?:<\/p>)?/g, (_, index) => '<figure class="drawing">' + drawings[Number(index)] + '</figure>');
+    const clean = window.DOMPurify.sanitize(parsed, { USE_PROFILES: { html: true, svg: true, svgFilters: true }, FORBID_TAGS: ['foreignObject'] });
     const pattern = new RegExp(protectedMath.prefix + '(\\d+)', 'g');
     return compactLinks(clean.replace(pattern, (_, index) => renderMathToken(protectedMath.entries[Number(index)])));
   } catch (error) {

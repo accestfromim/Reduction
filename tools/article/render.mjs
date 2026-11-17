@@ -37,9 +37,9 @@ const media = {};
 const missing = [];
 for (const [, id] of text.matchAll(/media:(m[0-9a-f]{12}\.[a-z0-9]{2,5})/g)) {
   const kind = id.split('.').pop();
-  if (!/^(jpg|jpeg|png|webp|gif)$/.test(kind) || media[id]) continue;
+  if (!/^(jpg|jpeg|png|webp|gif|svg)$/.test(kind) || media[id]) continue;
   const file = mediaDir ? path.join(mediaDir, id) : '';
-  if (file && fs.existsSync(file)) media[id] = 'data:image/' + (kind === 'jpg' ? 'jpeg' : kind) + ';base64,' + fs.readFileSync(file).toString('base64');
+  if (file && fs.existsSync(file)) media[id] = 'data:image/' + (kind === 'jpg' ? 'jpeg' : kind === 'svg' ? 'svg+xml' : kind) + ';base64,' + fs.readFileSync(file).toString('base64');
   else missing.push(id);
 }
 let page = asset('article/builder.html');

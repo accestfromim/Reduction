@@ -579,8 +579,10 @@ export async function attachMedia(event) {
   try {
     const named = ((file.name.match(/\.([A-Za-z0-9]{2,5})$/) || [])[1] || '').toLowerCase();
     const isPdf = file.type === 'application/pdf' || named === 'pdf';
-    const isImage = file.type.startsWith('image/') && file.type !== 'image/gif';
-    const fallback = file.type.startsWith('audio/') ? 'm4a' : file.type.startsWith('video/') ? 'mp4' : file.type === 'image/gif' ? 'gif' : '';
+    const isDrawing = file.type === 'image/svg+xml' || named === 'svg';
+    // A photograph is made smaller; an animation and a drawing are kept as they are.
+    const isImage = file.type.startsWith('image/') && file.type !== 'image/gif' && !isDrawing;
+    const fallback = isDrawing ? 'svg' : file.type.startsWith('audio/') ? 'm4a' : file.type.startsWith('video/') ? 'mp4' : file.type === 'image/gif' ? 'gif' : '';
     const kept = isImage ? await shrunk(file) : { buffer: await file.arrayBuffer(), extension: isPdf ? 'pdf' : (named || fallback) };
     const id = callBridge('saveCardMedia', base64Of(kept.buffer), kept.extension);
     if (!id) {

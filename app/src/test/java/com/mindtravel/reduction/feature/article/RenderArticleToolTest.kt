@@ -114,6 +114,16 @@ class RenderArticleToolTest {
     }
 
     @Test
+    fun aDrawingAttachedToTheCardGoesIntoThePageAsADrawing() {
+        val id = cards.saveMedia("<svg xmlns=\"http://www.w3.org/2000/svg\"/>".toByteArray(), "svg")!!
+        cards.save("稿子", "![图](media:$id)")
+        val computer = Computer("PATH /x/稿子.png\nSIZE 1080 600\n")
+        call(tool(computer), "card" to "稿子")
+        val address = JSONObject(text(computer.page, "article-data")).getJSONObject("media").getString(id)
+        assertTrue(address, address.startsWith("data:image/svg+xml;base64,"))
+    }
+
+    @Test
     fun whatGoesWrongOnTheComputerIsSaidAndNothingIsShown() {
         cards.save("稿子", "正文")
         val tool = tool(Computer("出图失败：这台电脑上没有 Chrome 或 Chromium\n"))

@@ -437,8 +437,19 @@ class CardRepository(private val dir: File) {
         const val MAX_NAME = 60
         const val MAX_MEDIA_BYTES = 20 * 1024 * 1024
         private const val MEDIA_GRACE_MS = 3_600_000L
-        val MEDIA_KINDS = setOf("jpg", "jpeg", "png", "webp", "gif", "m4a", "mp3", "wav", "ogg", "aac", "webm", "flac", "pdf", "mp4", "mov")
-        val PICTURE_KINDS = setOf("jpg", "jpeg", "png", "webp", "gif")
+        val MEDIA_KINDS = setOf("jpg", "jpeg", "png", "webp", "gif", "svg", "m4a", "mp3", "wav", "ogg", "aac", "webm", "flac", "pdf", "mp4", "mov")
+        /** What is shown as a picture. */
+        val PICTURE_KINDS = setOf("jpg", "jpeg", "png", "webp", "gif", "svg")
+
+        /** Pictures a model can be handed as they are. A drawing is not one: it is lines to be drawn, not a picture of them. */
+        val RASTER_KINDS = setOf("jpg", "jpeg", "png", "webp", "gif")
+
+        /** The media type a picture of this kind is served and embedded as. */
+        fun pictureType(kind: String): String = when (kind) {
+            "jpg" -> "image/jpeg"
+            "svg" -> "image/svg+xml"
+            else -> "image/$kind"
+        }
         const val MAX_PDF_PAGES = 200
         private const val MAX_PAGE_BYTES = 4 * 1024 * 1024
         private val PAGE_NAME = Regex("^(m[0-9a-f]{12}\\.pdf)\\.p(\\d{1,3})\\.jpg$")

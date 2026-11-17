@@ -1008,3 +1008,8 @@
 .card-article { flex: 1; min-height: 0; overflow-y: auto; padding: 12px; background: #1b1b1b; }
 .card-article.hidden { display: none; }
 .card-article iframe { display: block; border: 0; background: #fff; transform-origin: 0 0; border-radius: 4px; }
+
+/* A drawing written into a card or a reply: as wide as there is room, keeping its shape, on paper so that dark lines show. */
+.drawing { margin: 10px 0; padding: 8px; border-radius: 10px; background: #fff; text-align: center; }
+.drawing svg { display: inline-block; max-width: 100%; height: auto; vertical-align: top; }
+.card-read img[src$=".svg"] { background: #fff; padding: 8px; }

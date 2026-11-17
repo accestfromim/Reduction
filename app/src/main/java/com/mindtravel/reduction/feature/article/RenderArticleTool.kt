@@ -60,7 +60,7 @@ class RenderArticleTool(
             if (kind !in CardRepository.PICTURE_KINDS) continue
             val file = cards.mediaFile(id)
             if (file == null) missing += id
-            else media[id] = "data:image/${if (kind == "jpg") "jpeg" else kind};base64," + Base64.getEncoder().encodeToString(file.readBytes())
+            else media[id] = "data:${CardRepository.pictureType(kind)};base64," + Base64.getEncoder().encodeToString(file.readBytes())
         }
         val file = name.substringAfterLast('/').ifBlank { "article" }
         val output = harness.runScript("sh -s --", script(), file, input = builder.page(text, media).toByteArray(Charsets.UTF_8))

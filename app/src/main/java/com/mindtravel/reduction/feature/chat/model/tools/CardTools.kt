@@ -93,7 +93,13 @@ class ReadCardTool(private val cards: CardRepository) : ChatTool {
             val kind = id.substringAfterLast('.')
             val label = LABEL.find(text.substringBefore("(media:$id)").takeLast(80))?.groupValues?.get(1).orEmpty().ifBlank { id }
             when {
-                kind in CardRepository.PICTURE_KINDS -> {
+                kind == "svg" -> {
+                    // A drawing is text: what it draws can be read from it, and a model is not handed it as a picture.
+                    val drawn = cards.mediaFile(id)?.takeIf { it.length() <= MAX_DRAWING_CHARS }?.readText()
+                    notes += if (drawn == null) "- 矢量图「$label」：太大或不在这台设备上，这里看不到；要看它画出来的样子，用 render_article 出图"
+                    else "- 矢量图「$label」（SVG 源码如下；要看它画出来的样子，用 render_article 出图）：\n```svg\n${drawn.trim()}\n```"
+                }
+                kind in CardRepository.RASTER_KINDS -> {
                     val file = cards.mediaFile(id)
                     if (file == null) notes += "- 图片「$label」：文件不在这台设备上"
                     else if (pictures.size >= ROOM || file.length() > MAX_PICTURE_BYTES) notes += "- 图片「$label」：这次没有带上（太多或太大）"
@@ -130,6 +136,7 @@ class ReadCardTool(private val cards: CardRepository) : ChatTool {
         const val PAGES_AT_ONCE = 4
         const val ROOM = 6
         const val MAX_PICTURE_BYTES = 4L * 1024 * 1024
+        const val MAX_DRAWING_CHARS = 12_000L
         val VIDEO = setOf("mp4", "mov")
         val PAGE_RANGE = Regex("(\\d{1,3})")
         val LABEL = Regex("\\[([^\\]]*)\\]$")

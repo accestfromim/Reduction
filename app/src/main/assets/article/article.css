@@ -40,6 +40,10 @@ blockquote { margin: 0 0 20px; padding: 14px 18px; border-left: 4px solid #d0d7d
 blockquote > :last-child { margin-bottom: 0; }
 hr { height: 1px; margin: 34px 0; border: 0; background: #e3e6ea; }
 img { display: block; max-width: 100%; height: auto; margin: 24px auto; border-radius: 6px; }
+/* A drawing written into the text: as wide as the column at most, keeping its shape. */
+.drawing { margin: 24px 0; text-align: center; }
+.drawing svg { display: inline-block; max-width: 100%; height: auto; vertical-align: top; }
+svg { max-width: 100%; }
 code { padding: 2px 6px; border-radius: 4px; background: #f0f2f5; color: #c7254e; font-family: "JetBrains Mono", "SF Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace; font-size: 14px; letter-spacing: 0; }
 pre { margin: 0 0 20px; padding: 16px 18px; border-radius: 8px; background: #1e2227; overflow: hidden; }
 pre code { display: block; padding: 0; background: transparent; color: #e6edf3; font-size: 13.5px; line-height: 1.65; white-space: pre-wrap; word-break: break-all; }

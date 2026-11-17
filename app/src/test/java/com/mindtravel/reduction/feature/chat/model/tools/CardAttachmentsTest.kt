@@ -72,6 +72,20 @@ class CardAttachmentsTest {
     }
 
     @Test
+    fun aDrawingAttachedIsKeptAsItIsAndReadAsItsSourceNotHandedOverAsAPicture() {
+        val svg = "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 10 10\"><circle cx=\"5\" cy=\"5\" r=\"4\"/></svg>"
+        val id = cards.saveMedia(svg.toByteArray(), "svg")!!
+        assertTrue(id.endsWith(".svg"))
+        assertEquals("image/svg+xml", CardRepository.pictureType("svg"))
+        cards.save("图", "![示意](media:$id)")
+        val tool = ReadCardTool(cards)
+        val said = read(tool, "name" to "图")
+        assertTrue(said, said.contains("- 矢量图「示意」") && said.contains("```svg\n$svg\n```") && said.contains("render_article"))
+        assertTrue(tool.pictures().isEmpty())
+        assertEquals(setOf(id), cards.heldMedia())
+    }
+
+    @Test
     fun aCardWithNothingAttachedReadsExactlyAsBefore() {
         cards.save("备忘", "买花\n周末去爬山")
         val tool = ReadCardTool(cards)
