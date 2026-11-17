@@ -89,6 +89,26 @@ class CardAttachmentsTest {
         assertTrue(tool.pictures().isEmpty())
     }
 
+    @Test
+    fun aPictureIsPutIntoACardByTheIdTheProgramGaveItAndAMadeUpIdIsRefused() {
+        val picture = cards.saveMedia(byteArrayOf(7, 7), "jpg")!!
+        cards.save("稿子", "第一段\n\n第二段\n\n配图说明：助手先搜昨天\n\n第三段")
+        val tool = PatchCardsTool(cards, object : com.mindtravel.reduction.core.events.EventSink {
+            override fun emit(function: String, vararg args: Any?) {}
+        })
+        fun patch(text: String) = tool.execute(JSONObject().put("patch", text).toString())
+
+        val made = patch("*** Update Card: 稿子\n 配图说明：助手先搜昨天\n+![搜索过程截图](media:m00000000dead.png)")
+        assertTrue(made, made.startsWith("补丁没有生效。没有这些附件：m00000000dead.png"))
+        assertFalse(cards.read("稿子")!!.contains("media:"))
+
+        val done = patch("*** Update Card: 稿子\n 配图说明：助手先搜昨天\n+![搜索过程截图](media:$picture)")
+        assertTrue(done, done.startsWith("已生效"))
+        assertEquals("第一段\n\n第二段\n\n配图说明：助手先搜昨天\n![搜索过程截图](media:$picture)\n\n第三段", cards.read("稿子")!!.trimEnd())
+        // A line that keeps a picture already there is no new claim, and is let through.
+        assertTrue(patch("*** Update Card: 稿子\n ![搜索过程截图](media:$picture)\n+图注").startsWith("已生效"))
+    }
+
     /** Answers a first request with a call to read_card, and a second with words; keeps what it was sent. */
     private class Scripted : ChatGateway {
         val sent = ArrayList<List<ChatMessage>>()

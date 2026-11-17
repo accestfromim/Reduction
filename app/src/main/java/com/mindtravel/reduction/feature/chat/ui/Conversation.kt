@@ -146,7 +146,20 @@ class Conversation(
         val images = ChatImage.listFromJson(picturesJson)
         if (images.isEmpty()) return submit(raw)
         val said = raw.trim().ifEmpty { "请看图。" }
-        return submit("$said\n［随这条消息发来 ${images.size} 张图片］", said, images)
+        // Each picture is kept as something a card can hold, under an id the program gives it. The
+        // assistant is told the ids, so that it can put a picture into a card where it belongs; one
+        // that goes into no card is cleared away with the rest that nothing refers to.
+        val ids = images.map { image ->
+            val kind = if (image.mediaType == "image/jpeg") "jpg" else image.mediaType.substringAfter('/')
+            runCatching { cards.saveMedia(java.util.Base64.getDecoder().decode(image.base64), kind) }.getOrNull()
+        }
+        val note = if (ids.all { it != null }) {
+            "［随这条消息发来 ${images.size} 张图片，按顺序的附件编号：" + ids.joinToString("、") +
+                "。要把哪张放进卡片，就在卡片里写一行 ![说明](media:编号)］"
+        } else {
+            "［随这条消息发来 ${images.size} 张图片］"
+        }
+        return submit("$said\n$note", said, images)
     }
 
     /** Everything said so far, as the JSON the UI draws from. */

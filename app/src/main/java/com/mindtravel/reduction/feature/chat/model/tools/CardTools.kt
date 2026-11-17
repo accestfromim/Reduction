@@ -36,6 +36,11 @@ class PatchCardsTool(
     override fun execute(argumentsJson: String): String {
         val patch = JSONObject(argumentsJson).stringOrNull("patch").orEmpty()
         if (patch.isBlank()) return "补丁是空的"
+        // A picture can only be one the program has kept: an id that names nothing is a mistake, caught before anything is changed.
+        val unknown = cards.mediaIn(patch.lines().filter { it.startsWith("+") }.joinToString("\n")).filter { cards.mediaFile(it) == null }
+        if (unknown.isNotEmpty()) {
+            return "补丁没有生效。没有这些附件：" + unknown.joinToString("、") + "。附件编号只能用程序给出的：用户发图时消息末尾的编号，或卡片里已有的。"
+        }
         return try {
             val changed = cards.patch(patch)
             emitter.emit("onCardsChanged", lastTouched(patch))
