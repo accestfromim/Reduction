@@ -36,7 +36,7 @@ cp local.env.example local.env     # 填 JDK 17 和 Android SDK 的位置
 tools/models/fetch-models.sh       # 取语音运行库和唤醒词模型（有几十 MB，不入库）
 ./build.sh                         # 得到 dist/Reduction-v<版本>.apk
 ```
-需要授予较高权限
+需要授予录音机常驻、悬浮窗等较高权限
 
 **电脑（Windows + WSL，或任何能跑 JVM 的 Linux）**
 
@@ -57,7 +57,6 @@ desktop/install.sh     # 装成应用：桌宠、开机自启、桌面图标
 - **对话、卡片、图片和录音** 存在本机。手机和电脑各存各的，不同步，也没有任何云端。
 - **发给 DeepSeek 的**：你说的话（录音用于识别）、对话内容、要朗读的文字。
 - **发给你自己电脑的**（仅在你配置了电脑连接之后）：运行日志和你每一轮说话的录音，用于排查问题和改进唤醒。不想留就不要配置电脑连接。
-- 仓库里没有任何密钥、服务器地址或个人路径；这些写在不入库的 `local.env` 和 `keystore.properties` 里。
 
 ## 更多
 
