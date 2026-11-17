@@ -62,16 +62,54 @@ function folderTree(cards) {
 }
 
 /**
- * The head of the card page: the card's own name, large, and the folders it lies in above it, small.
- * A name is a path, and it is the end of the path that tells one card from another.
+ * Where the open card is, written beside the tabs: its folders and then its own name. A folder
+ * named there is a way back to the list with that folder open; the tabs themselves stay as they are.
+ * [instead] stands in for a name that is not there yet, as for a card being made.
  */
 function setTitle(name, instead = '', locked = false) {
-  const { folder, leaf } = placeOf(name || '');
-  const where = document.getElementById('cardFolder');
-  where.textContent = instead ? '' : folder.split('/').filter(Boolean).join(' › ');
-  where.classList.toggle('hidden', instead !== '' || !folder);
-  ui.els.cardTitle.textContent = instead || (locked ? '🔒 ' : '') + leaf;
-  ui.els.cardTitle.title = name || '';
+  const crumbs = document.getElementById('cardCrumbs');
+  crumbs.innerHTML = '';
+  crumbs.title = name || '';
+  const mark = () => {
+    const sign = document.createElement('span');
+    sign.className = 'crumb-mark';
+    sign.textContent = '›';
+    return sign;
+  };
+  const parts = instead ? [] : (name || '').split('/');
+  const leaf = instead || (locked ? '🔒 ' : '') + (parts.pop() || '');
+  let path = '';
+  for (const part of parts) {
+    path = path ? path + '/' + part : part;
+    const here = path;
+    const step = document.createElement('button');
+    step.className = 'crumb';
+    step.textContent = part;
+    step.addEventListener('click', () => backToFolder(here));
+    crumbs.append(mark(), step);
+  }
+  const last = document.createElement('span');
+  last.className = 'crumb here';
+  last.textContent = leaf;
+  crumbs.append(mark(), last);
+  // The end of a path is what tells one card from another: when it does not all fit, that end is what shows.
+  crumbs.scrollLeft = crumbs.scrollWidth;
+}
+
+/** Back to the list, with [folder] and the folders it lies in open and in view. */
+function backToFolder(folder) {
+  if (mode === 'edit' || mode === 'new') return;
+  const closed = closedFolders();
+  let path = '';
+  for (const part of folder.split('/')) {
+    path = path ? path + '/' + part : part;
+    closed.delete(path);
+  }
+  localStorage.setItem(CLOSED_KEY, JSON.stringify(Array.from(closed)));
+  show('closed');
+  renderList();
+  const head = Array.from(document.querySelectorAll('#cardList .card-folder')).find((el) => el.dataset.folder === folder);
+  if (head) head.scrollIntoView({ block: 'start' });
 }
 
 function renderList() {
@@ -128,7 +166,12 @@ function renderList() {
 function show(next) {
   mode = next;
   const editing = mode === 'edit' || mode === 'new';
-  ui.els.cardPage.classList.toggle('hidden', mode === 'closed');
+  // An open card takes the place of the list under the tabs; the tabs, and the way back to speech, stay.
+  const open_ = mode !== 'closed';
+  ui.els.cardPage.classList.toggle('hidden', !open_ || state.page !== 'cards');
+  ui.els.cardsPage.classList.toggle('hidden', open_ || state.page !== 'cards');
+  document.getElementById('cardCrumbs').classList.toggle('hidden', !open_ || state.page !== 'cards');
+  if (open_) document.getElementById('cardCrumbs').scrollLeft = 1e6;
   const plan = state.cardName === PLAN_CARD && mode === 'read';
   ui.els.cardPlan.classList.toggle('hidden', !plan);
   ui.els.cardBody.classList.toggle('hidden', editing || plan);
@@ -318,6 +361,21 @@ export function newCard() {
   ui.els.cardPurposeInput.value = '';
   ui.els.cardText.value = '';
   show('new');
+}
+
+/** Whether a card is open: read, being edited, or being made. */
+export function isOpen() {
+  return mode !== 'closed';
+}
+
+/** The page under the tabs changed: the open card shows only on the cards page, and waits there meanwhile. */
+export function onPage() {
+  show(mode);
+}
+
+/** The "卡片" tab while a card is open: back to the list. Unsaved edits are kept by going back to reading first. */
+export function toList() {
+  while (mode !== 'closed') back();
 }
 
 /** One step back: from editing to reading, from reading to the list. False when no card is open. */

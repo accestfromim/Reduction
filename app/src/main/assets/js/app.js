@@ -216,9 +216,12 @@ ui.els.pcTest.addEventListener('click', pc.testPc);
 ui.els.pcCopyKey.addEventListener('click', pc.copyPublicKey);
 ui.els.pcRunCommand.addEventListener('click', pc.runPcCommand);
 ui.els.tabStream.addEventListener('click', () => ui.showPage('stream'));
-ui.els.tabCards.addEventListener('click', () => ui.showPage('cards'));
+// "卡片" from speech returns to whatever was there, an open card included; pressed on the cards page it goes to the list.
+ui.els.tabCards.addEventListener('click', () => {
+  if (state.page === 'cards') cards.toList(); else ui.showPage('cards');
+});
+ui.whenPageShown(cards.onPage);
 ui.els.cardNew.addEventListener('click', cards.newCard);
-ui.els.cardBack.addEventListener('click', cards.back);
 ui.els.cardLock.addEventListener('click', cards.toggleLock);
 ui.els.cardFloat.addEventListener('click', cards.toggleFloat);
 ui.els.cardCopyAll.addEventListener('click', cards.copyCard);

@@ -8,7 +8,6 @@
     border-right: 1px solid var(--border);
     background: var(--bg);
   }
-  .card-page { max-width: 820px; margin: 0 auto; }
   .sheet { max-width: 620px; margin: 0 auto; border: 1px solid var(--border); }
   .bubble { max-width: 76%; }
   .toast { bottom: 110px; }
@@ -25,6 +24,8 @@ label:has(#opencodeSessionInput), #shareDiagnostics { display: none; }
   .app-title { font-size: 14px; }
   .tabs { padding: 0 16px 2px; gap: 18px; }
   .tab { padding: 4px 0; font-size: 14px; }
+  .crumbs { font-size: 13px; }
+  .crumb { padding: 4px 0; }
   .composer { padding: 4px 12px 8px; }
   .mic-btn.big { width: 52px; height: 52px; flex: 0 0 52px; }
   .toast { bottom: 84px; }

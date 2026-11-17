@@ -56,8 +56,6 @@ export const els = {
   cardList: byId('cardList'),
   cardNew: byId('cardNew'),
   cardPage: byId('cardPage'),
-  cardBack: byId('cardBack'),
-  cardTitle: byId('cardTitle'),
   cardLock: byId('cardLock'),
   cardFloat: byId('cardFloat'),
   cardCopyAll: byId('cardCopyAll'),
@@ -120,12 +118,19 @@ const messageMenu = createMessageMenu({
   vibrate: (ms) => callBridge('vibrate', ms)
 });
 
+/** Told after the page under the tabs has changed, so that an open card can take or give up its place. */
+let onPageShown = null;
+export function whenPageShown(told) {
+  onPageShown = told;
+}
+
 /** Shows one of the two pages: 'stream', what is being said, or 'cards', what is kept. */
 export function showPage(name) {
   state.page = name === 'cards' ? 'cards' : 'stream';
   const cards = state.page === 'cards';
   els.streamPage.classList.toggle('hidden', cards);
   els.cardsPage.classList.toggle('hidden', !cards);
+  if (onPageShown) onPageShown();
   els.tabStream.classList.toggle('active', !cards);
   els.tabCards.classList.toggle('active', cards);
   if (!cards) scrollToBottom(true);

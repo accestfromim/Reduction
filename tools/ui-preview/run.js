@@ -242,12 +242,16 @@ const cardsShown = await page.evaluate(async () => {
   const listText = document.getElementById('cardList').textContent;
 
   Array.from(document.querySelectorAll('#cardList .card-row')).find((row) => row.textContent === '科研想法·检索').click();
-  const page = document.getElementById('cardPage');
-  const rect = page.getBoundingClientRect();
+  const crumbs = document.getElementById('cardCrumbs');
+  const top = (id) => Math.round(document.getElementById(id).getBoundingClientRect().top);
+  const tabsBefore = [top('tabStream'), top('tabCards')];
   const opened = {
     shown: !hidden('cardPage'),
-    fills: rect.width === window.innerWidth && rect.height === window.innerHeight,
-    title: document.getElementById('cardTitle').textContent,
+    // The tabs stay where they were, on show, with the card's name on their line; the card lies under them.
+    fills: !hidden('tabStream') && !hidden('tabCards') && hidden('cardsPage') && !hidden('cardCrumbs') &&
+      Math.abs(crumbs.getBoundingClientRect().top - top('tabCards')) < 12 &&
+      document.getElementById('cardPage').getBoundingClientRect().top >= document.querySelector('.tabs').getBoundingClientRect().bottom - 1,
+    title: crumbs.querySelector('.crumb.here').textContent,
     heading: !!document.querySelector('#cardBody h2'),
     text: document.getElementById('cardBody').textContent.includes('用倒排索引做粗筛'),
     reading: hidden('cardEditor') && !hidden('cardBody')
@@ -255,9 +259,18 @@ const cardsShown = await page.evaluate(async () => {
   // One tap locks the card as a prompt: it can no longer be edited, until it is unlocked.
   const lock = document.getElementById('cardLock');
   lock.click();
-  const lockedNow = window.__cards['科研想法·检索'].prompt === true && hidden('cardEdit') && lock.textContent === '解锁' && document.getElementById('cardTitle').textContent.startsWith('🔒');
+  const lockedNow = window.__cards['科研想法·检索'].prompt === true && hidden('cardEdit') && lock.textContent === '解锁' && crumbs.querySelector('.crumb.here').textContent.startsWith('🔒');
   lock.click();
   opened.locks = lockedNow && window.__cards['科研想法·检索'].prompt === false && !hidden('cardEdit') && lock.textContent === '审核并锁定';
+  // One tap on "朗读" goes to speech with the card left open; "卡片" comes back to it, and once more goes to the list.
+  document.getElementById('tabStream').click();
+  const atSpeech = !hidden('streamPage') && hidden('cardPage') && hidden('cardCrumbs') && document.getElementById('tabStream').classList.contains('active');
+  document.getElementById('tabCards').click();
+  const cameBack = !hidden('cardPage') && !hidden('cardCrumbs') && hidden('streamPage') && crumbs.querySelector('.crumb.here').textContent === '科研想法·检索';
+  document.getElementById('tabCards').click();
+  const atList = hidden('cardPage') && !hidden('cardsPage') && hidden('cardCrumbs');
+  Array.from(document.querySelectorAll('#cardList .card-row')).find((row) => row.textContent === '科研想法·检索').click();
+  opened.tabs = atSpeech && cameBack && atList && !hidden('cardPage') && tabsBefore.join() === [top('tabStream'), top('tabCards')].join();
   // One tap on the reading page copies the whole card.
   window.__copied = '';
   document.getElementById('cardCopyAll').click();
@@ -337,8 +350,8 @@ const folders = await page.evaluate(async () => {
   document.getElementById('cardNameInput').value = '科研 / 检索';
   document.getElementById('cardSave').click();
   // The page shows the card's own name large and its folders above it; the whole name is on the title itself.
-  const title = document.getElementById('cardTitle').title;
-  const shownAs = [document.getElementById('cardFolder').textContent, document.getElementById('cardTitle').textContent];
+  const title = document.getElementById('cardCrumbs').title;
+  const shownAs = Array.from(document.querySelectorAll('#cardCrumbs .crumb')).map((el) => el.textContent);
   window.onAndroidBack();
   window.__cards['科研/评测'] = { purpose: '评测', text: '指标' };
   window.Native.onCardsChanged('');
@@ -362,10 +375,17 @@ const folders = await page.evaluate(async () => {
   delete window.__cards['科研/基准/代码/SWE'];
   delete window.__cards['科研/基准/综述'];
   window.Native.onCardsChanged('');
-  return { title, shownAs, open, closed, deep, deepClosed, kept: !!window.__cards['科研/检索'] && !window.__cards['科研想法·检索'] };
+  // A folder named beside the tabs is a way back to the list, with that folder open and in view.
+  Array.from(document.querySelectorAll('#cardList .card-row')).find((row) => row.dataset.name === '科研/检索').click();
+  document.querySelector('#cardList .card-folder') && null;
+  localStorage.setItem('reduction_closed_folders', JSON.stringify(['科研']));
+  document.querySelector('#cardCrumbs button.crumb').click();
+  const crumbBack = document.getElementById('cardPage').classList.contains('hidden') && !document.getElementById('cardsPage').classList.contains('hidden') &&
+    Array.from(document.querySelectorAll('#cardList .card-row')).some((row) => row.dataset.name === '科研/检索');
+  return { title, shownAs, crumbBack, open, closed, deep, deepClosed, kept: !!window.__cards['科研/检索'] && !window.__cards['科研想法·检索'] };
 });
 console.log('folders:', JSON.stringify(folders));
-if (folders.title !== '科研/检索' || folders.shownAs.join('|') !== '科研|检索' || !folders.kept || !folders.open.includes('[科研 2]') || !folders.open.includes('  检索') || !folders.open.includes('  评测') ||
+if (folders.title !== '科研/检索' || folders.shownAs.join('|') !== '科研|检索' || !folders.crumbBack || !folders.kept || !folders.open.includes('[科研 2]') || !folders.open.includes('  检索') || !folders.open.includes('  评测') ||
     folders.closed.includes('  检索') || !folders.closed.includes('[科研 2]') || folders.open.indexOf('备忘') > folders.open.indexOf('[科研 2]')) {
   throw new Error('folders did not behave: ' + JSON.stringify(folders));
 }

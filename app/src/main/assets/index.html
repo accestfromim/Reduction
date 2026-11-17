@@ -69,6 +69,8 @@
     <nav class="tabs">
       <button class="tab active" id="tabStream">朗读</button>
       <button class="tab" id="tabCards">卡片</button>
+      <!-- Where the open card is: its folders and its name, each a step back to the list, on the same line as the tabs. -->
+      <div class="crumbs hidden" id="cardCrumbs"></div>
     </nav>
 
     <section class="page" id="streamPage">
@@ -133,47 +135,36 @@
       <div class="card-list" id="cardList"></div>
       <button class="card-new" id="cardNew">＋ 新卡片</button>
     </section>
-  </div>
-
-  <div class="card-page hidden" id="cardPage">
-    <header class="card-page-head">
-      <button class="icon-btn" id="cardBack" aria-label="返回">
-        <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M15 5l-7 7 7 7"></path>
-        </svg>
-      </button>
-      <div class="card-page-name">
-        <div class="card-page-folder" id="cardFolder"></div>
-        <div class="card-page-title" id="cardTitle"></div>
+    <!-- A card that is open. It lies under the tabs like the other two pages, so that the tabs stay where they are. -->
+    <section class="page card-page hidden" id="cardPage">
+      <!-- What can be done with the card. Where it is, and the way back, are in the row of tabs above. -->
+      <div class="card-page-tools" id="cardTools">
+        <button class="text-btn" id="cardLock">审核并锁定</button>
+        <button class="text-btn" id="cardFloat">悬浮</button>
+        <button class="text-btn" id="cardCopyAll">复制全文</button>
+        <button class="text-btn" id="cardEdit">编辑</button>
       </div>
-    </header>
-    <!-- What can be done with the card, on a line of its own: the name above has the whole width. -->
-    <div class="card-page-tools" id="cardTools">
-      <button class="text-btn" id="cardLock">审核并锁定</button>
-      <button class="text-btn" id="cardFloat">悬浮</button>
-      <button class="text-btn" id="cardCopyAll">复制全文</button>
-      <button class="text-btn" id="cardEdit">编辑</button>
-    </div>
-    <div class="card-read markdown" id="cardBody"></div>
-    <div class="card-plan hidden" id="cardPlan"></div>
-    <div class="card-editor hidden" id="cardEditor">
-      <label class="field hidden" id="cardNameField">
-        <span>名称</span>
-        <input id="cardNameInput" placeholder="比如：科研想法/检索（“/”前面是文件夹）" autocomplete="off" maxlength="60" />
-      </label>
-      <label class="field">
-        <span>用途（这张卡片收什么）</span>
-        <input id="cardPurposeInput" placeholder="比如：向量检索方向的想法和待验证的假设" autocomplete="off" maxlength="120" />
-      </label>
-      <textarea class="brief-text" id="cardText" placeholder="卡片内容（Markdown）。新卡片可以留空。" spellcheck="false"></textarea>
-      <input class="hidden" id="cardMediaInput" type="file" accept="image/*,audio/*" />
-      <div class="actions">
-        <button class="primary-btn" id="cardSave">保存</button>
-        <button class="secondary-btn" id="cardAttach">加图片或录音</button>
-        <button class="secondary-btn" id="cardCopy">复制</button>
-        <button class="secondary-btn" id="cardDelete">删除</button>
+      <div class="card-read markdown" id="cardBody"></div>
+      <div class="card-plan hidden" id="cardPlan"></div>
+      <div class="card-editor hidden" id="cardEditor">
+        <label class="field hidden" id="cardNameField">
+          <span>名称</span>
+          <input id="cardNameInput" placeholder="比如：科研想法/检索（“/”前面是文件夹）" autocomplete="off" maxlength="60" />
+        </label>
+        <label class="field">
+          <span>用途（这张卡片收什么）</span>
+          <input id="cardPurposeInput" placeholder="比如：向量检索方向的想法和待验证的假设" autocomplete="off" maxlength="120" />
+        </label>
+        <textarea class="brief-text" id="cardText" placeholder="卡片内容（Markdown）。新卡片可以留空。" spellcheck="false"></textarea>
+        <input class="hidden" id="cardMediaInput" type="file" accept="image/*,audio/*" />
+        <div class="actions">
+          <button class="primary-btn" id="cardSave">保存</button>
+          <button class="secondary-btn" id="cardAttach">加图片或录音</button>
+          <button class="secondary-btn" id="cardCopy">复制</button>
+          <button class="secondary-btn" id="cardDelete">删除</button>
+        </div>
       </div>
-    </div>
+    </section>
   </div>
 
   <div class="backdrop hidden" id="settingsBackdrop"></div>

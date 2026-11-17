@@ -791,44 +791,7 @@
   }
 
   /* An open card takes the whole screen. */
-  .card-page {
-    position: fixed;
-    inset: 0;
-    z-index: 15;
-    display: flex;
-    flex-direction: column;
-    background: var(--bg);
-    padding-top: env(safe-area-inset-top);
-  }
   .card-page.hidden { display: none; }
-  .card-page-head {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 10px 14px 8px 8px;
-  }
-  .card-page-title {
-    flex: 1;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    font-size: 17px;
-    font-weight: 700;
-  }
-  .card-page-name { flex: 1; min-width: 0; }
-  .card-page-folder {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    color: var(--muted);
-    font-size: 12px;
-    line-height: 1.3;
-    /* Cut at its start when it does not fit: the nearest folder is the one worth seeing. */
-    direction: rtl;
-    text-align: left;
-  }
-  .card-page-folder.hidden { display: none; }
   .card-page-tools {
     display: flex;
     flex-wrap: wrap;
@@ -930,6 +893,28 @@
 .card-row.inside { padding-left: 18px; }
 /* A folder inside a folder sits closer to what is above it. */
 .card-folder.inside { padding-top: 10px; }
+
+/* Where the open card is, on the line of the tabs: folders, then the card. It takes what the tabs leave. */
+.tabs { align-items: center; }
+.crumbs {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: -10px;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+  color: var(--muted);
+  font-size: 14px;
+}
+.crumbs::-webkit-scrollbar { display: none; }
+.crumbs.hidden { display: none; }
+.crumb-mark { flex: none; opacity: 0.6; }
+.crumb { flex: none; padding: 6px 0; border: 0; background: transparent; color: inherit; font-size: inherit; }
+.crumb:active { opacity: 0.6; }
+.crumb.here { color: var(--text); font-weight: 700; }
 .card-row .locked { margin-left: 8px; color: var(--muted); font-size: 12px; }
 
 /* Pictures and sound in a card. */
