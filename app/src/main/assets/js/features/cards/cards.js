@@ -61,6 +61,19 @@ function folderTree(cards) {
   return root;
 }
 
+/**
+ * The head of the card page: the card's own name, large, and the folders it lies in above it, small.
+ * A name is a path, and it is the end of the path that tells one card from another.
+ */
+function setTitle(name, instead = '', locked = false) {
+  const { folder, leaf } = placeOf(name || '');
+  const where = document.getElementById('cardFolder');
+  where.textContent = instead ? '' : folder.split('/').filter(Boolean).join(' › ');
+  where.classList.toggle('hidden', instead !== '' || !folder);
+  ui.els.cardTitle.textContent = instead || (locked ? '🔒 ' : '') + leaf;
+  ui.els.cardTitle.title = name || '';
+}
+
 function renderList() {
   const list = ui.els.cardList;
   list.innerHTML = '';
@@ -128,7 +141,7 @@ function show(next) {
   ui.els.cardEdit.classList.toggle('hidden', mode !== 'read' || locked || prompt);
   ui.els.cardLock.classList.toggle('hidden', mode !== 'read' || locked);
   ui.els.cardLock.textContent = prompt ? '解锁' : '审核并锁定';
-  ui.els.cardTitle.textContent = mode === 'new' ? '新卡片' : (prompt ? '🔒 ' : '') + state.cardName;
+  setTitle(mode === 'new' ? '' : state.cardName, mode === 'new' ? '新卡片' : '', prompt);
   ui.els.cardFloat.classList.toggle('hidden', mode !== 'read');
   ui.els.cardFloat.textContent = callBridge('floatingCard') === state.cardName ? '取消悬浮' : '悬浮';
   ui.els.cardCopyAll.classList.toggle('hidden', mode !== 'read');
@@ -139,7 +152,7 @@ function show(next) {
 }
 
 function renderOpenCard() {
-  ui.els.cardTitle.textContent = state.cardName;
+  setTitle(state.cardName);
   if (state.cardName === PLAN_CARD) {
     renderPlan();
     return;
@@ -300,7 +313,7 @@ export function editCard() {
 
 export function newCard() {
   state.cardName = '';
-  ui.els.cardTitle.textContent = '新卡片';
+  setTitle('', '新卡片');
   ui.els.cardNameInput.value = '';
   ui.els.cardPurposeInput.value = '';
   ui.els.cardText.value = '';

@@ -336,7 +336,9 @@ const folders = await page.evaluate(async () => {
   document.getElementById('cardEdit').click();
   document.getElementById('cardNameInput').value = '科研 / 检索';
   document.getElementById('cardSave').click();
-  const title = document.getElementById('cardTitle').textContent;
+  // The page shows the card's own name large and its folders above it; the whole name is on the title itself.
+  const title = document.getElementById('cardTitle').title;
+  const shownAs = [document.getElementById('cardFolder').textContent, document.getElementById('cardTitle').textContent];
   window.onAndroidBack();
   window.__cards['科研/评测'] = { purpose: '评测', text: '指标' };
   window.Native.onCardsChanged('');
@@ -360,10 +362,10 @@ const folders = await page.evaluate(async () => {
   delete window.__cards['科研/基准/代码/SWE'];
   delete window.__cards['科研/基准/综述'];
   window.Native.onCardsChanged('');
-  return { title, open, closed, deep, deepClosed, kept: !!window.__cards['科研/检索'] && !window.__cards['科研想法·检索'] };
+  return { title, shownAs, open, closed, deep, deepClosed, kept: !!window.__cards['科研/检索'] && !window.__cards['科研想法·检索'] };
 });
 console.log('folders:', JSON.stringify(folders));
-if (folders.title !== '科研/检索' || !folders.kept || !folders.open.includes('[科研 2]') || !folders.open.includes('  检索') || !folders.open.includes('  评测') ||
+if (folders.title !== '科研/检索' || folders.shownAs.join('|') !== '科研|检索' || !folders.kept || !folders.open.includes('[科研 2]') || !folders.open.includes('  检索') || !folders.open.includes('  评测') ||
     folders.closed.includes('  检索') || !folders.closed.includes('[科研 2]') || folders.open.indexOf('备忘') > folders.open.indexOf('[科研 2]')) {
   throw new Error('folders did not behave: ' + JSON.stringify(folders));
 }

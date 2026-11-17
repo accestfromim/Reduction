@@ -816,7 +816,29 @@
     font-size: 17px;
     font-weight: 700;
   }
-  .card-page-head .text-btn { margin-left: 0; padding: 6px 8px; }
+  .card-page-name { flex: 1; min-width: 0; }
+  .card-page-folder {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.3;
+    /* Cut at its start when it does not fit: the nearest folder is the one worth seeing. */
+    direction: rtl;
+    text-align: left;
+  }
+  .card-page-folder.hidden { display: none; }
+  .card-page-tools {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 2px 4px;
+    padding: 0 12px 6px;
+    border-bottom: 1px solid var(--border);
+  }
+  .card-page-tools:not(:has(> .text-btn:not(.hidden))) { display: none; }
+  .card-page-tools .text-btn { margin-left: 0; padding: 6px 8px; }
   .card-read {
     flex: 1;
     min-height: 0;

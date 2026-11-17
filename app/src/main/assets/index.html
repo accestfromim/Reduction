@@ -142,12 +142,18 @@
           <path d="M15 5l-7 7 7 7"></path>
         </svg>
       </button>
-      <div class="card-page-title" id="cardTitle"></div>
+      <div class="card-page-name">
+        <div class="card-page-folder" id="cardFolder"></div>
+        <div class="card-page-title" id="cardTitle"></div>
+      </div>
+    </header>
+    <!-- What can be done with the card, on a line of its own: the name above has the whole width. -->
+    <div class="card-page-tools" id="cardTools">
       <button class="text-btn" id="cardLock">审核并锁定</button>
       <button class="text-btn" id="cardFloat">悬浮</button>
       <button class="text-btn" id="cardCopyAll">复制全文</button>
       <button class="text-btn" id="cardEdit">编辑</button>
-    </header>
+    </div>
     <div class="card-read markdown" id="cardBody"></div>
     <div class="card-plan hidden" id="cardPlan"></div>
     <div class="card-editor hidden" id="cardEditor">
