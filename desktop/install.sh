@@ -8,6 +8,10 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DATA="$HOME/.local/share/reduction"
 PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
+# The library the pet draws its panel with: Microsoft's WebView2 SDK, from NuGet. Its three files go beside
+# the pet; the engine itself is part of Windows.
+WEBVIEW2_VERSION=1.0.4314.35
+WEBVIEW2_SHA256=90778deb1b77e36292828b4b5833c9255c27533f40e0ddd55891ae718944edc4
 win() { "$PS" -NoProfile -NonInteractive -Command "$1" | tr -d '\r'; }
 
 if [ "${1:-}" = "--remove" ]; then
@@ -43,33 +47,35 @@ echo "== Windows 图标与开机自启"
 APPDIR_WIN="$(win '$d="$env:LOCALAPPDATA\Reduction"; New-Item -ItemType Directory -Force $d | Out-Null; $d')"
 APPDIR="$(wslpath "$APPDIR_WIN")"
 cp "$HERE/reduction.ico" "$APPDIR/reduction.ico"
-BROWSER=""
-for candidate in "/mnt/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" "/mnt/c/Program Files/Microsoft/Edge/Application/msedge.exe" "/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"; do
-  [ -x "$candidate" ] && { BROWSER="$(wslpath -w "$candidate")"; break; }
-done
-[ -n "$BROWSER" ] || echo "没有找到 Edge 或 Chrome：窗口开不了，可以在任意浏览器里打开 http://localhost:8780"
+SDK="$DATA/webview2/$WEBVIEW2_VERSION.nupkg"
+if ! echo "$WEBVIEW2_SHA256  $SDK" | sha256sum -c --status 2>/dev/null; then
+  mkdir -p "$DATA/webview2"
+  curl -fsSL -m 300 -o "$SDK" "https://api.nuget.org/v3-flatcontainer/microsoft.web.webview2/$WEBVIEW2_VERSION/microsoft.web.webview2.$WEBVIEW2_VERSION.nupkg"
+  echo "$WEBVIEW2_SHA256  $SDK" | sha256sum -c --status || { echo "WebView2 SDK 下载不完整或校验不符：$SDK"; exit 1; }
+fi
 # The pet is a small program of its own, built here with the compiler that comes with Windows.
 "$PS" -NoProfile -NonInteractive -Command 'Get-Process ReductionPet -ErrorAction SilentlyContinue | Stop-Process -Force' || true
 rm -f "$APPDIR/pet.ps1" "$APPDIR/pet-fps.txt" "$APPDIR/pet.json" || true
+rm -rf "$APPDIR/window" || true
+for part in lib/net462/Microsoft.Web.WebView2.Core.dll lib/net462/Microsoft.Web.WebView2.Wpf.dll runtimes/win-x64/native/WebView2Loader.dll; do
+  unzip -p "$SDK" "$part" > "$APPDIR/$(basename "$part")"
+done
 cp "$HERE/pet.cs" "$APPDIR/pet.cs"
 FRAMEWORK='C:\Windows\Microsoft.NET\Framework64\v4.0.30319'
 ( cd "$APPDIR" && "$(wslpath "$FRAMEWORK")/csc.exe" /nologo /target:winexe /platform:x64 /optimize+ /out:ReductionPet.exe /win32icon:reduction.ico \
     "/r:$FRAMEWORK\\WPF\\PresentationCore.dll" "/r:$FRAMEWORK\\WPF\\PresentationFramework.dll" "/r:$FRAMEWORK\\WPF\\WindowsBase.dll" \
-    "/r:$FRAMEWORK\\System.Xaml.dll" "/r:$FRAMEWORK\\System.Web.Extensions.dll" pet.cs ) | iconv -f GBK -t UTF-8 -c | tr -d '\r' || true
+    "/r:$FRAMEWORK\\System.Xaml.dll" "/r:$FRAMEWORK\\System.Web.Extensions.dll" "/r:$FRAMEWORK\\System.Drawing.dll" \
+    /r:Microsoft.Web.WebView2.Core.dll /r:Microsoft.Web.WebView2.Wpf.dll pet.cs ) | iconv -f GBK -t UTF-8 -c | tr -d '\r' || true
 # A pet that did not compile must not pass for the one already there.
 if [ "$APPDIR/ReductionPet.exe" -nt "$APPDIR/pet.cs" ]; then rm -f "$APPDIR/pet.cs"; else echo "桌宠没有编译出来，仍是上一次的：见上面的输出"; exit 1; fi
 # The launcher: starts the service inside this Linux system with no console window and puts the pet on the
-# desktop. Asked for the panel, it has the pet open it: a card beside the pet, drawn by the browser under a
-# profile of its own.
+# desktop. Asked for the panel, it has the pet open it.
 cat > "$APPDIR/Reduction.vbs" <<VBS
 Set shell = CreateObject("WScript.Shell")
-url = "http://localhost:8780"
-browser = "$BROWSER"
-profile = "$APPDIR_WIN\\window"
 shell.Run "wsl.exe -d ${WSL_DISTRO_NAME:-Ubuntu} -- $HERE/start.sh", 0, False
 panel = ""
 If WScript.Arguments.Count > 0 Then panel = " --panel 1"
-shell.Run """$APPDIR_WIN\\ReductionPet.exe"" --url " & url & " --browser """ & browser & """ --profile """ & profile & """" & panel, 1, False
+shell.Run """$APPDIR_WIN\\ReductionPet.exe"" --url http://localhost:8780" & panel, 1, False
 VBS
 rm -f "$HOME/.config/reduction/window.env"
 win '
