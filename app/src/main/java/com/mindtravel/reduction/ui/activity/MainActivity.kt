@@ -104,6 +104,9 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
         "png" -> "image/png"
         "webp" -> "image/webp"
         "gif" -> "image/gif"
+        "pdf" -> "application/pdf"
+        "mp4" -> "video/mp4"
+        "mov" -> "video/quicktime"
         "mp3" -> "audio/mpeg"
         "wav" -> "audio/wav"
         "ogg" -> "audio/ogg"
@@ -169,7 +172,7 @@ class MainActivity : AppCompatActivity(), PermissionHost, UpdateHost, ToolApprov
             )
             // Pictures and sound kept with the cards, by their id.
             .addPathHandler("/card-media/") { path ->
-                graph.core.cardRepository.mediaFile(path.trim('/'))?.let { file ->
+                graph.core.cardRepository.heldFile(path.trim('/'))?.let { file ->
                     WebResourceResponse(mediaType(file.extension), null, file.inputStream())
                 }
             }

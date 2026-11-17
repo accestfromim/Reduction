@@ -6,6 +6,7 @@ import com.mindtravel.reduction.core.NetworkException
 import com.mindtravel.reduction.core.TextSanitizer
 import com.mindtravel.reduction.feature.chat.model.tools.ToolRegistry
 import com.mindtravel.reduction.model.chat.ChatGateway
+import com.mindtravel.reduction.model.chat.ChatImage
 import com.mindtravel.reduction.model.chat.ChatMessage
 import com.mindtravel.reduction.model.chat.ChatRequest
 import com.mindtravel.reduction.model.chat.ChatStreamEvent
@@ -25,6 +26,9 @@ class ChatSession(
         /** How many times a request is sent before the network is declared down. */
         const val ATTEMPTS = 3
         private const val RETRY_PAUSE_MS = 1_200L
+
+        /** How many pictures the tools of one round may show. */
+        const val MAX_PICTURES_SHOWN = 8
     }
 
     override fun run(
@@ -118,6 +122,7 @@ class ChatSession(
                 toolCalls = calls
             )
 
+            val shown = ArrayList<ChatImage>()
             for (call in calls) {
                 callbacks.onToolStarted(
                     call.name,
@@ -134,6 +139,16 @@ class ChatSession(
                     role = Role.TOOL,
                     content = result,
                     toolCallId = call.id
+                )
+                shown += tools.pictures(call.name)
+            }
+            // What the tools had to show comes after all their answers: a message of pictures, which is
+            // the only kind that can carry them. It says whose it is, so it is not taken for the user's.
+            if (shown.isNotEmpty()) {
+                messages += ChatMessage(
+                    role = Role.USER,
+                    content = "［程序补充，不是用户说的话］上面工具结果提到的画面，按顺序是：" + shown.joinToString("、") { it.name },
+                    images = shown.take(MAX_PICTURES_SHOWN)
                 )
             }
         }

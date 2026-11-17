@@ -195,6 +195,36 @@ class CardRepository(private val dir: File) {
         return runCatching { File(mediaDir, id).writeBytes(bytes); id }.getOrNull()
     }
 
+    /**
+     * Keeps one page of a PDF as a picture: page [page] of the PDF kept as [pdfId], counted
+     * from 1. The pages are what the PDF looks like — what a card shows of it, and what the
+     * assistant is given to look at.
+     */
+    @Synchronized
+    fun savePage(pdfId: String, page: Int, jpeg: ByteArray): Boolean {
+        if (!MEDIA_ID.matches(pdfId) || !pdfId.endsWith(".pdf") || mediaFile(pdfId) == null) return false
+        if (page !in 1..MAX_PDF_PAGES || jpeg.isEmpty() || jpeg.size > MAX_PAGE_BYTES) return false
+        return runCatching { File(mediaDir, pageName(pdfId, page)).writeBytes(jpeg); true }.getOrDefault(false)
+    }
+
+    /** The pictures of a PDF's pages, in order; empty when it has not been turned into pages. */
+    @Synchronized
+    fun pages(pdfId: String): List<File> {
+        if (!MEDIA_ID.matches(pdfId)) return emptyList()
+        return (1..MAX_PDF_PAGES).map { File(mediaDir, pageName(pdfId, it)) }.takeWhile { it.isFile }
+    }
+
+    /** A page's picture, by the name it is served under: "<pdf id>.p<page>.jpg". */
+    fun pageFile(name: String): File? {
+        val match = PAGE_NAME.matchEntire(name) ?: return null
+        return File(mediaDir, name).takeIf { it.isFile && MEDIA_ID.matches(match.groupValues[1]) }
+    }
+
+    private fun pageName(pdfId: String, page: Int) = "$pdfId.p$page.jpg"
+
+    /** What a card's text refers to: every media id in it, in the order they stand, each once. */
+    fun mediaIn(text: String): List<String> = MEDIA_REF.findAll(text).map { it.groupValues[1] }.distinct().toList()
+
     /** The file behind a media id; null when there is none. */
     fun mediaFile(id: String): File? = id.takeIf { MEDIA_ID.matches(it) }?.let { File(mediaDir, it) }?.takeIf { it.isFile }
 
@@ -209,7 +239,11 @@ class CardRepository(private val dir: File) {
             }
         }
         val cutoff = System.currentTimeMillis() - MEDIA_GRACE_MS
-        for (file in files) if (file.name !in used && file.lastModified() < cutoff) file.delete()
+        // A page lives as long as its PDF does.
+        for (file in files) {
+            val owner = PAGE_NAME.matchEntire(file.name)?.groupValues?.get(1) ?: file.name
+            if (owner !in used && file.lastModified() < cutoff) file.delete()
+        }
     }
 
     @Synchronized
@@ -319,24 +353,30 @@ class CardRepository(private val dir: File) {
         return changed
     }
 
-    /** The pictures and sound the cards refer to and this device holds. */
+    /** What the cards refer to and this device holds: pictures, sound, PDFs, and the pages of those PDFs. */
     @Synchronized
     fun heldMedia(): Set<String> {
         val held = HashSet<String>()
         for (file in dir.listFiles().orEmpty()) {
             if (!file.isFile || !file.name.endsWith(TEXT)) continue
-            MEDIA_REF.findAll(runCatching { file.readText() }.getOrDefault("")).forEach { ref ->
-                if (mediaFile(ref.groupValues[1]) != null) held += ref.groupValues[1]
+            for (id in mediaIn(runCatching { file.readText() }.getOrDefault(""))) {
+                if (mediaFile(id) == null) continue
+                held += id
+                pages(id).forEach { held += it.name }
             }
         }
         return held
     }
 
+    /** A held media file or page, by the name [heldMedia] gives it. */
+    fun heldFile(name: String): File? = mediaFile(name) ?: pageFile(name)
+
     /** Keeps a media file that came from another device under the id it has there. */
     @Synchronized
     fun putMedia(id: String, bytes: ByteArray): Boolean {
-        if (!MEDIA_ID.matches(id) || bytes.isEmpty() || bytes.size > MAX_MEDIA_BYTES) return false
-        if (id.substringAfterLast('.') !in MEDIA_KINDS) return false
+        if (bytes.isEmpty() || bytes.size > MAX_MEDIA_BYTES) return false
+        val page = PAGE_NAME.matchEntire(id)
+        if (page == null && (!MEDIA_ID.matches(id) || id.substringAfterLast('.') !in MEDIA_KINDS)) return false
         val file = File(mediaDir, id)
         if (file.isFile) return false
         mediaDir.mkdirs()
@@ -397,7 +437,11 @@ class CardRepository(private val dir: File) {
         const val MAX_NAME = 60
         const val MAX_MEDIA_BYTES = 20 * 1024 * 1024
         private const val MEDIA_GRACE_MS = 3_600_000L
-        val MEDIA_KINDS = setOf("jpg", "jpeg", "png", "webp", "gif", "m4a", "mp3", "wav", "ogg", "aac", "webm", "flac")
+        val MEDIA_KINDS = setOf("jpg", "jpeg", "png", "webp", "gif", "m4a", "mp3", "wav", "ogg", "aac", "webm", "flac", "pdf", "mp4", "mov")
+        val PICTURE_KINDS = setOf("jpg", "jpeg", "png", "webp", "gif")
+        const val MAX_PDF_PAGES = 200
+        private const val MAX_PAGE_BYTES = 4 * 1024 * 1024
+        private val PAGE_NAME = Regex("^(m[0-9a-f]{12}\\.pdf)\\.p(\\d{1,3})\\.jpg$")
         private val MEDIA_ID = Regex("^m[0-9a-f]{12}\\.[a-z0-9]{2,5}$")
         private val MEDIA_REF = Regex("media:(m[0-9a-f]{12}\\.[a-z0-9]{2,5})")
         const val MAX_PURPOSE = 120

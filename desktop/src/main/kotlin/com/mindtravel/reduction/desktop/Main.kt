@@ -523,6 +523,8 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         "renameCard" -> cards.rename(args.getString(0), args.getString(1))
         "lockCard" -> cards.setLocked(args.getString(0), args.getBoolean(1))
         "saveCardMedia" -> runCatching { cards.saveMedia(Base64.getDecoder().decode(args.getString(0)), args.getString(1)) }.getOrNull().orEmpty()
+        "saveCardPage" -> runCatching { cards.savePage(args.getString(0), args.getInt(1), Base64.getDecoder().decode(args.getString(2))) }.getOrDefault(false)
+        "cardPages" -> cards.pages(args.getString(0)).size
         "speak" -> speech.speak(args.getString(0), args.getString(1))
         "stopSpeaking" -> speech.stop(notify = true)
         "clearAudioCache" -> speech.clearCache()
@@ -569,7 +571,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     private fun serveFile(exchange: HttpExchange, path: String) {
         if (path.startsWith("/card-media/")) {
             // Pictures and sound kept with the cards, by their id.
-            val file = cards.mediaFile(path.removePrefix("/card-media/")) ?: return reply(exchange, 404, "")
+            val file = cards.heldFile(path.removePrefix("/card-media/")) ?: return reply(exchange, 404, "")
             exchange.responseHeaders.add("Content-Type", TYPES[file.extension] ?: "application/octet-stream")
             exchange.sendResponseHeaders(200, file.length())
             exchange.responseBody.use { out -> file.inputStream().use { it.copyTo(out) } }
@@ -618,7 +620,8 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
             "png" to "image/png", "svg" to "image/svg+xml", "woff2" to "font/woff2", "woff" to "font/woff", "ttf" to "font/ttf",
             "json" to "application/json", "jpg" to "image/jpeg", "jpeg" to "image/jpeg", "webp" to "image/webp", "gif" to "image/gif",
             "m4a" to "audio/mp4", "aac" to "audio/mp4", "mp3" to "audio/mpeg", "wav" to "audio/wav", "ogg" to "audio/ogg",
-            "webm" to "audio/webm", "flac" to "audio/flac"
+            "webm" to "audio/webm", "flac" to "audio/flac", "pdf" to "application/pdf", "mp4" to "video/mp4", "mov" to "video/quicktime",
+            "mjs" to "text/javascript; charset=utf-8", "bcmap" to "application/octet-stream", "pfb" to "application/octet-stream"
         )
     }
 }

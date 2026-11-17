@@ -10,6 +10,7 @@
 | marked | Markdown 渲染 | markedjs/marked | MIT |
 | DOMPurify | 渲染前清洗 HTML | cure53/DOMPurify | Apache-2.0 或 MPL-2.0 |
 | KaTeX | 数学公式 | KaTeX/KaTeX | MIT |
+| PDF.js 4.10.38 | 把卡片里的 PDF 渲染成逐页图片（`vendor/pdfjs`，含字符映射和标准字体） | mozilla/pdf.js | Apache-2.0 |
 | mermaid（`docs/mermaid.min.js`） | 架构图里的状态图 | mermaid-js/mermaid | MIT |
 | OkHttp | 网络请求 | square/okhttp | Apache-2.0 |
 | JSch（mwiede 分支） | SSH | mwiede/jsch | BSD |

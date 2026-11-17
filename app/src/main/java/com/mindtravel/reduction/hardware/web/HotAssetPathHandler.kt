@@ -45,6 +45,7 @@ class HotAssetPathHandler(
         "woff2" -> "font/woff2"
         "ttf" -> "font/ttf"
         "otf" -> "font/otf"
+        "pdf" -> "application/pdf"
         "mp3" -> "audio/mpeg"
         "wav" -> "audio/wav"
         else -> "application/octet-stream"

@@ -82,6 +82,14 @@ class AndroidBridge(
     @JavascriptInterface
     fun saveCardMedia(base64: String, extension: String): String = cards.saveMedia(base64, extension)
 
+    /** One page of a PDF kept in a card, as the page drew it: a JPEG in base64. */
+    @JavascriptInterface
+    fun saveCardPage(pdfId: String, page: Int, base64: String): Boolean = cards.savePage(pdfId, page, base64)
+
+    /** How many pages of a PDF have been kept as pictures; 0 when it has not been drawn yet. */
+    @JavascriptInterface
+    fun cardPages(pdfId: String): Int = cards.pages(pdfId)
+
     /** The to-dos in the review card's three blocks, and how well the reminders can work. */
     @JavascriptInterface
     fun memoView(): String = runCatching {

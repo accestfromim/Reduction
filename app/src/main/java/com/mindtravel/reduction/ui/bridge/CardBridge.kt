@@ -23,6 +23,12 @@ class CardBridge(
     fun saveMedia(base64: String, extension: String): String =
         runCatching { cards.saveMedia(java.util.Base64.getDecoder().decode(base64), extension) }.getOrNull().orEmpty()
 
+    /** Keeps one page of a PDF as the page drew it. */
+    fun savePage(pdfId: String, page: Int, base64: String): Boolean =
+        runCatching { cards.savePage(pdfId, page, java.util.Base64.getDecoder().decode(base64)) }.getOrDefault(false)
+
+    fun pages(pdfId: String): Int = cards.pages(pdfId).size
+
     /** The card that floats over other apps, or blank. */
     fun floating(): String = overlay.pinned()
 

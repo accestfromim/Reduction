@@ -1,6 +1,7 @@
 package com.mindtravel.reduction.feature.chat.model.tools
 
 import com.mindtravel.reduction.core.stringOrNull
+import com.mindtravel.reduction.model.chat.ChatImage
 import com.mindtravel.reduction.model.chat.ToolParam
 import com.mindtravel.reduction.model.chat.ToolSpec
 import org.json.JSONObject
@@ -21,6 +22,9 @@ class ToolRegistry(tools: List<ChatTool>) {
         return runCatching { tool.execute(argumentsJson) }
             .getOrElse { "工具执行失败：${it.message ?: "未知错误"}" }
     }
+
+    /** The pictures that go with the answer the named tool has just given. */
+    fun pictures(name: String): List<ChatImage> = runCatching { byName[name]?.pictures() }.getOrNull().orEmpty()
 
     /** One short line saying what this call does: the assistant's own words, or the tool's. */
     fun summary(name: String, argumentsJson: String): String {

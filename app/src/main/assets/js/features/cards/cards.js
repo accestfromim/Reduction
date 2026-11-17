@@ -207,6 +207,20 @@ function renderOpenCard() {
   ui.els.cardBody.innerHTML = text ? renderMarkdown(text.replace(/\]\(media:(m[0-9a-f]{12}\.[a-z0-9]{2,5})\)/g, '](/card-media/$1)')) : '';
   for (const image of ui.els.cardBody.querySelectorAll('img')) {
     const source = image.getAttribute('src') || '';
+    const pdf = (source.match(/^\/card-media\/(m[0-9a-f]{12}\.pdf)$/) || [])[1];
+    if (pdf) {
+      image.replaceWith(pdfPages(pdf, image.getAttribute('alt') || 'PDF'));
+      continue;
+    }
+    if (/^\/card-media\/.+\.(mp4|mov)$/.test(source)) {
+      const film = document.createElement('video');
+      film.controls = true;
+      film.preload = 'metadata';
+      film.playsInline = true;
+      film.src = source;
+      image.replaceWith(film);
+      continue;
+    }
     if (!/^\/card-media\/.+\.(m4a|mp3|wav|ogg|aac|webm|flac)$/.test(source)) continue;
     const player = document.createElement('audio');
     player.controls = true;
@@ -451,6 +465,50 @@ export function toggleFloat() {
   show(mode);
 }
 
+/**
+ * A PDF in a card, as it looks: its pages one under another, each a picture. A PDF that has no
+ * pictures yet — one that came from another device, say — is drawn now and kept.
+ */
+function pdfPages(id, label) {
+  const box = document.createElement('div');
+  box.className = 'pdf-pages';
+  box.dataset.pdf = id;
+  const head = document.createElement('div');
+  head.className = 'pdf-head';
+  box.appendChild(head);
+  const fill = (count) => {
+    head.textContent = label + ' · ' + count + ' 页';
+    for (let page = 1; page <= count; page++) {
+      const image = document.createElement('img');
+      image.loading = 'lazy';
+      image.alt = label + ' 第 ' + page + ' 页';
+      image.src = '/card-media/' + id + '.p' + page + '.jpg';
+      box.appendChild(image);
+    }
+  };
+  const kept = Number(callBridge('cardPages', id) || 0);
+  if (kept > 0) {
+    fill(kept);
+    return box;
+  }
+  head.textContent = label + ' · 正在渲染…';
+  fetch('/card-media/' + id)
+    .then((response) => { if (!response.ok) throw new Error('文件不在这台设备上'); return response.arrayBuffer(); })
+    .then((data) => keepPages(id, data, (page, count) => { head.textContent = label + ' · 正在渲染 ' + page + '/' + count; }))
+    .then((count) => fill(count))
+    .catch((error) => { head.textContent = label + ' · 渲染不了：' + (error && error.message ? error.message : '读不了这个文件'); });
+  return box;
+}
+
+/** Draws the pages of the PDF kept as [id] and has the app keep each as a picture. Returns how many. */
+async function keepPages(id, data, progress) {
+  const { drawPages } = await import('../../core/pdf.js');
+  return drawPages(data, (page, jpeg, count) => {
+    if (callBridge('saveCardPage', id, page, jpeg) !== true) throw new Error('第 ' + page + ' 页存不下');
+    if (progress) progress(page, count);
+  });
+}
+
 /** Puts [text] into the editor where the cursor is. */
 function insertIntoText(text) {
   const box = ui.els.cardText;
@@ -461,22 +519,38 @@ function insertIntoText(text) {
   box.selectionStart = box.selectionEnd = at + line.length;
 }
 
-/** The user picked a picture or a recording: it is kept by the app and referred to from the card's text. */
+/**
+ * The user picked something to attach — a picture, a recording, a video, a PDF: the app keeps it
+ * and the card's text refers to it by the id it was given. A PDF is also turned into pictures of
+ * its pages there and then, which is how it is shown and how the assistant sees it.
+ */
 export async function attachMedia(event) {
   const file = event.target.files && event.target.files[0];
   event.target.value = '';
   if (!file) return;
   try {
+    const named = ((file.name.match(/\.([A-Za-z0-9]{2,5})$/) || [])[1] || '').toLowerCase();
+    const isPdf = file.type === 'application/pdf' || named === 'pdf';
     const isImage = file.type.startsWith('image/') && file.type !== 'image/gif';
-    const named = (file.name.match(/\.([A-Za-z0-9]{2,5})$/) || [])[1];
-    const kept = isImage ? await shrunk(file) : { buffer: await file.arrayBuffer(), extension: (named || (file.type.startsWith('audio/') ? 'm4a' : '')).toLowerCase() };
+    const fallback = file.type.startsWith('audio/') ? 'm4a' : file.type.startsWith('video/') ? 'mp4' : file.type === 'image/gif' ? 'gif' : '';
+    const kept = isImage ? await shrunk(file) : { buffer: await file.arrayBuffer(), extension: isPdf ? 'pdf' : (named || fallback) };
     const id = callBridge('saveCardMedia', base64Of(kept.buffer), kept.extension);
     if (!id) {
-      ui.toast('放不进去：只收图片和录音，单个不超过 20 MB');
+      ui.toast('放不进去：收图片、录音、视频和 PDF，单个不超过 20 MB');
       return;
     }
-    insertIntoText('![' + file.name.replace(/\.[^.]*$/, '').replace(/[\[\]]/g, '') + '](media:' + id + ')');
-    ui.toast(file.type.startsWith('audio/') ? '录音已放进卡片，保存后生效' : '图片已放进卡片，保存后生效');
+    const label = file.name.replace(/\.[^.]*$/, '').replace(/[\[\]]/g, '');
+    if (isPdf) {
+      ui.toast('正在把 PDF 渲染成页面…');
+      // The pages are drawn from a copy: the first was handed to the app above.
+      const count = await keepPages(id, kept.buffer.slice(0), (page, total) => ui.setStatus('PDF 第 ' + page + '/' + total + ' 页'));
+      ui.setStatus('');
+      insertIntoText('![' + label + '](media:' + id + ')');
+      ui.toast('PDF 已放进卡片，共 ' + count + ' 页，保存后生效');
+      return;
+    }
+    insertIntoText('![' + label + '](media:' + id + ')');
+    ui.toast((file.type.startsWith('audio/') ? '录音' : file.type.startsWith('video/') ? '视频' : '图片') + '已放进卡片，保存后生效');
   } catch (error) {
     ui.toast('放不进去：' + (error && error.message ? error.message : '读不了这个文件'));
   }

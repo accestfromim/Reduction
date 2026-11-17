@@ -60,7 +60,7 @@ class DataSync(
         var room = FILES_PER_EXCHANGE
         for (id in cards.heldMedia().sorted()) {
             if (id in theirs) continue
-            val file = cards.mediaFile(id) ?: continue
+            val file = cards.heldFile(id) ?: continue
             if (file.length() > room) continue
             room -= file.length()
             files.put(id, Base64.getEncoder().encodeToString(file.readBytes()))

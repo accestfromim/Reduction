@@ -994,3 +994,9 @@
 }
 .bubble-pictures { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .bubble-pictures img { display: block; max-width: 140px; max-height: 140px; border-radius: 10px; }
+
+/* A PDF in a card: its pages, one under another, as pictures on paper. */
+.pdf-pages { margin: 12px 0; }
+.pdf-head { margin-bottom: 6px; color: var(--muted); font-size: 12px; }
+.card-read .pdf-pages img { margin: 0 0 8px; border-radius: 4px; background: #fff; border: 1px solid var(--border); }
+.card-read video { display: block; max-width: 100%; margin: 10px 0; border-radius: 10px; }

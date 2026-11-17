@@ -4,6 +4,7 @@ import com.mindtravel.reduction.core.events.EventSink
 import com.mindtravel.reduction.core.stringOrNull
 import com.mindtravel.reduction.feature.chat.data.CardPatch
 import com.mindtravel.reduction.feature.chat.data.CardRepository
+import com.mindtravel.reduction.model.chat.ChatImage
 import com.mindtravel.reduction.model.chat.ToolParam
 import com.mindtravel.reduction.model.chat.ToolSpec
 import org.json.JSONObject
@@ -49,23 +50,84 @@ class PatchCardsTool(
         runCatching { CardPatch.parse(patch).lastOrNull { it !is CardPatch.Delete }?.name }.getOrNull().orEmpty()
 }
 
-/** Reads one memo card in full. */
+/**
+ * Reads one memo card in full: its text exactly as it stands, and after it what is attached to
+ * it. Pictures and the pages of PDFs are handed over as pictures, to be looked at; a note after
+ * the text says which they are. Nothing of this is written into the card.
+ */
 class ReadCardTool(private val cards: CardRepository) : ChatTool {
 
     override val spec = ToolSpec(
         name = "read_card",
-        description = "读取一张备忘卡片的完整内容。目录里只有名称和用途；要改一张卡片而不清楚它现在的原文时，先读。",
-        parameterName = "name",
-        parameterDescription = "卡片名称，与目录中的一致"
+        description = "读取一张备忘卡片的完整内容。目录里只有名称和用途；要改一张卡片而不清楚它现在的原文时，先读。" +
+            "卡片里挂的图片和 PDF 会作为画面随后给你看：图片是原图，PDF 是逐页渲染的页面。PDF 一次给 $PAGES_AT_ONCE 页，要看后面的页用 pages。",
+        parameters = listOf(
+            ToolParam("name", "卡片名称，与目录中的一致"),
+            ToolParam("pages", "可选：要看 PDF 的哪些页，例如 5-8。不填从第 1 页看起", required = false)
+        )
     )
+
+    private var showing: List<ChatImage> = emptyList()
+
+    override fun pictures(): List<ChatImage> = showing.also { showing = emptyList() }
 
     override fun describe(argumentsJson: String): String =
         "读卡片：" + JSONObject(argumentsJson).stringOrNull("name").orEmpty().trim()
 
     override fun execute(argumentsJson: String): String {
-        val name = JSONObject(argumentsJson).stringOrNull("name").orEmpty()
-        return cards.read(name) ?: "没有名为“${name.trim()}”的卡片。现有卡片：" +
+        showing = emptyList()
+        val args = JSONObject(argumentsJson)
+        val name = args.stringOrNull("name").orEmpty()
+        val text = cards.read(name) ?: return "没有名为“${name.trim()}”的卡片。现有卡片：" +
             cards.list().joinToString("、") { it.name }.ifBlank { "无" }
+        val from = PAGE_RANGE.find(args.stringOrNull("pages").orEmpty())?.groupValues?.get(1)?.toIntOrNull()?.coerceAtLeast(1) ?: 1
+
+        val pictures = ArrayList<ChatImage>()
+        val notes = ArrayList<String>()
+        for (id in cards.mediaIn(text)) {
+            val kind = id.substringAfterLast('.')
+            val label = LABEL.find(text.substringBefore("(media:$id)").takeLast(80))?.groupValues?.get(1).orEmpty().ifBlank { id }
+            when {
+                kind in CardRepository.PICTURE_KINDS -> {
+                    val file = cards.mediaFile(id)
+                    if (file == null) notes += "- 图片「$label」：文件不在这台设备上"
+                    else if (pictures.size >= ROOM || file.length() > MAX_PICTURE_BYTES) notes += "- 图片「$label」：这次没有带上（太多或太大）"
+                    else {
+                        pictures += ChatImage("图片「$label」", if (kind == "jpg") "image/jpeg" else "image/$kind", encode(file.readBytes()))
+                        notes += "- 图片「$label」：画面随后给出"
+                    }
+                }
+                kind == "pdf" -> {
+                    val pages = cards.pages(id)
+                    if (pages.isEmpty()) {
+                        notes += "- PDF「$label」：还没有渲染成页面，看不到内容（在卡片页打开一次这张卡片就会渲染）"
+                        continue
+                    }
+                    val first = from.coerceAtMost(pages.size)
+                    val last = minOf(pages.size, first + PAGES_AT_ONCE - 1, first + (ROOM - pictures.size) - 1)
+                    for (page in first..last) pictures += ChatImage("PDF「$label」第 $page 页", "image/jpeg", encode(pages[page - 1].readBytes()))
+                    notes += "- PDF「$label」：共 ${pages.size} 页，" +
+                        (if (last >= first) "第 $first–$last 页的画面随后给出" else "这次没有带上页面") +
+                        (if (last < pages.size) "；要看后面的页，再读一次并填 pages=${last + 1}-${minOf(pages.size, last + PAGES_AT_ONCE)}" else "")
+                }
+                else -> notes += "- ${if (kind in VIDEO) "视频" else "录音"}「$label」：只能在卡片页播放，这里看不到内容"
+            }
+        }
+        showing = pictures
+        if (notes.isEmpty()) return text
+        return text.trimEnd() + "\n\n———\n以上是卡片原文。附件（不属于卡片正文）：\n" + notes.joinToString("\n")
+    }
+
+    private fun encode(bytes: ByteArray): String = java.util.Base64.getEncoder().encodeToString(bytes)
+
+    private companion object {
+        /** How many pages of a PDF are shown at a time, and how many pictures in all. */
+        const val PAGES_AT_ONCE = 4
+        const val ROOM = 6
+        const val MAX_PICTURE_BYTES = 4L * 1024 * 1024
+        val VIDEO = setOf("mp4", "mov")
+        val PAGE_RANGE = Regex("(\\d{1,3})")
+        val LABEL = Regex("\\[([^\\]]*)\\]$")
     }
 }
 
