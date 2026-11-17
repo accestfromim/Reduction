@@ -70,8 +70,9 @@ class MemoAlarms(private val context: Context) {
             if (memo.done) continue
             val due = memo.dueAt ?: continue
             if (memo.dueReminded && due <= now) continue
+            // A to-do far ahead is still set now: the system holds it, and anything that
+            // changes the to-dos sets the alarms again anyway.
             val at = if (due > now) due else nextMorning(today)
-            if (at - now > HORIZON_MS) continue
             set(alarm, at, memo.id, exact = status().exact)
         }
 
@@ -155,9 +156,6 @@ class MemoAlarms(private val context: Context) {
         /** When the daily reminder for unfinished to-dos goes out. */
         const val DAILY_HOUR = 9
         const val DAILY_MINUTE = 0
-
-        /** Alarms are set no further ahead than this; a to-do beyond it is planned for when it comes closer. */
-        private const val HORIZON_MS = 30L * 24 * 3_600_000
 
         /** The id of the daily alarm, distinct from any to-do's number. */
         const val OVERDUE_ID = -9
