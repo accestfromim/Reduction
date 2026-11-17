@@ -32,6 +32,6 @@ class WebSearchTool(
                 appendLine(item.summary)
                 appendLine()
             }
-        }.take(8_000)
+        }.trimEnd()
     }
 }

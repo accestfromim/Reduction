@@ -197,10 +197,10 @@ class RunAgentTool(
             AgentHarness.State.RUNNING -> {
                 appendLine("【进行中】$name：${run.title}")
                 appendLine("已执行 ${progress.steps.size} 步：")
-                progress.steps.takeLast(8).forEach { appendLine("- $it") }
+                progress.steps.forEach { appendLine("- $it") }
                 if (progress.said.isNotBlank()) {
                     appendLine("目前说到：")
-                    appendLine(progress.said.takeLast(1_500))
+                    appendLine(progress.said)
                 }
             }
             AgentHarness.State.DONE -> {
@@ -211,12 +211,12 @@ class RunAgentTool(
                 runs.end(run, if (progress.succeeded) AgentRuns.DONE else AgentRuns.FAILED, said, diff)
                 appendLine(if (progress.succeeded) "【完成】$name" else "【失败】$name，退出码 ${progress.exitCode}")
                 progress.errors.forEach { appendLine("错误：$it") }
-                if (progress.said.isNotBlank()) appendLine(progress.said.take(12_000))
+                if (progress.said.isNotBlank()) appendLine(progress.said)
                 if (progress.said.isBlank() && progress.errors.isEmpty()) appendLine("sub agent 没有留下任何输出。")
                 if (diff.isNotBlank()) {
                     appendLine()
                     appendLine("git diff --stat:")
-                    appendLine(diff.take(4_000))
+                    appendLine(diff)
                 }
                 if (progress.images.isNotEmpty()) {
                     appendLine()

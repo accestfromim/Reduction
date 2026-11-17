@@ -97,7 +97,7 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
         changesProject: Boolean = false, engine: String = "opencode", card: String = "", fingerprint: String = ""
     ): Run {
         val run = Run(
-            ++lastNumber, launcherId, folderName, folder, task.trim().take(TASK_CHARS), write, changesProject, now(),
+            ++lastNumber, launcherId, folderName, folder, task.trim(), write, changesProject, now(),
             engine, card, fingerprint
         )
         runs += run
@@ -129,8 +129,8 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
     fun end(run: Run, outcome: String, result: String = "", diff: String = "") {
         if (run.finished) return
         run.outcome = outcome
-        run.result = result.trim().take(RESULT_CHARS)
-        run.diff = diff.trim().take(DIFF_CHARS)
+        run.result = result.trim()
+        run.diff = diff.trim()
         run.endedAt = now()
         save()
     }
@@ -166,8 +166,5 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
 
         private const val KEPT = 30
         private const val TITLE_CHARS = 40
-        private const val TASK_CHARS = 6_000
-        private const val RESULT_CHARS = 12_000
-        private const val DIFF_CHARS = 4_000
     }
 }

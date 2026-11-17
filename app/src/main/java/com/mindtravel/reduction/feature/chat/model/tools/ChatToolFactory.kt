@@ -30,6 +30,9 @@ class ChatToolFactory(
     private val articles: ArticleBuilder? = null,
     private val renderArticleScript: () -> String = { "" }
 ) {
+    /** Answers too long for one go, kept whole across the replies of a conversation. */
+    private val longResults = LongResults()
+
     fun create(settings: AppSettings): ToolRegistry {
         val harness = harness(settings)
         val tools = buildList {
@@ -55,7 +58,7 @@ class ChatToolFactory(
                 )
             }
         }
-        return ToolRegistry(tools)
+        return ToolRegistry(tools, longResults)
     }
 
     /** True while some run has not been seen to end: there is something to watch. */

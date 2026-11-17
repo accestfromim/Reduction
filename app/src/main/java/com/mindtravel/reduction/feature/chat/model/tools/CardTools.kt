@@ -95,8 +95,8 @@ class ReadCardTool(private val cards: CardRepository) : ChatTool {
             when {
                 kind == "svg" -> {
                     // A drawing is text: what it draws can be read from it, and a model is not handed it as a picture.
-                    val drawn = cards.mediaFile(id)?.takeIf { it.length() <= MAX_DRAWING_CHARS }?.readText()
-                    notes += if (drawn == null) "- 矢量图「$label」：太大或不在这台设备上，这里看不到；要看它画出来的样子，用 render_article 出图"
+                    val drawn = cards.mediaFile(id)?.readText()
+                    notes += if (drawn == null) "- 矢量图「$label」：文件不在这台设备上，这里看不到"
                     else "- 矢量图「$label」（SVG 源码如下；要看它画出来的样子，用 render_article 出图）：\n```svg\n${drawn.trim()}\n```"
                 }
                 kind in CardRepository.RASTER_KINDS -> {
@@ -136,7 +136,6 @@ class ReadCardTool(private val cards: CardRepository) : ChatTool {
         const val PAGES_AT_ONCE = 4
         const val ROOM = 6
         const val MAX_PICTURE_BYTES = 4L * 1024 * 1024
-        const val MAX_DRAWING_CHARS = 12_000L
         val VIDEO = setOf("mp4", "mov")
         val PAGE_RANGE = Regex("(\\d{1,3})")
         val LABEL = Regex("\\[([^\\]]*)\\]$")
@@ -192,14 +191,13 @@ class SearchCardsTool(private val cards: CardRepository) : ChatTool {
             return "没有命中：${words.joinToString(" ")}（搜了 ${within.size} 张卡片" + (if (any) "" else "，要求一行里全都出现；可以改用 match=any") + "）"
         }
         return buildString {
-            val shown = hits.take(MAX_HITS)
-            appendLine("命中 ${hits.size} 行，在 ${hits.map { it.card }.distinct().size} 张卡片里（搜了 ${within.size} 张）" + if (hits.size > shown.size) "，下面是前 ${shown.size} 行" else "")
-            for ((card, lines) in shown.groupBy { it.card }) {
+            appendLine("命中 ${hits.size} 行，在 ${hits.map { it.card }.distinct().size} 张卡片里（搜了 ${within.size} 张）")
+            for ((card, lines) in hits.groupBy { it.card }) {
                 appendLine()
                 appendLine("## $card")
                 for (hit in lines) {
                     val where = if (hit.section.isEmpty()) "" else "〔${hit.section}〕"
-                    appendLine("- 第 ${hit.line} 行$where：${hit.text.take(LINE_CHARS)}" + if (hit.text.length > LINE_CHARS) "…" else "")
+                    appendLine("- 第 ${hit.line} 行$where：${hit.text}")
                 }
             }
             if (named.isNotEmpty()) {
@@ -211,7 +209,5 @@ class SearchCardsTool(private val cards: CardRepository) : ChatTool {
 
     private companion object {
         val HEADING = Regex("^#{1,6}\\s+(.+)$")
-        const val MAX_HITS = 60
-        const val LINE_CHARS = 300
     }
 }

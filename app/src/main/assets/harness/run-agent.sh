@@ -162,10 +162,10 @@ status)
   else
     printf 'STATE lost\n'
   fi
-  [ -f "$run/events.jsonl" ] && tail -c 400000 "$run/events.jsonl"
+  [ -f "$run/events.jsonl" ] && cat "$run/events.jsonl"
   if [ -s "$run/result/result.md" ]; then
     printf '\n=====RESULT FILE=====\n'
-    head -c 60000 "$run/result/result.md"
+    cat "$run/result/result.md"
   fi
   # Pictures are handed over once the run is over, not while it may still be drawing them.
   if [ -f "$run/exit" ]; then

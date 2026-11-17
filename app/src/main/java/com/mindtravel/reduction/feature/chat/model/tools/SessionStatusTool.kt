@@ -31,12 +31,11 @@ class SessionStatusTool(
         val hours = JSONObject(argumentsJson).stringOrNull("hours")?.trim()?.toDoubleOrNull()
             ?.coerceIn(0.5, 720.0) ?: DEFAULT_HOURS
         val output = harness.runScript("python3 -", script(), "--hours", hours.toString(), "--limit", LIMIT.toString())
-        return output.trim().ifBlank { "脚本没有输出。电脑上需要有 python3。" }.take(MAX_CHARS)
+        return output.trim().ifBlank { "脚本没有输出。电脑上需要有 python3。" }
     }
 
     private companion object {
         const val DEFAULT_HOURS = 24.0
         const val LIMIT = 8
-        const val MAX_CHARS = 6_000
     }
 }
