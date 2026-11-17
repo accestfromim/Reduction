@@ -1,0 +1,65 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; background: #000; }
+  #stage { position: relative; width: 1600px; height: 420px; overflow: hidden; }
+  #banner { display: block; width: 1600px; height: 420px; }
+  #mark { position: absolute; left: 800px; top: 210px; width: 236px; height: 195px; transform: translate(-50%, -50%); }
+</style>
+<div id="stage">
+  <canvas id="banner" width="1600" height="420"></canvas>
+  <!-- The opening animation's last frame: two circles, the ring around the middle one cut out, the middle one on top. -->
+  <svg id="mark" viewBox="60 106 392 212" aria-hidden="true">
+    <circle cx="197" cy="212" r="82" fill="#fff"></circle>
+    <circle cx="315" cy="212" r="82" fill="#fff"></circle>
+    <circle cx="256" cy="212" r="106" fill="#000"></circle>
+    <circle cx="256" cy="212" r="82" fill="#fff"></circle>
+  </svg>
+</div>
+<script>
+  // Drawn at the image's own size; the screenshot enlarges it.
+  const canvas = document.getElementById('banner');
+  const ctx = canvas.getContext('2d');
+  const W = canvas.width, H = canvas.height;
+  const cx = W / 2, cy = H / 2;
+  const hole = 100;          // nothing shows inside this radius
+  const STRENGTH = 135;      // how far the field is bent
+
+  // The background: black, with a glow near the horizon that fades to nothing well inside the
+  // frame. Computed per pixel with a little dither, because a gradient drawn in 8 bits bands.
+  const image = ctx.createImageData(W, H);
+  const glowAt = (r) => {
+    const t = Math.max(0, 1 - r / 300);
+    return 0.085 * t * t * t;                 // alpha of white over black
+  };
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const r = Math.hypot(x - cx, y - cy);
+      const level = glowAt(r) * 255 + (Math.random() - 0.5) * 1.6;
+      const i = (y * W + x) * 4;
+      image.data[i] = image.data[i + 1] = image.data[i + 2] = Math.max(0, level);
+      image.data[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+
+  // A regular field of dots, bent around the mark the way the pet bends the screen: pushed away
+  // from the centre, more strongly the closer they are.
+  for (let y = 8; y < H; y += 22) {
+    for (let x = 8; x < W; x += 22) {
+      const dx = x - cx, dy = y - cy;
+      const r = Math.hypot(dx, dy);
+      if (r < hole) continue;
+      const push = (STRENGTH * STRENGTH) / r;
+      const px = x + (dx / r) * push, py = y + (dy / r) * push;
+      // Brightest just past the horizon, thinning out into the dark.
+      const fade = Math.max(0, 1 - (r - hole) / 470);
+      if (fade <= 0.01) continue;
+      const wave = 0.6 + 0.4 * Math.sin(r / 26 + x / 70);
+      ctx.fillStyle = `rgba(255,255,255,${(0.26 * fade * fade * wave).toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(px, py, 1.25, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+</script>

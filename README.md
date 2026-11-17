@@ -1,4 +1,15 @@
-# Reduction：智能随身助手
+<p align="center">
+  <img src="docs/banner.png" alt="Reduction" width="100%" />
+</p>
+
+<h1 align="center">Reduction：智能随身助手</h1>
+
+<p align="center">
+  <img src="docs/badges/android.svg" alt="Android 8.0 及以上" />
+  <img src="docs/badges/arm64.svg" alt="arm64" />
+  <img src="docs/badges/windows.svg" alt="Windows + WSL" />
+  <img src="docs/badges/mit.svg" alt="MIT" />
+</p>
 
 Reduction回答一个问题：我们有可能在生活更轻松的同时、可靠地控制更多的智能吗？
 
@@ -6,57 +17,72 @@ Reduction回答一个问题：我们有可能在生活更轻松的同时、可�
 
 为此，Reduction提出了由随身设备、手机、电脑、云服务器协作完成的解决方案：
 
-- 耳机和麦克风：实时简短的聊天，纯语音控制
-- 手机：随身助手把事务归类、整理成卡片，平时可以不拿出手机，空闲时刻可以一次性审核
-- 电脑：运行涉及个人隐私的subagent，提供工具调用的接口
-- 云服务器：24h常驻，在手机和电脑间转发消息，运行不涉及个人隐私的subagent
+| | |
+| :-- | :-- |
+| **耳机和麦克风** | 实时简短的聊天，纯语音控制 |
+| **手机** | 随身助手把事务归类、整理成卡片，平时可以不拿出手机，空闲时刻可以一次性审核 |
+| **电脑** | 运行涉及个人隐私的subagent，提供工具调用的接口 |
+| **云服务器** | 24h常驻，在手机和电脑间转发消息，运行不涉及个人隐私的subagent |
 
-<p>
-  <img src="docs/opening-animation.gif" width="200" alt="启动动画" />
-  <img src="tools/ui-preview/screenshots/08-tool-trace.png" width="200" alt="对话" />
-  <img src="tools/ui-preview/screenshots/13-card-list.png" width="200" alt="卡片" />
-  <img src="docs/pet.png" width="200" alt="电脑上的桌宠" />
-</p>
+<table>
+  <tr>
+    <td align="center" valign="bottom"><img src="docs/opening-animation.gif" width="130" alt="启动动画" /></td>
+    <td align="center" valign="bottom"><img src="tools/ui-preview/screenshots/08-tool-trace.png" width="130" alt="对话" /></td>
+    <td align="center" valign="bottom"><img src="tools/ui-preview/screenshots/13-card-list.png" width="130" alt="卡片" /></td>
+    <td align="center" valign="bottom"><img src="docs/pet.png" width="130" alt="电脑上的桌宠" /></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>启动动画</sub></td>
+    <td align="center"><sub>对话</sub></td>
+    <td align="center"><sub>卡片</sub></td>
+    <td align="center"><sub>电脑上的桌宠</sub></td>
+  </tr>
+</table>
 
 ## 能做什么
 
-- **熄屏语音交互**：说 “Hi Reduction” 唤醒助手，说“完毕”结束录音
-- **卡片式记忆**：一张卡片是一份完整的文档，归纳整理想法、待办和任务等
-- **多 agent 调度**：Reduction是可以控制一群AI，采用super agent-sub agent架构：super agent分发任务、理解意图；sub agent具体执行、反馈结果
-- **工具使用**：正在不断支持你能想到的一切：联网搜索、计算器、查看电脑上其它编程 agent 会话的状态、手机和耳机电量提醒。
+| | |
+| :-- | :-- |
+| **熄屏语音交互** | 说 “Hi Reduction” 唤醒助手，说“完毕”结束录音 |
+| **卡片式记忆** | 一张卡片是一份完整的文档，归纳整理想法、待办和任务等 |
+| **多 agent 调度** | Reduction是可以控制一群AI，采用super agent-sub agent架构：super agent分发任务、理解意图；sub agent具体执行、反馈结果 |
+| **工具使用** | 正在不断支持你能想到的一切：联网搜索、计算器、查看电脑上其它编程 agent 会话的状态、手机和耳机电量提醒。 |
 
 ## 全站方案
 
 [DeepSeek](https://platform.deepseek.com/) API Key：提供大模型、语音文字互转、网络搜索服务
 
-**手机（Android 8.0 及以上，arm64）**
+### 手机（Android 8.0 及以上，arm64）
 
 ```bash
 cp local.env.example local.env     # 填 JDK 17 和 Android SDK 的位置
 tools/models/fetch-models.sh       # 取语音运行库和唤醒词模型（有几十 MB，不入库）
 ./build.sh                         # 得到 dist/Reduction-v<版本>.apk
 ```
+
 需要授予录音机常驻、悬浮窗等较高权限
 
-**电脑（Windows + WSL，或任何能跑 JVM 的 Linux）**
+### 电脑（Windows + WSL，或任何能跑 JVM 的 Linux）
 
 ```bash
 desktop/install.sh     # 装成应用：桌宠、开机自启、桌面图标
 ./desktop.sh           # 或者只在终端里启动，浏览器打开它给出的地址
 ```
 
-**云服务器**
+### 云服务器
 
-**让手机调度电脑上的 agent**
+### 让手机调度电脑上的 agent
 
 电脑上要有 SSH 服务、`bwrap` 和 [opencode](https://opencode.ai/)。在 App 里点电脑图标，复制公钥加到电脑的 `~/.ssh/authorized_keys`，填上地址即可。sub agent 用的是你手机里那个 DeepSeek Key。
 
 ## 你的数据在哪
 
-- **API Key** 只存在你的设备上（手机上加密保存，电脑上是只有本人可读的文件），只发给 DeepSeek。
-- **对话、卡片、图片和录音** 存在本机。手机和电脑各存各的，不同步，也没有任何云端。
-- **发给 DeepSeek 的**：你说的话（录音用于识别）、对话内容、要朗读的文字。
-- **发给你自己电脑的**（仅在你配置了电脑连接之后）：运行日志和你每一轮说话的录音，用于排查问题和改进唤醒。不想留就不要配置电脑连接。
+| | |
+| :-- | :-- |
+| **API Key** | 只存在你的设备上（手机上加密保存，电脑上是只有本人可读的文件），只发给 DeepSeek。 |
+| **对话、卡片、图片和录音** | 存在本机。手机和电脑各存各的，不同步，也没有任何云端。 |
+| **发给 DeepSeek 的** | 你说的话（录音用于识别）、对话内容、要朗读的文字。 |
+| **发给你自己电脑的** | 仅在你配置了电脑连接之后：运行日志和你每一轮说话的录音，用于排查问题和改进唤醒。不想留就不要配置电脑连接。 |
 
 ## 更多
 
