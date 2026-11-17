@@ -7,6 +7,8 @@ import com.mindtravel.reduction.R
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.feature.chat.data.CardRepository
 import com.mindtravel.reduction.feature.chat.data.HistoryRepository
+import com.mindtravel.reduction.feature.sync.DataSync
+import com.mindtravel.reduction.feature.sync.PhoneSync
 import com.mindtravel.reduction.feature.chat.model.BatteryWatch
 import com.mindtravel.reduction.feature.chat.model.ChatEngine
 import com.mindtravel.reduction.feature.chat.model.ChatSession
@@ -237,6 +239,11 @@ class AppCore private constructor(context: Context) {
         updateManifestUrl = UpdateController.MANIFEST_URL
     )
 
+    /** The conversation, cards and to-dos, shared with the computer whenever the phone is connected to it. */
+    private val phoneSync = PhoneSync(
+        DataSync(cardRepository, memoStore, conversation, hub = false), pcGateway, settingsRepository, scope
+    )
+
     init {
         // The wake word reaches the conversation directly: no screen is involved.
         WakeWordBus.listener = {
@@ -253,15 +260,22 @@ class AppCore private constructor(context: Context) {
             cardRepository.writeProgramCard(MemoCard.CARD, MemoCard.render(memoStore), MemoCard.PURPOSE)
             mainHandler.post { runCatching { alarms.reschedule(memoStore) } }
         }
-        memoStore.onChange = { writeMemos() }
+        memoStore.onChange = {
+            writeMemos()
+            ui.emit("onMemosChanged", "")
+            phoneSync.changed()
+        }
         writeMemos()
+        conversation.onChange = { phoneSync.changed() }
         // A change made on the card is the user's own: the to-dos are read again afterwards.
         cardRepository.onChange = { name ->
             cardOverlay.onCardChanged(name)
             ui.emit("onCardsChanged", "")
+            phoneSync.changed()
         }
         mediaButtons.start()
         agentWatch.start()
+        phoneSync.start()
         WakeWordBus.clipSink = { wav, keyword -> recordings.keep("wake", wav, keyword) }
         spokenCues.prepare()
         Logs.add("Core started")

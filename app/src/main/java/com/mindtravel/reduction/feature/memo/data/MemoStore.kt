@@ -29,7 +29,8 @@ class MemoStore(
     private val zone: ZoneId = ZoneId.systemDefault()
 ) {
     class Memo(
-        val id: Int,
+        /** The number it is called by. It may change once, when two devices gave out the same number. */
+        var id: Int,
         /** What to do, in the user's words. One line. */
         var text: String,
         /** The day it is due; null when the date is empty. */
@@ -38,8 +39,15 @@ class MemoStore(
         val createdAt: Long,
         var doneAt: Long = 0,
         /** The last day the morning reminder brought it up, as yyyy-MM-dd; "" when never. */
-        var remindedOn: String = ""
+        var remindedOn: String = "",
+        /** Its name across devices; the number is only what it is called by on the card. */
+        val uid: String = java.util.UUID.randomUUID().toString(),
+        /** When what it says, its day, or whether it is done last changed. */
+        var updatedAt: Long = createdAt
     )
+
+    /** The to-dos deleted here and when, by uid: so that another device deletes them too. */
+    private val deleted = HashMap<String, Long>()
 
     /** Told after every change, so that the card, the reminders and the page can follow. */
     @Volatile
@@ -57,20 +65,41 @@ class MemoStore(
             val saved = JSONObject(file.readText())
             nextId = saved.optInt("next", 1)
             askedOn = saved.optString("askedOn")
+            saved.optJSONObject("deleted")?.let { gone -> for (uid in gone.keys()) deleted[uid] = gone.getLong(uid) }
             val list = saved.optJSONArray("items") ?: JSONArray()
+            var unnamed = false
             for (i in 0 until list.length()) {
                 val item = list.getJSONObject(i)
-                items += Memo(
-                    id = item.getInt("id"),
-                    text = item.getString("text"),
-                    due = dayOf(item.opt("due")),
-                    done = item.optBoolean("done"),
-                    createdAt = item.optLong("createdAt"),
-                    doneAt = item.optLong("doneAt"),
-                    remindedOn = item.optString("remindedOn")
-                )
+                if (!item.has("uid")) unnamed = true
+                items += read(item)
             }
+            // To-dos written before they had names of their own are given them now, once.
+            if (unnamed) save()
         }
+    }
+
+    private fun read(item: JSONObject): Memo = Memo(
+        id = item.getInt("id"),
+        text = item.getString("text"),
+        due = dayOf(item.opt("due")),
+        done = item.optBoolean("done"),
+        createdAt = item.optLong("createdAt"),
+        doneAt = item.optLong("doneAt"),
+        remindedOn = item.optString("remindedOn"),
+        uid = item.optString("uid").ifEmpty { java.util.UUID.randomUUID().toString() },
+        updatedAt = item.optLong("updatedAt", item.optLong("createdAt"))
+    )
+
+    private fun write(memo: Memo): JSONObject = JSONObject().apply {
+        put("id", memo.id)
+        put("text", memo.text)
+        put("due", memo.due?.toString() ?: JSONObject.NULL)
+        put("done", memo.done)
+        put("createdAt", memo.createdAt)
+        put("doneAt", memo.doneAt)
+        put("remindedOn", memo.remindedOn)
+        put("uid", memo.uid)
+        put("updatedAt", memo.updatedAt)
     }
 
     /** A stored day: yyyy-MM-dd, or a moment from a file written when to-dos still had hours. */
@@ -104,6 +133,7 @@ class MemoStore(
     fun update(id: Int, text: String? = null, due: LocalDate? = null, changeDue: Boolean = false): Memo? {
         val memo = find(id) ?: return null
         if (text != null && text.isNotBlank()) memo.text = oneLine(text)
+        memo.updatedAt = now()
         if (changeDue && memo.due != due) {
             memo.due = due
             // A new day is a new promise: what was reminded of the old one no longer counts.
@@ -120,6 +150,7 @@ class MemoStore(
         if (memo.done == done) return memo
         memo.done = done
         memo.doneAt = if (done) now() else 0
+        memo.updatedAt = now()
         if (!done) memo.remindedOn = ""
         save()
         return memo
@@ -129,6 +160,7 @@ class MemoStore(
     fun delete(id: Int): Boolean {
         val memo = find(id) ?: return false
         items -= memo
+        deleted[memo.uid] = now()
         save()
         return true
     }
@@ -186,6 +218,84 @@ class MemoStore(
         return plan().all.filter { it.remindedOn != day }
     }
 
+    // ── sharing the to-dos with another device ──────────────────────────────
+
+    /** The to-dos as another device needs them to merge with its own. */
+    @Synchronized
+    fun export(): JSONObject = JSONObject().apply {
+        put("next", nextId)
+        put("items", JSONArray().apply { for (memo in items) put(write(memo)) })
+        put("deleted", JSONObject().apply { for ((uid, at) in deleted) put(uid, at) })
+    }
+
+    /**
+     * Takes in another device's to-dos. For each the later change stands; one deleted
+     * there after it last changed here is deleted here. What was reminded stays each
+     * device's own. Two to-dos may have been given the same number on the two devices:
+     * the numbers of the device that [numbers] are right. Returns whether anything changed.
+     */
+    @Synchronized
+    fun merge(remote: JSONObject, numbers: Numbers): Boolean {
+        var changed = false
+        nextId = maxOf(nextId, remote.optInt("next", 1))
+        val gone = remote.optJSONObject("deleted") ?: JSONObject()
+        for (uid in gone.keys()) {
+            val at = gone.optLong(uid)
+            val mine = items.firstOrNull { it.uid == uid }
+            if (mine != null && mine.updatedAt > at) continue
+            if (mine != null) { items -= mine; changed = true }
+            if ((deleted[uid] ?: 0L) < at) deleted[uid] = at
+        }
+        val theirs = remote.optJSONArray("items") ?: JSONArray()
+        if (numbers == Numbers.THEIRS) {
+            // Their numbers stand: the to-dos both devices know take theirs, and one known only here
+            // that holds a number of theirs takes a fresh one.
+            val numbered = HashMap<String, Int>()
+            for (i in 0 until theirs.length()) {
+                val item = theirs.optJSONObject(i) ?: continue
+                if (item.has("uid") && item.has("id")) numbered[item.getString("uid")] = item.getInt("id")
+            }
+            for (memo in items) {
+                val id = numbered[memo.uid]
+                if (id != null && memo.id != id) { memo.id = id; changed = true }
+            }
+            val taken = numbered.values.toHashSet()
+            for (memo in items) {
+                if (memo.uid !in numbered && memo.id in taken) { memo.id = nextId++; changed = true }
+            }
+        }
+        for (i in 0 until theirs.length()) {
+            val item = theirs.optJSONObject(i) ?: continue
+            val theirsNow = runCatching { read(item) }.getOrNull() ?: continue
+            if (!item.has("uid") || (deleted[theirsNow.uid] ?: 0L) >= theirsNow.updatedAt) continue
+            val mine = items.firstOrNull { it.uid == theirsNow.uid }
+            if (mine == null) {
+                theirsNow.remindedOn = ""
+                // Where this device's numbers stand, an arriving to-do whose number is taken gets a fresh one.
+                if (items.any { it.id == theirsNow.id }) theirsNow.id = nextId++
+                items += theirsNow
+                changed = true
+                continue
+            }
+            if (theirsNow.updatedAt > mine.updatedAt) {
+                if (mine.due != theirsNow.due) mine.remindedOn = ""
+                mine.text = theirsNow.text; mine.due = theirsNow.due; mine.done = theirsNow.done
+                mine.doneAt = theirsNow.doneAt; mine.updatedAt = theirsNow.updatedAt
+                changed = true
+            }
+        }
+        nextId = maxOf(nextId, (items.maxOfOrNull { it.id } ?: 0) + 1)
+        if (changed) {
+            val cutoff = now() - DELETED_KEPT_MS
+            deleted.values.removeAll { it < cutoff }
+            save()
+        }
+        return changed
+    }
+
+    /** Whose numbers stand when the two devices gave the same number to different to-dos. */
+    enum class Numbers { MINE, THEIRS }
+
     // ── the three blocks of the review card ─────────────────────────────────
 
     class View(
@@ -226,17 +336,8 @@ class MemoStore(
             val json = JSONObject().apply {
                 put("next", nextId)
                 put("askedOn", askedOn)
-                put("items", JSONArray().apply {
-                    for (memo in items) put(JSONObject().apply {
-                        put("id", memo.id)
-                        put("text", memo.text)
-                        put("due", memo.due?.toString() ?: JSONObject.NULL)
-                        put("done", memo.done)
-                        put("createdAt", memo.createdAt)
-                        put("doneAt", memo.doneAt)
-                        put("remindedOn", memo.remindedOn)
-                    })
-                })
+                put("items", JSONArray().apply { for (memo in items) put(write(memo)) })
+                put("deleted", JSONObject().apply { for ((uid, at) in deleted) put(uid, at) })
             }
             file.parentFile?.mkdirs()
             val tmp = File(file.parentFile, "${file.name}.tmp")
@@ -249,5 +350,6 @@ class MemoStore(
 
     companion object {
         const val MAX_TEXT = 200
+        private const val DELETED_KEPT_MS = 90L * 24 * 3_600_000
     }
 }

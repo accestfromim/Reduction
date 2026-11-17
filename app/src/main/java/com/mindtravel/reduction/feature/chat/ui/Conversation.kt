@@ -33,13 +33,20 @@ class Conversation(
     /** Where the assistant is running, as it should describe itself. */
     private val place: String = "安卓手机"
 ) {
-    private class Line(val role: Role, val content: String)
+    /** A line carries a name of its own and the time it was said: that is what lets two devices share one conversation. */
+    private class Line(val id: String, val role: Role, val content: String, val at: Long)
 
     private val lines = ArrayList<Line>()
+
+    /** Told whenever something was said here, by the user or the assistant, or the conversation was cleared. */
+    @Volatile
+    var onChange: () -> Unit = {}
 
     init {
         runCatching {
             val saved = JSONArray(history.load())
+            var unnamed = false
+            val now = System.currentTimeMillis()
             for (i in 0 until saved.length()) {
                 val item = saved.optJSONObject(i) ?: continue
                 val role = when (item.optString("role")) {
@@ -48,8 +55,13 @@ class Conversation(
                     else -> continue
                 }
                 val content = if (role == Role.ASSISTANT) said(item.optString("content")) else item.optString("content")
-                if (content.isNotBlank()) lines += Line(role, content)
+                if (content.isBlank()) continue
+                val id = item.optString("id")
+                if (id.isEmpty() || !item.has("at")) unnamed = true
+                // A line written before lines had names: named now, and dated in the order it stands in.
+                lines += Line(id.ifEmpty { UUID.randomUUID().toString() }, role, content, item.optLong("at", now - (saved.length() - i) * 1000L))
             }
+            if (unnamed) history.save(historyJson())
         }.onFailure { Logs.add("History unreadable: ${it.message}") }
     }
 
@@ -74,7 +86,7 @@ class Conversation(
             return false
         }
 
-        lines += Line(Role.USER, text)
+        lines += Line(UUID.randomUUID().toString(), Role.USER, text, System.currentTimeMillis())
         save()
         val id = UUID.randomUUID().toString()
         emitter.emit("onReplyBegin", id, shown.trim().ifEmpty { text })
@@ -102,7 +114,10 @@ class Conversation(
     @Synchronized
     fun historyJson(): String = JSONArray().apply {
         for (line in lines) {
-            put(JSONObject().put("role", if (line.role == Role.USER) "user" else "assistant").put("content", line.content))
+            put(
+                JSONObject().put("role", if (line.role == Role.USER) "user" else "assistant").put("content", line.content)
+                    .put("id", line.id).put("at", line.at)
+            )
         }
     }.toString()
 
@@ -110,18 +125,61 @@ class Conversation(
     fun clear() {
         lines.clear()
         history.clear()
+        history.clearedAt = System.currentTimeMillis()
+        runCatching { onChange() }
+    }
+
+    // ── sharing the conversation with another device ────────────────────────
+
+    /** The conversation as another device needs it to merge with its own. */
+    @Synchronized
+    fun export(): JSONObject = JSONObject().put("clearedAt", history.clearedAt).put("lines", JSONArray(historyJson()))
+
+    /**
+     * Takes in another device's conversation: what was said there joins what was said
+     * here, in the order it was said, and what was cleared there is cleared here. Returns
+     * whether anything changed.
+     */
+    @Synchronized
+    fun merge(remote: JSONObject): Boolean {
+        val before = lines.map { it.id }
+        val cleared = maxOf(history.clearedAt, remote.optLong("clearedAt"))
+        if (cleared > history.clearedAt) history.clearedAt = cleared
+        lines.removeAll { it.at <= cleared }
+        val known = lines.mapTo(HashSet()) { it.id }
+        val theirs = remote.optJSONArray("lines") ?: JSONArray()
+        for (i in 0 until theirs.length()) {
+            val item = theirs.optJSONObject(i) ?: continue
+            val id = item.optString("id")
+            val at = item.optLong("at")
+            val role = when (item.optString("role")) {
+                "user" -> Role.USER
+                "assistant" -> Role.ASSISTANT
+                else -> continue
+            }
+            val content = item.optString("content")
+            if (id.isEmpty() || content.isBlank() || at <= cleared || !known.add(id)) continue
+            lines += Line(id, role, content, at)
+        }
+        lines.sortBy { it.at }
+        while (lines.size > KEPT_LINES) lines.removeAt(0)
+        if (lines.map { it.id } == before) return false
+        history.save(historyJson())
+        emitter.emit("onHistoryChanged", "")
+        return true
     }
 
     @Synchronized
     private fun remember(reply: String) {
         if (reply.isBlank()) return
-        lines += Line(Role.ASSISTANT, reply)
+        lines += Line(UUID.randomUUID().toString(), Role.ASSISTANT, reply, System.currentTimeMillis())
         save()
     }
 
     private fun save() {
         while (lines.size > KEPT_LINES) lines.removeAt(0)
         history.save(historyJson())
+        runCatching { onChange() }
     }
 
     private companion object {

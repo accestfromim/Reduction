@@ -53,6 +53,8 @@ class CardRepository(private val dir: File) {
         if (isProgramCard(clean) || read(clean) == null) return false
         val file = lockFile(clean) ?: return false
         val done = if (locked) runCatching { file.writeText(""); true }.getOrDefault(false) else (!file.exists() || file.delete())
+        // Locking is a change to the card: its date moves, so that another device takes it over.
+        if (done) textFile(clean)?.setLastModified(System.currentTimeMillis())
         if (done) runCatching { onChange(clean) }
         return done
     }
@@ -98,6 +100,7 @@ class CardRepository(private val dir: File) {
         if (purpose != null) writePurpose(name, purpose)
         return write(file, content.take(MAX_CHARS)).also {
             if (it) {
+                cleanName(name)?.let { clean -> if (deleted.remove(clean) != null) saveDeleted() }
                 runCatching { sweepMedia() }
                 runCatching { onChange(name.trim()) }
             }
@@ -215,10 +218,129 @@ class CardRepository(private val dir: File) {
         purposeFile(name)?.delete()
         return (textFile(name)?.takeIf { it.isFile }?.delete() ?: false).also {
             if (it) {
+                cleanName(name)?.let { clean -> deleted[clean] = System.currentTimeMillis() }
+                saveDeleted()
                 runCatching { sweepMedia() }
                 runCatching { onChange(name.trim()) }
             }
         }
+    }
+
+    // ── sharing the cards with another device ───────────────────────────────
+
+    /** The cards deleted here and when, so that another device deletes them too rather than bringing them back. */
+    private val deleted: HashMap<String, Long> by lazy {
+        HashMap<String, Long>().also { map ->
+            runCatching {
+                val saved = JSONObject(File(dir, DELETED).readText())
+                for (name in saved.keys()) map[name] = saved.getLong(name)
+            }
+        }
+    }
+
+    private fun saveDeleted() {
+        val cutoff = System.currentTimeMillis() - DELETED_KEPT_MS
+        deleted.values.removeAll { it < cutoff }
+        runCatching {
+            dir.mkdirs()
+            File(dir, DELETED).writeText(JSONObject().apply { for ((name, at) in deleted) put(name, at) }.toString())
+        }
+    }
+
+    /**
+     * The cards as another device needs them to merge with its own: each with its text,
+     * purpose, lock and the time it last changed, and the names deleted here. The cards the
+     * program writes are left out — each device writes its own.
+     */
+    @Synchronized
+    fun export(): JSONObject = JSONObject().apply {
+        put("cards", JSONArray().apply {
+            for (card in list()) {
+                if (isProgramCard(card.name)) continue
+                put(
+                    JSONObject().put("name", card.name).put("text", read(card.name).orEmpty())
+                        .put("purpose", card.purpose).put("prompt", isLocked(card.name)).put("at", card.updatedAt)
+                )
+            }
+        })
+        put("deleted", JSONObject().apply { for ((name, at) in deleted) put(name, at) })
+    }
+
+    /**
+     * Takes in another device's cards. For each card the later change stands, whichever
+     * device made it; a card deleted there after it last changed here is deleted here.
+     * This is the user's own cards arriving from the user's other device, so locks do not
+     * stand in the way: a lock travels with its card. Returns whether anything changed.
+     */
+    @Synchronized
+    fun merge(remote: JSONObject): Boolean {
+        var changed = false
+        val gone = remote.optJSONObject("deleted") ?: JSONObject()
+        for (raw in gone.keys()) {
+            val name = cleanName(raw) ?: continue
+            if (isProgramCard(name)) continue
+            val at = gone.optLong(raw)
+            val file = textFile(name) ?: continue
+            if (file.isFile && file.lastModified() >= at) continue
+            if (file.isFile) {
+                file.delete(); purposeFile(name)?.delete(); lockFile(name)?.delete()
+                changed = true
+            }
+            if ((deleted[name] ?: 0L) < at) deleted[name] = at
+        }
+        val theirs = remote.optJSONArray("cards") ?: JSONArray()
+        for (i in 0 until theirs.length()) {
+            val card = theirs.optJSONObject(i) ?: continue
+            val name = cleanName(card.optString("name")) ?: continue
+            if (isProgramCard(name)) continue
+            val at = card.optLong("at")
+            if ((deleted[name] ?: 0L) >= at) continue
+            val file = textFile(name) ?: continue
+            val text = card.optString("text").take(MAX_CHARS)
+            val purpose = card.optString("purpose")
+            val prompt = card.optBoolean("prompt")
+            val mine = if (file.isFile) runCatching { file.readText() }.getOrDefault("") else null
+            if (mine == text && purposeOf(name) == purpose && isLocked(name) == prompt) continue
+            val mineAt = if (mine != null) file.lastModified() else -1L
+            // Changed at the very same moment on both: one of the two has to stand, the same one on both devices.
+            if (at < mineAt || (at == mineAt && text <= mine.orEmpty())) continue
+            dir.mkdirs()
+            if (!write(file, text)) continue
+            writePurpose(name, purpose)
+            lockFile(name)?.let { lock -> if (prompt) runCatching { lock.writeText("") } else lock.delete() }
+            file.setLastModified(at)
+            deleted.remove(name)
+            changed = true
+        }
+        if (changed) {
+            saveDeleted()
+            runCatching { onChange("") }
+        }
+        return changed
+    }
+
+    /** The pictures and sound the cards refer to and this device holds. */
+    @Synchronized
+    fun heldMedia(): Set<String> {
+        val held = HashSet<String>()
+        for (file in dir.listFiles().orEmpty()) {
+            if (!file.isFile || !file.name.endsWith(TEXT)) continue
+            MEDIA_REF.findAll(runCatching { file.readText() }.getOrDefault("")).forEach { ref ->
+                if (mediaFile(ref.groupValues[1]) != null) held += ref.groupValues[1]
+            }
+        }
+        return held
+    }
+
+    /** Keeps a media file that came from another device under the id it has there. */
+    @Synchronized
+    fun putMedia(id: String, bytes: ByteArray): Boolean {
+        if (!MEDIA_ID.matches(id) || bytes.isEmpty() || bytes.size > MAX_MEDIA_BYTES) return false
+        if (id.substringAfterLast('.') !in MEDIA_KINDS) return false
+        val file = File(mediaDir, id)
+        if (file.isFile) return false
+        mediaDir.mkdirs()
+        return runCatching { file.writeBytes(bytes); true }.getOrDefault(false)
     }
 
     fun directoryJson(): String = JSONArray().apply {
@@ -269,6 +391,8 @@ class CardRepository(private val dir: File) {
         private const val TEXT = ".md"
         private const val PURPOSE = ".purpose"
         private const val LOCK = ".lock"
+        private const val DELETED = ".deleted.json"
+        private const val DELETED_KEPT_MS = 90L * 24 * 3_600_000
         const val MAX_CHARS = 60_000
         const val MAX_NAME = 60
         const val MAX_MEDIA_BYTES = 20 * 1024 * 1024

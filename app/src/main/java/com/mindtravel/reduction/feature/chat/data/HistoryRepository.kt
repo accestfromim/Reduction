@@ -23,4 +23,16 @@ class HistoryRepository(private val file: File) {
     fun clear() {
         runCatching { file.delete() }
     }
+
+    private val clearedFile = File(file.parentFile, "${file.name}.cleared")
+
+    /**
+     * When the conversation was last cleared; 0 when it never was. Kept so that a device
+     * this one shares its conversation with drops what was cleared here too.
+     */
+    var clearedAt: Long
+        @Synchronized get() = runCatching { clearedFile.readText().trim().toLong() }.getOrDefault(0L)
+        @Synchronized set(value) {
+            runCatching { clearedFile.writeText(value.toString()) }
+        }
 }

@@ -97,6 +97,12 @@ window.Native = {
     cards.onChanged(name);
   },
 
+  // The conversation took in lines from the user's other device: drawn again, unless a reply is being written.
+  onHistoryChanged() {
+    if (state.busy) return;
+    state.messages = loadHistory();
+    ui.renderAll();
+  },
   onMemosChanged() {
     cards.onMemosChanged();
   },

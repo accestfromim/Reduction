@@ -10,6 +10,7 @@ import com.mindtravel.reduction.feature.chat.data.HistoryRepository
 import com.mindtravel.reduction.feature.memo.MemoCard
 import com.mindtravel.reduction.feature.memo.MemoView
 import com.mindtravel.reduction.feature.memo.data.MemoStore
+import com.mindtravel.reduction.feature.sync.DataSync
 import com.mindtravel.reduction.feature.chat.model.ChatSession
 import com.mindtravel.reduction.feature.chat.model.tools.AgentLedger
 import com.mindtravel.reduction.feature.chat.model.tools.AgentRuns
@@ -308,6 +309,9 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         place = "电脑"
     )
 
+    /** What this computer shares with the user's phone; the phone comes to it. */
+    private val sync = DataSync(cards, memos, conversation, hub = true)
+
     // ── the pet: the small figure on the desktop that stands for all this ────
     @Volatile private var petSpeaking = false
     @Volatile private var petListening = false
@@ -410,7 +414,10 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         writeLedger()
         // The review card for to-dos, written from the store as the phone writes it.
         val writeMemos = { cards.writeProgramCard(MemoCard.CARD, MemoCard.render(memos), MemoCard.PURPOSE) }
-        memos.onChange = { writeMemos() }
+        memos.onChange = {
+            writeMemos()
+            page.emit("onMemosChanged", "")
+        }
         writeMemos()
         cards.onChange = { page.emit("onCardsChanged", "") }
         page.onEvent = { function, args ->
@@ -466,6 +473,14 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
                 val asked = query.split('&').associate { it.substringBefore('=') to it.substringAfter('=', "") }
                 petTalk(asked["action"].orEmpty(), dictate = asked["mode"] == "dictate")
                 reply(exchange, 200, petState())
+            }
+            path == "/sync" -> {
+                // The phone's half of an exchange: its state is merged into this computer's, and the answer
+                // is what this computer holds afterwards, with the pictures and sound the phone lacks.
+                val theirs = JSONObject(String(body, Charsets.UTF_8))
+                val changed = sync.merge(theirs)
+                if (changed) System.err.println("Sync: took in changes from the phone")
+                reply(exchange, 200, sync.export().put("files", sync.filesFor(theirs)).toString())
             }
             path == "/audio-done" -> {
                 pageSpeech.played(query.removePrefix("session=").toLongOrNull() ?: 0)
