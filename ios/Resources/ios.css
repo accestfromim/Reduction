@@ -1,0 +1,10 @@
+/* iOS 使用系统音频路由和应用版本更新入口。 */
+#cardFloat,
+#updatePill,
+#shareDiagnostics,
+label:has(#wakeWordInput),
+label:has(#bargeInInput),
+label:has(#headsetMicInput),
+label:has(#opencodeSessionInput) { display: none !important; }
+
+input, textarea, select { font-size: max(16px, 1em); }

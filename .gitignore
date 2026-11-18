@@ -4,6 +4,8 @@ app/build/
 dist/
 backup/
 .kotlin/
+xcuserdata/
+*.xcuserstate
 local.properties
 keystore.properties
 keystore/

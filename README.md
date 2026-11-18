@@ -66,6 +66,10 @@ tools/models/fetch-models.sh       # 取语音运行库和唤醒词模型（有�
 
 需要授予录音机常驻、悬浮窗等较高权限
 
+### 手机（iPhone 和 iPad，iOS 17.4 及以上）
+
+用 Xcode 打开 `ios/Reduction.xcodeproj`，选择 `Reduction` 方案后运行。iOS 版支持 DeepSeek 对话和发图、按住录音松开识别、流式朗读、卡片和附件、待办提醒。填入电脑的 SSH 信息后可以同步数据和查询电脑任务。 [iOS 使用说明](ios/README.md) · [iOS TODO](ios/TODO.md)
+
 ### 电脑（macOS、Windows + WSL、Linux）
 
 macOS 14.4 及以上可以直接运行 `dist/Reduction.app`。从源码构建需要 Xcode 和 JDK 17，应用包内含运行时。
