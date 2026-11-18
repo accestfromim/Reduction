@@ -6,6 +6,10 @@
 # Run again after updating the code. `install.sh --remove` takes the icon and the login start away.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
+if [ "$(uname -s)" = Darwin ]; then
+  [ "$#" -eq 0 ] || { echo "macOS 构建命令为 ./desktop/install.sh，无需参数。" >&2; exit 1; }
+  exec bash "$HERE/macos/build.sh"
+fi
 DATA="$HOME/.local/share/reduction"
 PS=/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe
 # The library the pet draws its panel with: Microsoft's WebView2 SDK, from NuGet. Its three files go beside

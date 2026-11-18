@@ -50,7 +50,7 @@
   - **模板**：自带的是 `article/template.html` 和 `article.css`，版心 540 像素宽，按两倍出图，长图宽 1080 像素；标题取正文第一个 `# ` 标题。有卡片「文章模板/template.html」「文章模板/article.css」时用卡片里的，删掉卡片就回到自带的。模板里 `{{style}}`、`{{body}}` 各一处，`{{title}}` 两处，不满足时退回自带模板并说明
   - **SVG**：正文里直接写的 `<svg>…</svg>`、标成 svg 的代码块、挂进卡片的 .svg 文件，都画成图。图里的脚本和事件属性在渲染前清掉，`foreignObject` 不收。别的语言的代码块里出现的 `<svg>` 照旧是代码。卡片的原文视图和助手回复里同样如此
   - **预览**：卡片阅读时的“预览”按钮；再点“原文”回到正文。打开卡片时总是原文；卡片被改动时预览跟着重排
-  - **出图**：`ArticleBuilder` 把库、排版脚本、模板、样式（公式字体内嵌）和稿子连同图片装进一个自足的页面（`article/builder.html`），交给电脑上的 `harness/render-article.sh`，由它用 Chrome 的命令行无头模式画出来。电脑上只需要 Chrome 或 Chromium。图存在 `~/reduction-agents/articles/<卡片名>.png`，旁边是画它用的页面
+  - **出图**：`ArticleBuilder` 把库、排版脚本、模板、样式（公式字体内嵌）和稿子连同图片装进一个自足的页面（`article/builder.html`），交给电脑上的 `harness/render-article.sh`。macOS 由应用内的 WebKit 渲染，Linux 和 WSL 使用 Chrome 或 Chromium。图存在 `~/reduction-agents/articles/<卡片名>.png`，旁边是画它用的页面
   - **助手的工具 `render_article`**：`card` 指定卡片，几秒出图，画面随工具结果给助手看（长图给开头一段）；`action=template` 把自带模板写成那两张卡片，已有的不覆盖。助手改版式就是用 `patch_cards` 改这两张卡片再出图。连着电脑时才有这个工具
   - **命令行**：`node tools/article/render.mjs 稿子.md -o 长图.png [--media 附件目录] [--html 页面.html] [--template 模板 --style 样式]`，走的是同一个页面和同一个脚本。同一份稿子两次出图逐字节相同
 - 工具结果不截断：任何工具的结果超过 6000 字时，程序把它按行切成片，整份存着，先给助手第一片，末尾注明“长结果 N、共多少字、分几片”。助手用 `read_more` 取其余的：`piece` 按片号（可以写 2-4），或 `find` 按关键词取出同时包含它们的片；一次最多给两片的量，没给完的片会点名。存最近 12 个长结果，App 重启后清空
@@ -250,7 +250,7 @@ assets/js/ui/ui.js, markdown.js, splash.js（启动动画落进图标框）
 - 回复文本由 App 同时送给界面和朗读，JS 不参与朗读分句。
 - 回复只有一种：要念出来的话。App 把它整条朗读，界面原样显示；需要留下来看的证据由助手写进卡片。每个工具都多带一个 `summary` 参数，由助手填写，是界面上那一行摘要的来源。系统提示在 `feature/chat/model/SystemPrompt.kt`，改动后用 `REDUCTION_APPROVE_PROMPTS=app/src/test/resources` 跑 `SystemPromptTest` 更新参考文本，diff 即审阅对象。
 - 下层不 import 上层：`hardware/` 与 `model/` 不依赖 `feature/`、`ui/`。
-- sub agent 一律经 `assets/harness/run-agent.sh` 在电脑上的 `bwrap` 沙箱里运行，只能写自己的文件夹；电脑需装有 `bwrap`。
+- 子代理经 `assets/harness/run-agent.sh` 在电脑上的沙箱里运行。Linux 和 WSL 使用 `bwrap`，macOS 使用 Anthropic Sandbox Runtime。
 - 会话状态由 `assets/harness/session-status.py` 在沙箱之外提取，只读脚本开头 `SOURCES` 列出的三处会话记录；电脑需装有 `python3`。
 - SSE 中 `content: null` 不会变成字符串 `"null"`。
 - 工具参数只接受字符串片段，缺 id/name 会直接失败。
@@ -281,6 +281,23 @@ tools/release/publish.sh 1.4.0    # 指定版本号
 ## 电脑端
 
 电脑上的 Reduction 是同一个对话核心：对话、提示词、工具、卡片、sub agent、朗读，编译的就是手机端那份代码（`desktop/build.gradle.kts` 直接引用 `app` 里不依赖安卓的源文件）。它在本机起一个只听 `127.0.0.1` 的小服务，界面是手机端那套网页，由桌宠的面板来画；在任意浏览器里打开 `http://localhost:8780` 也是同一个界面。
+
+### macOS
+
+在 macOS 14.4 及以上，使用 Xcode 和 JDK 17 构建。`local.env` 中的 `JAVA_HOME` 可指定 JDK 的 `Contents/Home`。应用包使用当前 Mac 的处理器架构，包含 Java 运行时和桌面服务。日常打开应用包时可以直接使用。
+
+```bash
+./desktop/install.sh
+open dist/Reduction.app
+```
+
+- 在菜单栏打开对话与卡片、显示或隐藏桌宠、设置登录时打开。桌宠可拖动，点击可打开面板。退出应用时本地服务一并退出。
+- `Control + Shift + 空格` 按住说话，`Control + Option + Shift + 空格` 按住听写，`Control + Shift + R` 打开或收起面板。听写结果可在回复窗口编辑、复制。第一次录音时由系统请求麦克风权限。
+- 对话、卡片、待办和任务记录沿用 `~/.local/share/reduction/`，设置在 `~/.config/reduction/settings.json`。运行日志可从菜单栏打开，路径为 `~/.local/share/reduction/macos.log`。若要和 Android 同步，在 Mac 打开「系统设置 → 通用 → 共享 → 远程登录」，再在手机配置这台电脑。
+- 文章预览和长图导出使用应用内的 WebKit。通过手机发起导出时，Mac 上打开过 `Reduction.app` 即可找到渲染程序。
+- 派发 OpenCode 任务需要安装 Python 3、OpenCode 和 Anthropic Sandbox Runtime。Node.js 22.12 或更新版本可用 `npm install -g @anthropic-ai/sandbox-runtime@0.0.83` 安装 `srt`。安装后确认 `opencode` 和 `srt` 位于 `/usr/local/bin`、`/opt/homebrew/bin` 或 `~/.local/bin` 等可执行路径。只读任务可以读取项目并写入自己的结果目录，写入项目需要使用现有的写入模式。默认网络访问限于模型和 OpenCode 服务。需要其他域名时，可在启动应用的环境中将 `REDUCTION_AGENT_ALLOWED_DOMAINS` 设为空格分隔的域名。
+
+### Windows + WSL 和 Linux
 
 ```bash
 desktop/install.sh           # 装成应用：构建、取音频工具、放桌面图标、设开机自启

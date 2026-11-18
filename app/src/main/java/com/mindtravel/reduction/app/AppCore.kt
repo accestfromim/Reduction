@@ -161,7 +161,8 @@ class AppCore private constructor(context: Context) {
             sessionStatusScript = { harnessScript(context, "session-status.py") },
             agentRuns = agentRuns,
             articles = articles,
-            renderArticleScript = { harnessScript(context, "render-article.sh") }
+            renderArticleScript = { harnessScript(context, "render-article.sh") },
+            macAgentLauncherScript = { harnessScript(context, "macos-agent.py") }
         )
     private val chatController = ChatController(
         settingsRepository = settingsRepository,

@@ -75,6 +75,13 @@ start)
   prompt=${3:?prompt}
   case "$agent" in build|plan) ;; *) say "harness：未知的 agent 类型 $agent" ;; esac
   case "$engine" in opencode|claude) ;; *) say "harness：未知的执行者 $engine" ;; esac
+  if [ "$(uname -s)" = Darwin ]; then
+    export PATH="$home/.local/bin:$home/.opencode/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+    command -v python3 >/dev/null 2>&1 || say "harness：macOS 需要 Python 3"
+    [ -n "${REDUCTION_MAC_AGENT_SCRIPT:-}" ] || say "harness：没有收到 macOS 沙箱启动程序，请更新发出任务的 Reduction"
+    printf '%s' "$REDUCTION_MAC_AGENT_SCRIPT" | base64 -d | python3 - "$state" "$dir" "$agent" "$prompt" "$engine" "$limit" "$model"
+    exit
+  fi
   command -v bwrap >/dev/null 2>&1 || say "harness：电脑上没有 bwrap，无法隔离运行"
   if [ "$engine" = claude ]; then
     claude=$(readlink -f "$(PATH="$home/.local/bin:$PATH" command -v claude 2>/dev/null || echo /nonexistent)")
@@ -157,18 +164,18 @@ status)
   run_dir "${2:?id}"
   if [ -f "$run/exit" ]; then
     printf 'STATE done %s\n' "$(cat "$run/exit")"
-  elif kill -0 "$(cat "$run/pid" 2>/dev/null || echo 0)" 2>/dev/null; then
+  elif [ -s "$run/pid" ] && kill -0 "$(cat "$run/pid")" 2>/dev/null; then
     printf 'STATE running\n'
   else
     printf 'STATE lost\n'
   fi
   [ -f "$run/events.jsonl" ] && cat "$run/events.jsonl"
-  if [ -s "$run/result/result.md" ]; then
+  if [ ! -L "$run/result" ] && [ -f "$run/result/result.md" ] && [ ! -L "$run/result/result.md" ]; then
     printf '\n=====RESULT FILE=====\n'
     cat "$run/result/result.md"
   fi
   # Pictures are handed over once the run is over, not while it may still be drawing them.
-  if [ -f "$run/exit" ]; then
+  if [ -f "$run/exit" ] && [ ! -L "$run/result" ]; then
     sent=0
     for picture in "$run/result"/*; do
       [ -f "$picture" ] && [ ! -L "$picture" ] || continue
@@ -187,7 +194,7 @@ status)
       fi
       sent=$((sent + 1))
       printf '\n=====IMAGE %s %s=====\n' "$name" "$kind"
-      base64 -w 0 "$picture"
+      base64 < "$picture" | tr -d '\r\n'
     done
   fi
   ;;
@@ -195,9 +202,11 @@ status)
 stop)
   locate "${1:?folder}"
   run_dir "${2:?id}"
-  pid=$(cat "$run/pid" 2>/dev/null || echo 0)
-  [ "$pid" -gt 1 ] 2>/dev/null && kill -TERM -- "-$pid" 2>/dev/null || true
-  [ -f "$run/exit" ] || echo 143 > "$run/exit"
+  if [ ! -f "$run/exit" ]; then
+    pid=$(cat "$run/pid" 2>/dev/null || echo 0)
+    [ "$pid" -gt 1 ] 2>/dev/null && kill -TERM -- "-$pid" 2>/dev/null || true
+    (set -C; echo 143 > "$run/exit") 2>/dev/null || true
+  fi
   printf 'STOPPED\n'
   ;;
 

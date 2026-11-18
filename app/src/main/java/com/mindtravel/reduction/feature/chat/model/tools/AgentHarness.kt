@@ -17,6 +17,7 @@ class AgentHarness(
     /** The model key and name the agents run on: the same ones the phone itself uses. */
     private val apiKey: String,
     private val model: String,
+    private val macLauncherScript: (() -> String)? = null,
     private val launcherScript: () -> String
 ) {
     enum class Agent(val wire: String) {
@@ -111,7 +112,13 @@ class AgentHarness(
         } else {
             ""
         }
-        return runScript("sh -s --", launcherScript(), *args, environment = environment)
+        val shell = launcherScript()
+        val mac = if (withModel) macLauncherScript?.invoke() else null
+        val script = if (mac.isNullOrEmpty()) shell else {
+            val encoded = Base64.getEncoder().encodeToString(mac.toByteArray(Charsets.UTF_8))
+            "REDUCTION_MAC_AGENT_SCRIPT=${quote(encoded)}\n$shell"
+        }
+        return runScript("sh -s --", script, *args, environment = environment)
     }
 
     companion object {

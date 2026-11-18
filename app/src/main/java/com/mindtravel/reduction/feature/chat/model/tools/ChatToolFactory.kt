@@ -28,7 +28,8 @@ class ChatToolFactory(
     private val agentRuns: AgentRuns,
     /** Sets a card as an article; with [renderArticleScript], draws it on the computer. Null: no such tool. */
     private val articles: ArticleBuilder? = null,
-    private val renderArticleScript: () -> String = { "" }
+    private val renderArticleScript: () -> String = { "" },
+    private val macAgentLauncherScript: (() -> String)? = null
 ) {
     /** Answers too long for one go, kept whole across the replies of a conversation. */
     private val longResults = LongResults()
@@ -76,7 +77,8 @@ class ChatToolFactory(
         profile = PcProfile(settings.pcHost, settings.pcPort, settings.pcUser),
         apiKey = settings.apiKey,
         model = settings.model,
-        launcherScript = agentLauncherScript
+        launcherScript = agentLauncherScript,
+        macLauncherScript = macAgentLauncherScript
     )
 
     private companion object {

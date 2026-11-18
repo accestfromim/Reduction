@@ -5,7 +5,7 @@
 //
 // It puts together the page that builds the article by itself — article/builder.html with the libraries,
 // the build script, the template, the stylesheets and the article inside — and has
-// harness/render-article.sh draw it with this computer's Chrome. That is the very page and the very
+// harness/render-article.sh draw it with the computer's article renderer. That is the very page and the very
 // script the assistant's render_article tool uses, and the build script is the one the app's preview
 // runs: one way of setting an article, whoever asks.
 //
@@ -58,7 +58,10 @@ for (const [place, value] of [
 if (htmlOut) fs.writeFileSync(htmlOut, page);
 
 const name = path.basename(target).replace(/\.png$/i, '');
-const made = spawnSync('sh', [path.join(assets, 'harness/render-article.sh'), name], { input: page, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 });
+const env = { ...process.env };
+const macApp = path.resolve(here, '../../dist/Reduction.app/Contents/MacOS/Reduction');
+if (process.platform === 'darwin' && !env.REDUCTION_MAC_ARTICLE && fs.existsSync(macApp)) env.REDUCTION_MAC_ARTICLE = macApp;
+const made = spawnSync('sh', [path.join(assets, 'harness/render-article.sh'), name], { input: page, env, encoding: 'utf-8', maxBuffer: 64 * 1024 * 1024 });
 const said = (made.stdout || '').split('\n=====IMAGE')[0];
 const kept = (said.match(/^PATH (.+)$/m) || [])[1];
 const size = said.match(/^SIZE (\d+) (\d+)$/m);

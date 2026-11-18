@@ -3,5 +3,5 @@
 set -euo pipefail
 . "$(dirname "$0")/tools/env.sh"
 cd "$ROOT"
-$GRADLE -q :desktop:installDist
+"$GRADLE" --configure-on-demand -q :desktop:installDist
 exec desktop/build/install/reduction/bin/reduction "$@"
