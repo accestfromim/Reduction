@@ -1,5 +1,4 @@
 import AppIntents
-import FlyingFox
 import FlyingSocks
 import OSLog
 import SwiftUI
@@ -53,12 +52,17 @@ struct PhonePage: UIViewControllerRepresentable {
 
 final class PhonePageController: UIViewController, WKNavigationDelegate, WKUIDelegate {
     private let web: WKWebView
+    private let errorLabel = UILabel()
     private let log = Logger(subsystem: "com.mindtravel.reduction.ios", category: "App")
     private var core: PhoneCore?
+    private var bridge: BridgeServer?
     private var serverTask: Task<Void, Never>?
-    private var localPort: Int?
+    private var pageURL: URL?
+    private var pageNavigation: WKNavigation?
+    private var needsPageLoad = true
+    private var isInBackground = false
+    private var bridgeReady = false
     private var exporting: Task<Void, Never>?
-    private var notifications: [NSObjectProtocol] = []
 
     init() {
         let config = WKWebViewConfiguration()
@@ -75,6 +79,7 @@ final class PhonePageController: UIViewController, WKNavigationDelegate, WKUIDel
         super.viewDidLoad()
         view.backgroundColor = .black
         web.isOpaque = false
+        web.isUserInteractionEnabled = false
         web.underPageBackgroundColor = .black
         web.scrollView.contentInsetAdjustmentBehavior = .never
         web.navigationDelegate = self
@@ -84,28 +89,34 @@ final class PhonePageController: UIViewController, WKNavigationDelegate, WKUIDel
         #endif
         web.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(web)
+
+        errorLabel.textColor = .white
+        errorLabel.textAlignment = .center
+        errorLabel.numberOfLines = 0
+        errorLabel.isHidden = true
+        errorLabel.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(errorLabel)
         NSLayoutConstraint.activate([
             web.leadingAnchor.constraint(equalTo: view.leadingAnchor), web.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            web.topAnchor.constraint(equalTo: view.topAnchor), web.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+            web.topAnchor.constraint(equalTo: view.topAnchor), web.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            errorLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
+            errorLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
+            errorLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor)
         ])
+
+        isInBackground = UIApplication.shared.applicationState == .background
         let center = NotificationCenter.default
-        notifications = [
-            center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.core?.foreground() }
-            },
-            center.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor in self?.core?.background() }
-            }
-        ]
-        Task { await loadPage() }
+        center.addObserver(self, selector: #selector(enterForeground), name: UIApplication.didBecomeActiveNotification, object: nil)
+        center.addObserver(self, selector: #selector(enterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        loadPage()
     }
 
     deinit {
         serverTask?.cancel()
-        notifications.forEach(NotificationCenter.default.removeObserver)
+        NotificationCenter.default.removeObserver(self)
     }
 
-    private func loadPage() async {
+    private func loadPage() {
         do {
             let fm = FileManager.default
             let data = try fm.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
@@ -116,20 +127,85 @@ final class PhonePageController: UIViewController, WKNavigationDelegate, WKUIDel
                                      confirm: { [weak self] title, content in await self?.confirm(title, content) ?? false },
                                      exportArticle: { [weak self] html, height, title in self?.exportArticle(html, height: height, title: title) })
             self.core = core
-            let handler = BridgeServer(root: root, core: core)
-            let address = try sockaddr_in.inet(ip4: "127.0.0.1", port: 0)
-            let server = HTTPServer(address: address, logger: .disabled, handler: handler)
-            serverTask = Task { [weak self] in
-                do { try await server.run() }
-                catch is CancellationError { return }
-                catch { self?.showError(error.localizedDescription) }
-            }
-            try await server.waitUntilListening()
-            guard case .ip4(_, let port)? = await server.listeningAddress else { throw ReductionError("iOS 界面无法监听本机地址") }
-            localPort = Int(port)
-            web.load(URLRequest(url: handler.url(port: port)))
-            log.notice("Reduction iOS 本机界面已启动 \(port, privacy: .public)")
+            bridge = BridgeServer(root: root, core: core)
+            startBridge()
         } catch { showError(error.localizedDescription) }
+    }
+
+    @objc func enterBackground() {
+        isInBackground = true
+        core?.background()
+        pausePage()
+        serverTask?.cancel()
+    }
+
+    @objc func enterForeground() {
+        isInBackground = false
+        if bridgeReady { resumePage() }
+        else { startBridge() }
+    }
+
+    private func startBridge(port: UInt16? = nil, retryDisconnect: Bool = true) {
+        guard !isInBackground, serverTask == nil, let bridge else { return }
+        let requestedPort = port ?? UInt16(pageURL?.port ?? 0)
+        serverTask = Task { [weak self] in
+            do {
+                try await bridge.run(port: requestedPort) { [weak self] url in
+                    guard !Task.isCancelled else { return }
+                    self?.bridgeStarted(url)
+                }
+            } catch {
+                self?.bridgeStopped(error, port: requestedPort, retryDisconnect: retryDisconnect, cancelled: Task.isCancelled)
+            }
+        }
+    }
+
+    private func bridgeStarted(_ url: URL) {
+        bridgeReady = true
+        if pageURL != url { needsPageLoad = true }
+        pageURL = url
+        resumePage()
+        log.notice("Reduction iOS 本机界面已启动 \(url.port ?? 0, privacy: .public)")
+    }
+
+    private func bridgeStopped(_ error: Error, port: UInt16, retryDisconnect: Bool, cancelled: Bool) {
+        serverTask = nil
+        pausePage()
+        guard !isInBackground else { return }
+        if cancelled {
+            startBridge()
+            return
+        }
+        switch error as? SocketError {
+        case .disconnected? where retryDisconnect:
+            startBridge(retryDisconnect: false)
+        case .failed(_, EADDRINUSE, _)? where port != 0:
+            startBridge(port: 0, retryDisconnect: retryDisconnect)
+        default:
+            showError(error.localizedDescription)
+        }
+    }
+
+    private func pausePage() {
+        bridgeReady = false
+        web.isUserInteractionEnabled = false
+        if pageNavigation != nil {
+            pageNavigation = nil
+            needsPageLoad = true
+            web.stopLoading()
+        }
+    }
+
+    private func resumePage() {
+        guard !isInBackground, bridgeReady, let pageURL else { return }
+        if needsPageLoad {
+            needsPageLoad = false
+            pageNavigation = web.load(URLRequest(url: pageURL))
+        } else if pageNavigation == nil {
+            errorLabel.isHidden = true
+            web.isUserInteractionEnabled = true
+            core?.foreground()
+        }
     }
 
     private func send(_ name: String, _ args: [JSON]) {
@@ -141,19 +217,11 @@ final class PhonePageController: UIViewController, WKNavigationDelegate, WKUIDel
 
     private func showError(_ message: String) {
         log.error("无法打开 iOS 界面 \(message, privacy: .public)")
-        let label = UILabel()
-        label.text = "无法打开 Reduction\n\n\(message)"
-        label.textColor = .white
-        label.textAlignment = .center
-        label.numberOfLines = 0
-        label.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(label)
-        NSLayoutConstraint.activate([label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-                                     label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
-                                     label.centerYAnchor.constraint(equalTo: view.centerYAnchor)])
+        errorLabel.text = "无法打开 Reduction\n\n\(message)"
+        errorLabel.isHidden = false
     }
 
-    private func local(_ url: URL) -> Bool { url.scheme == "http" && url.host == "127.0.0.1" && url.port == localPort }
+    private func local(_ url: URL) -> Bool { url.scheme == "http" && url.host == "127.0.0.1" && url.port == pageURL?.port }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigation: WKNavigationAction) async -> WKNavigationActionPolicy {
         guard let url = navigation.request.url else { return .cancel }
@@ -164,13 +232,35 @@ final class PhonePageController: UIViewController, WKNavigationDelegate, WKUIDel
         return .cancel
     }
 
-    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) { core?.foreground() }
-
-    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        showError(error.localizedDescription)
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard let pageNavigation, navigation === pageNavigation else { return }
+        self.pageNavigation = nil
+        resumePage()
     }
 
-    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { web.reload() }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        navigationFailed(navigation, error: error)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        navigationFailed(navigation, error: error)
+    }
+
+    private func navigationFailed(_ navigation: WKNavigation?, error: Error) {
+        guard let pageNavigation, navigation === pageNavigation else { return }
+        self.pageNavigation = nil
+        needsPageLoad = true
+        if !isInBackground, bridgeReady, (error as? URLError)?.code != .cancelled {
+            showError(error.localizedDescription)
+        }
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        pageNavigation = nil
+        needsPageLoad = true
+        web.isUserInteractionEnabled = false
+        resumePage()
+    }
 
     private func confirm(_ title: String, _ message: String) async -> Bool {
         guard view.window != nil, UIApplication.shared.applicationState == .active else { return false }
@@ -183,7 +273,7 @@ final class PhonePageController: UIViewController, WKNavigationDelegate, WKUIDel
     }
 
     private func exportArticle(_ html: String, height: Int, title: String) {
-        guard exporting == nil, let port = localPort, view.window != nil else { return }
+        guard exporting == nil, let port = pageURL?.port, view.window != nil else { return }
         let base = URL(string: "http://127.0.0.1:\(port)/")!
         let dataStore = web.configuration.websiteDataStore
         exporting = Task { [weak self] in

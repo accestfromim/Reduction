@@ -103,6 +103,50 @@ final class PhonePageTests: XCTestCase {
     }
 
     @MainActor
+    func testSharedPageReconnectsAfterBackground() async throws {
+        let controller = PhonePageController()
+        controller.loadViewIfNeeded()
+        let view = try XCTUnwrap(controller.view.subviews.compactMap { $0 as? WKWebView }.first)
+        try await ready(view)
+        let page = try XCTUnwrap(view.url)
+        let draft = "记录 Reduction 从后台返回时的连接恢复过程"
+        _ = try await view.callAsyncJavaScript("""
+            document.getElementById('tabCards').click();
+            document.getElementById('cardNew').click();
+            document.getElementById('cardText').value = draft;
+            """, arguments: ["draft": draft], in: nil, contentWorld: .page)
+
+        let request = URLRequest(url: page, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 2)
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let (_, response) = try await session.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+
+        controller.enterBackground()
+        XCTAssertFalse(view.isUserInteractionEnabled)
+        var disconnected = false
+        for _ in 0..<30 {
+            do { _ = try await session.data(for: request) }
+            catch let error as URLError where error.code == .cannotConnectToHost {
+                disconnected = true
+                break
+            }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertTrue(disconnected)
+
+        controller.enterForeground()
+        try await ready(view)
+        controller.enterBackground()
+        controller.enterForeground()
+        try await ready(view)
+        XCTAssertEqual(view.url, page)
+        let restored = try await view.evaluateJavaScript("document.getElementById('cardText').value")
+        XCTAssertEqual(restored as? String, draft)
+        XCTAssertTrue(controller.view.subviews.compactMap { $0 as? UILabel }.allSatisfy(\.isHidden))
+    }
+
+    @MainActor
     func testSharedArticleRendersLongPNG() async throws {
         let controller = PhonePageController()
         controller.loadViewIfNeeded()
@@ -130,7 +174,8 @@ final class PhonePageTests: XCTestCase {
     @MainActor
     private func ready(_ view: WKWebView) async throws {
         for _ in 0..<100 {
-            if let result = try? await view.evaluateJavaScript("Boolean(window.Native && window.Android && document.getElementById('tabCards') && typeof window.Android.loadSettings() === 'string')"),
+            if view.isUserInteractionEnabled,
+               let result = try? await view.evaluateJavaScript("Boolean(window.Native && window.Android && document.getElementById('tabCards') && typeof window.Android.loadSettings() === 'string')"),
                result as? Bool == true { return }
             try await Task.sleep(for: .milliseconds(100))
         }

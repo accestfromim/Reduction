@@ -10,6 +10,28 @@ struct BridgeServer: HTTPHandler {
     let core: PhoneCore
     let token = UUID().uuidString
 
+    func run(port: UInt16, didStart: @escaping @MainActor (URL) -> Void) async throws {
+        let address = try sockaddr_in.inet(ip4: "127.0.0.1", port: port)
+        let server = HTTPServer(address: address, logger: .disabled, handler: self)
+        try await withThrowingTaskGroup(of: UInt16.self) { group in
+            group.addTask {
+                try await server.run()
+                throw SocketError.disconnected
+            }
+            group.addTask {
+                try await server.waitUntilListening()
+                guard case .ip4(_, let boundPort)? = await server.listeningAddress else {
+                    throw SocketError.disconnected
+                }
+                return boundPort
+            }
+            guard let boundPort = try await group.next() else { throw SocketError.disconnected }
+            try Task.checkCancellation()
+            await didStart(url(port: boundPort))
+            _ = try await group.next()
+        }
+    }
+
     func handleRequest(_ request: HTTPRequest) async throws -> HTTPResponse {
         guard request.headers[.host]?.split(separator: ":").first == "127.0.0.1" else {
             return HTTPResponse(statusCode: .forbidden)
