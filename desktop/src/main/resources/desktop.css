@@ -16,8 +16,8 @@
 #pcBtn, #pcPill, #cardFloat { display: none !important; }
 label:has(#wakeWordInput), label:has(#bargeInInput), label:has(#headsetMicInput),
 label:has(#opencodeSessionInput), #shareDiagnostics { display: none; }
-/* The panel is a card beside the pet, short and bare: the page's own header gives its room to the conversation. */
-@media (max-height: 640px) {
+/* A short panel is a small card: the page's own header gives its room to the conversation. */
+@media (max-height: 600px) {
   .topbar { padding: 8px 14px 4px; }
   .logo { width: 28px; height: 28px; border-radius: 8px; }
   .logo .glyph { width: 19px; height: 12.9px; }
@@ -32,3 +32,17 @@ label:has(#opencodeSessionInput), #shareDiagnostics { display: none; }
 }
 /* On a card the scroll bars would be most of what there is to see: it scrolls without them. */
 ::-webkit-scrollbar { width: 0; height: 0; }
+
+/* The panel's own edges: pressed and dragged, they give the window another size. They lie over the page's
+   rim, thin enough not to be in the way of what is under them. */
+.window-grip { position: fixed; z-index: 2000; touch-action: none; }
+.grip-n, .grip-s { left: 14px; right: 14px; height: 5px; cursor: ns-resize; }
+.grip-e, .grip-w { top: 14px; bottom: 14px; width: 5px; cursor: ew-resize; }
+.grip-n { top: 0; } .grip-s { bottom: 0; } .grip-e { right: 0; } .grip-w { left: 0; }
+.grip-ne, .grip-nw, .grip-se, .grip-sw { width: 14px; height: 14px; }
+.grip-ne { top: 0; right: 0; cursor: nesw-resize; } .grip-sw { bottom: 0; left: 0; cursor: nesw-resize; }
+.grip-nw { top: 0; left: 0; cursor: nwse-resize; } .grip-se { bottom: 0; right: 0; cursor: nwse-resize; }
+/* With the whole screen there is no edge to drag. */
+.panel-full .window-grip { display: none; }
+/* In a window made wide, what is read keeps a line length that can be read. */
+.in-panel .card-read > *, .in-panel .card-plan > * { max-width: 760px; margin-left: auto; margin-right: auto; }

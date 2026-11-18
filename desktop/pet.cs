@@ -276,7 +276,7 @@ class Keys {
 
   /// The actions there are, and whether each is held rather than pressed.
   public static readonly Dictionary<string, bool> Actions = new Dictionary<string, bool> {
-    { "talk", true }, { "dictate", true }, { "panel", false }, { "close", false }, { "quiet", false }
+    { "talk", true }, { "dictate", true }, { "panel", false }, { "full", false }, { "close", false }, { "quiet", false }
   };
 
   public const string Default =
@@ -286,6 +286,7 @@ class Keys {
 # talk     按住说话，松开发送（日常聊天）
 # dictate  按住说话，松开后整理成书面文字，放进剪贴板（AI 输入法）
 # panel    打开或收起面板
+# full     面板在卡片和全屏之间切换。只在面板在最前面时生效
 # close    收起桌宠最前面的那个窗口（面板或回复框）。只在它们在最前面时生效，其余时候这个键照常
 # quiet    让它安静：停下朗读
 #
@@ -294,6 +295,7 @@ class Keys {
 talk = Space
 dictate = Ctrl+Space
 panel = Ctrl+Shift+Space
+full = F11
 close = Esc
 quiet =
 ";
@@ -538,23 +540,35 @@ class ReplyBox {
 
 // ── the panel ─────────────────────────────────────────────────────────────
 // The full page — conversation, cards, settings — as a card beside the pet: a bare window of the pet's own
-// with the page drawn in it by WebView2. It has no handle of its own: it goes where the pet goes. Closing
-// it only puts it away, so that it is there at once the next time.
+// with the page drawn in it by WebView2. It opens beside the pet at the size it was left at; any edge or
+// corner drags it to another size, and it can take the whole screen and come back. Closing it only puts
+// it away, so that it is there at once the next time.
+//
+// The window has no frame of its own, so the page cannot be dragged by: it is the page that asks, through
+// messages — "resize:<edge>" when one of its edges is pressed, "fullscreen" to change between the two.
 class Panel {
   [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr window, IntPtr region, bool redraw);
   [DllImport("gdi32.dll")] static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int width, int height);
+  [DllImport("user32.dll")] static extern bool ReleaseCapture();
+  [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr w, IntPtr l);
 
-  /// A card, not a phone screen.
-  public const int Width = 400, Height = 520;
+  /// The size it has until the user gives it another, and the least it may be made.
+  public const int Width = 520, Height = 720, LeastWidth = 340, LeastHeight = 420;
 
   Window host; Microsoft.Web.WebView2.Wpf.WebView2 view;
-  /// Where the card's top left corner goes.
-  public Func<Point> Place;
+  /// Where the card's top left corner goes, for a card of the given size.
+  public Func<double, double, Point> Place;
   /// Told when the page cannot be drawn here at all.
   public Action<string> Failed = delegate { };
+  /// Where the size the user gave it is kept.
+  public string SizeFile;
+
+  double width = Width, height = Height;
+  bool full, leaving, moving;
 
   public bool Open { get { return host != null && host.IsVisible; } }
   public bool IsFront { get { return host != null && host.IsVisible && host.IsActive; } }
+  public bool Full { get { return full; } }
 
   public void Show(string url, string dataFolder) {
     if (host == null) Build(url, dataFolder);
@@ -564,15 +578,26 @@ class Panel {
 
   void Build(string url, string dataFolder) {
     try {
+      try {
+        string[] kept = File.ReadAllText(SizeFile).Split(',');
+        width = Math.Max(LeastWidth, double.Parse(kept[0], System.Globalization.CultureInfo.InvariantCulture));
+        height = Math.Max(LeastHeight, double.Parse(kept[1], System.Globalization.CultureInfo.InvariantCulture));
+      } catch { }
+      Rect work = SystemParameters.WorkArea;
+      width = Math.Min(width, work.Width); height = Math.Min(height, work.Height);
+
       host = new Window();
       host.WindowStyle = WindowStyle.None; host.ResizeMode = ResizeMode.NoResize; host.ShowInTaskbar = false;
-      host.Background = Brushes.Black; host.Title = "Reduction Panel"; host.Width = Width; host.Height = Height;
+      host.Background = Brushes.Black; host.Title = "Reduction Panel"; host.Width = width; host.Height = height;
+      host.MinWidth = LeastWidth; host.MinHeight = LeastHeight;
       host.WindowStartupLocation = WindowStartupLocation.Manual;
-      host.SourceInitialized += delegate {
-        double scale = PresentationSource.FromVisual(host).CompositionTarget.TransformToDevice.M11;
-        int round = (int)Math.Round(18 * scale);
-        SetWindowRgn(new WindowInteropHelper(host).Handle,
-            CreateRoundRectRgn(0, 0, (int)Math.Round(Width * scale) + 1, (int)Math.Round(Height * scale) + 1, round, round), true);
+      host.SourceInitialized += delegate { Shape(); };
+      host.SizeChanged += delegate {
+        Shape();
+        if (full || !host.IsVisible) return;
+        // A size reached by dragging is the user's: kept, and used from now on.
+        width = host.ActualWidth; height = host.ActualHeight;
+        try { File.WriteAllText(SizeFile, string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0:0},{1:0}", width, height)); } catch { }
       };
       host.Closing += delegate(object sender, System.ComponentModel.CancelEventArgs e) { if (!leaving) { e.Cancel = true; host.Hide(); } };
 
@@ -593,10 +618,17 @@ class Panel {
           asked.Handled = true;
           try { Process.Start(asked.Uri); } catch { }
         };
+        // What the page asks of its window.
+        view.CoreWebView2.WebMessageReceived += delegate(object from, Microsoft.Web.WebView2.Core.CoreWebView2WebMessageReceivedEventArgs told) {
+          string what; try { what = told.TryGetWebMessageAsString(); } catch { return; }
+          if (what == "fullscreen") ToggleFull();
+          else if (what != null && what.StartsWith("resize:")) Drag(what.Substring(7));
+        };
+        TellPage();
       };
       // A service that was not up yet, or went away for a moment, is asked again.
       view.NavigationCompleted += delegate(object sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs e) {
-        if (e.IsSuccess) return;
+        if (e.IsSuccess) { TellPage(); return; }
         DispatcherTimer again = new DispatcherTimer(); again.Interval = TimeSpan.FromSeconds(1.5);
         again.Tick += delegate { again.Stop(); try { view.CoreWebView2.Navigate(url); } catch { } };
         again.Start();
@@ -606,18 +638,64 @@ class Panel {
     } catch (Exception e) { Fail(e.Message); }
   }
 
+  /// The corners are round while it is a card, square when it has the whole screen.
+  void Shape() {
+    if (host == null) return;
+    IntPtr window = new WindowInteropHelper(host).Handle;
+    if (window == IntPtr.Zero) return;
+    if (full) { SetWindowRgn(window, IntPtr.Zero, true); return; }
+    PresentationSource source = PresentationSource.FromVisual(host);
+    double scale = source == null ? 1 : source.CompositionTarget.TransformToDevice.M11;
+    int round = (int)Math.Round(18 * scale);
+    SetWindowRgn(window, CreateRoundRectRgn(0, 0, (int)Math.Round(host.ActualWidth * scale) + 1, (int)Math.Round(host.ActualHeight * scale) + 1, round, round), true);
+  }
+
+  /// The page is told whether it has the whole screen, to draw its button the right way round.
+  void TellPage() {
+    try { if (view != null && view.CoreWebView2 != null) view.CoreWebView2.PostWebMessageAsString(full ? "full" : "card"); } catch { }
+  }
+
+  /// An edge or corner of the page is pressed: Windows itself takes the window from there, until the button is let go.
+  void Drag(string edge) {
+    if (host == null || full) return;
+    int code;
+    switch (edge) {
+      case "w": code = 1; break; case "e": code = 2; break; case "n": code = 3; break; case "nw": code = 4; break;
+      case "ne": code = 5; break; case "s": code = 6; break; case "sw": code = 7; break; case "se": code = 8; break;
+      default: return;
+    }
+    moving = true;
+    try {
+      ReleaseCapture();
+      SendMessage(new WindowInteropHelper(host).Handle, 0x0112, (IntPtr)(0xF000 + code), IntPtr.Zero);   // WM_SYSCOMMAND, SC_SIZE + edge
+    } finally { moving = false; }
+  }
+
+  /// The whole of the screen it is on, taskbar left showing; or back to the card it was.
+  public void ToggleFull() {
+    if (host == null) return;
+    full = !full;
+    if (full) {
+      Rect work = SystemParameters.WorkArea;
+      host.Left = work.Left; host.Top = work.Top; host.Width = work.Width; host.Height = work.Height;
+    } else {
+      host.Width = width; host.Height = height;
+      Follow();
+    }
+    Shape(); TellPage();
+  }
+
   void Fail(string why) {
     Window was = host; host = null; view = null;
     leaving = true; try { if (was != null) was.Close(); } catch { } leaving = false;
     Failed(why);
   }
 
-  bool leaving;
-
-  /// Puts the card where it belongs, beside the pet.
+  /// Puts the card where it belongs, beside the pet. With the whole screen, or while it is being dragged to a size, it stays put.
   public void Follow() {
-    if (host == null || !host.IsVisible || Place == null) return;
-    Point at = Place(); host.Left = at.X; host.Top = at.Y;
+    if (host == null || !host.IsVisible || Place == null || full || moving) return;
+    Point at = Place(host.ActualWidth > 0 ? host.ActualWidth : width, host.ActualHeight > 0 ? host.ActualHeight : height);
+    host.Left = at.X; host.Top = at.Y;
   }
 
   public void Hide() { if (host != null) host.Hide(); }
@@ -810,13 +888,16 @@ class Pet {
     box.Anchor = delegate { return new Point(window.Left + window.Width / 2, window.Top + 118); };
     window.LocationChanged += delegate { box.Place(); panel.Follow(); };
     // The card sits beside the pet, its foot level with the pet's, on whichever side there is room.
-    panel.Place = delegate {
+    panel.Place = delegate(double wide, double high) {
       Rect work = SystemParameters.WorkArea;
-      double x = window.Left + 52 - Panel.Width;
+      double x = window.Left + 52 - wide;
       if (x < work.Left) x = window.Left + 268;
-      double y = Math.Max(work.Top, Math.Min(window.Top + 300 - Panel.Height, work.Bottom - Panel.Height));
+      // A card too wide to stand on either side of the pet stands as far over as the screen lets it.
+      x = Math.Max(work.Left, Math.Min(x, work.Right - wide));
+      double y = Math.Max(work.Top, Math.Min(window.Top + 300 - high, work.Bottom - high));
       return new Point(x, y);
     };
+    panel.SizeFile = System.IO.Path.Combine(home, "panel-size.txt");
     panel.Failed = delegate(string why) {
       MessageBox.Show("面板开不了：这台电脑上没有 WebView2 运行时（Windows 11 自带，Windows 10 可从微软官网安装）。先在浏览器里打开。\n" + why);
       try { Process.Start(url); } catch { }
@@ -845,13 +926,17 @@ class Pet {
     try { keys.HoldsEnabled = File.ReadAllText(spaceFile).Trim() != "off"; } catch { }
     keys.Pressed = delegate(string action) {
       if (action == "panel") TogglePanel();
+      else if (action == "full") panel.ToggleFull();
       else if (action == "quiet") Ask("/bridge/stopSpeaking", "POST", null);
       else if (action == "close") {
-        if (panel.IsFront) panel.Hide(); else if (box.Shown) box.Hide(); else panel.Hide();
+        // From the whole screen, the first press brings it back to a card; the next puts it away.
+        if (panel.IsFront && panel.Full) panel.ToggleFull();
+        else if (panel.IsFront) panel.Hide(); else if (box.Shown) box.Hide(); else panel.Hide();
       }
     };
     // Closing is for the pet's own windows: anywhere else the key is whatever it is there.
     keys.Applies = delegate(string action) {
+      if (action == "full") return panel.IsFront;
       return action != "close" || ((panel.IsFront || box.IsFront || window.IsActive) && (panel.Open || box.Shown));
     };
     keysFile = System.IO.Path.Combine(home, "keys.txt");

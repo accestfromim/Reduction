@@ -18,6 +18,40 @@
     if (window.Native && typeof window.Native[fn] === 'function') window.Native[fn](...args);
   };
 
+  // ── the window: its edges drag it to another size, and a button gives it the whole screen ─────
+  // Only where the page is the pet's panel, which has no frame of its own; in a browser the browser has one.
+  const host = window.chrome && window.chrome.webview;
+  if (host) {
+    window.addEventListener('DOMContentLoaded', () => {
+      document.documentElement.classList.add('in-panel');
+      for (const edge of ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']) {
+        const grip = document.createElement('div');
+        grip.className = 'window-grip grip-' + edge;
+        grip.addEventListener('pointerdown', (event) => {
+          if (event.button !== 0) return;
+          event.preventDefault();
+          host.postMessage('resize:' + edge);
+        });
+        document.body.appendChild(grip);
+      }
+      const button = document.createElement('button');
+      button.className = 'icon-btn window-full';
+      button.setAttribute('aria-label', '全屏');
+      const draw = (full) => {
+        button.title = full ? '回到卡片大小（F11）' : '全屏（F11）';
+        button.innerHTML = full
+          ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>'
+          : '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
+        document.documentElement.classList.toggle('panel-full', full);
+      };
+      draw(false);
+      button.addEventListener('click', () => host.postMessage('fullscreen'));
+      host.addEventListener('message', (event) => draw(event.data === 'full'));
+      const actions = document.querySelector('.header-actions') || document.querySelector('.topbar-right');
+      if (actions) actions.insertBefore(button, actions.firstChild);
+    });
+  }
+
   // ── sound: PCM pieces played one after another ──────────────────────────
   const RATE = 24000;
   let audio = null;
