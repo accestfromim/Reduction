@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 
 final class DesktopPet: NSObject {
     private let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 76, height: 76),
@@ -7,11 +8,18 @@ final class DesktopPet: NSObject {
                                 styleMask: [.titled, .closable, .resizable, .nonactivatingPanel], backing: .buffered, defer: false)
     private let glyph = PetGlyph()
     private let text = NSTextView()
+    private let log = Logger(subsystem: "com.mindtravel.reduction.macos", category: "PetLens")
+    private var lens: PetLens?
+    private var screenSleeping = false
+    private(set) var lensEnabled = !UserDefaults.standard.bool(forKey: "reductionLensOff")
+    private(set) var lensNeedsPermission = false
+    var onLensSettingsChanged: () -> Void = {}
     var onClick: () -> Void = {}
     var isVisible: Bool { window.isVisible }
 
     override init() {
         super.init()
+        window.title = "Reduction 桌宠"
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = false
@@ -25,6 +33,14 @@ final class DesktopPet: NSObject {
             window.setFrameOrigin(NSPoint(x: frame.maxX - window.frame.width - 24, y: frame.minY + 24))
         }
         glyph.onClick = { [weak self] in self?.onClick() }
+        resizeLens(false)
+        let notifications = NotificationCenter.default
+        notifications.addObserver(self, selector: #selector(updateLensWindow), name: NSWindow.didMoveNotification, object: window)
+        notifications.addObserver(self, selector: #selector(updateLensWindow), name: NSWindow.didChangeScreenNotification, object: window)
+        notifications.addObserver(self, selector: #selector(updateLensWindow), name: NSApplication.didChangeScreenParametersNotification, object: nil)
+        let workspace = NSWorkspace.shared.notificationCenter
+        workspace.addObserver(self, selector: #selector(screenDidSleep), name: NSWorkspace.screensDidSleepNotification, object: nil)
+        workspace.addObserver(self, selector: #selector(screenDidWake), name: NSWorkspace.screensDidWakeNotification, object: nil)
 
         reply.title = "Reduction"
         reply.isReleasedWhenClosed = false
@@ -73,11 +89,94 @@ final class DesktopPet: NSObject {
             window.orderOut(nil)
             reply.orderOut(nil)
         }
-        glyph.animate(visible)
+        glyph.animate(visible && !glyph.usesLens)
+        refreshLens()
+    }
+
+    func setLensEnabled(_ enabled: Bool) {
+        lensEnabled = enabled
+        UserDefaults.standard.set(!enabled, forKey: "reductionLensOff")
+        refreshLens()
+        if enabled && isVisible { requestLensPermission() }
+    }
+
+    func requestInitialLensPermission() {
+        guard isVisible, lensNeedsPermission, !UserDefaults.standard.bool(forKey: "reductionLensPrompted") else { return }
+        requestLensPermission()
+    }
+
+    func requestLensPermission() {
+        guard lensNeedsPermission else { return }
+        UserDefaults.standard.set(true, forKey: "reductionLensPrompted")
+        CGRequestScreenCaptureAccess()
+        refreshLens()
+    }
+
+    func refreshLens() {
+        let needsPermission = lensEnabled && !CGPreflightScreenCaptureAccess()
+        if needsPermission && !lensNeedsPermission && isVisible { log.notice("桌宠折射等待屏幕录制授权") }
+        lensNeedsPermission = needsPermission
+        onLensSettingsChanged()
+        guard isVisible, lensEnabled, !screenSleeping, !needsPermission else {
+            lens?.update(window: nil)
+            return
+        }
+
+        do {
+            if lens == nil {
+                let lens = try PetLens(in: glyph)
+                lens.pose = Self.lensPoses[glyph.pose, default: .asleep]
+                lens.onActive = { [weak self] active in self?.resizeLens(active) }
+                lens.onError = { [weak self] error in self?.lensFailed(error) }
+                self.lens = lens
+            }
+            updateLensWindow()
+        } catch {
+            lensFailed(error)
+        }
+    }
+
+    private func lensFailed(_ error: Error) {
+        lensNeedsPermission = !CGPreflightScreenCaptureAccess()
+        onLensSettingsChanged()
+        if !lensNeedsPermission && isVisible {
+            log.error("桌宠折射不可用：\(error.localizedDescription, privacy: .public)")
+            showReply("桌面折射无法运行。\n\(error.localizedDescription)")
+        }
+    }
+
+    @objc private func updateLensWindow() {
+        guard isVisible, lensEnabled, !screenSleeping, !lensNeedsPermission else { return }
+        lens?.update(window: window)
+    }
+
+    @objc private func screenDidSleep() {
+        screenSleeping = true
+        lens?.update(window: nil)
+    }
+
+    @objc private func screenDidWake() {
+        screenSleeping = false
+        refreshLens()
+    }
+
+    private func resizeLens(_ active: Bool) {
+        glyph.usesLens = active
+        glyph.animate(isVisible && !active)
+        let size: CGFloat = active ? 200 : 76
+        guard window.frame.width != size else { return }
+        var point = NSPoint(x: window.frame.midX - size / 2, y: window.frame.midY - size / 2)
+        if let screen = window.screen ?? NSScreen.main {
+            let frame = screen.visibleFrame
+            point.x = max(frame.minX, min(point.x, frame.maxX - size))
+            point.y = max(frame.minY, min(point.y, frame.maxY - size))
+        }
+        window.setFrame(NSRect(origin: point, size: NSSize(width: size, height: size)), display: true)
     }
 
     func pose(_ state: String) {
         glyph.pose = state
+        lens?.pose = Self.lensPoses[state, default: .asleep]
         glyph.setAccessibilityLabel("Reduction，" + (Self.labels[state] ?? "可用"))
         window.contentView?.toolTip = Self.labels[state]
     }
@@ -108,10 +207,14 @@ final class DesktopPet: NSObject {
     private static let labels = [
         "idle": "待命", "asleep": "服务未连接", "listening": "正在听", "speaking": "正在朗读", "thinking": "正在处理"
     ]
+    private static let lensPoses: [String: PetLens.Pose] = [
+        "idle": .idle, "asleep": .asleep, "listening": .listening, "speaking": .speaking, "thinking": .thinking
+    ]
 }
 
 private final class PetGlyph: NSView {
     var pose = "asleep" { didSet { needsDisplay = true } }
+    var usesLens = false { didSet { needsDisplay = true } }
     var onClick: () -> Void = {}
     private var animation: Timer?
     private var dragStarted = false
@@ -145,6 +248,11 @@ private final class PetGlyph: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
+        if usesLens {
+            NSColor.clear.setFill()
+            dirtyRect.fill(using: .copy)
+            return
+        }
         let center = NSPoint(x: bounds.midX, y: bounds.midY)
         let time = ProcessInfo.processInfo.systemUptime
         let distance: Double

@@ -28,6 +28,7 @@ CONTENTS="$APP/Contents"
 RESOURCES="$CONTENTS/Resources"
 mkdir -p "$CONTENTS/MacOS" "$RESOURCES/service"
 cp "$HERE/Info.plist" "$CONTENTS/Info.plist"
+cp "$HERE/PetLens.metal" "$RESOURCES/PetLens.metal"
 cp "$ROOT/LICENSE" "$RESOURCES/LICENSE"
 cp "$LIBS/"*.jar "$RESOURCES/service/"
 

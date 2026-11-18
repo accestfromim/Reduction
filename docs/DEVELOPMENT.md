@@ -292,6 +292,7 @@ open dist/Reduction.app
 ```
 
 - 在菜单栏打开对话与卡片、显示或隐藏桌宠、设置登录时打开。桌宠可拖动，点击可打开面板。退出应用时本地服务一并退出。
+- 桌宠默认开启桌面折射。首次显示时，macOS 会请求屏幕录制权限。授予后重新打开 Reduction，桌宠会实时折射背后的桌面。菜单栏的「桌面折射」开关和「显示桌宠」都能停止采集。屏幕帧只在本机内存中用于绘制桌宠。
 - `Control + Shift + 空格` 按住说话，`Control + Option + Shift + 空格` 按住听写，`Control + Shift + R` 打开或收起面板。听写结果可在回复窗口编辑、复制。第一次录音时由系统请求麦克风权限。
 - 对话、卡片、待办和任务记录沿用 `~/.local/share/reduction/`，设置在 `~/.config/reduction/settings.json`。运行日志可从菜单栏打开，路径为 `~/.local/share/reduction/macos.log`。若要和 Android 同步，在 Mac 打开「系统设置 → 通用 → 共享 → 远程登录」，再在手机配置这台电脑。
 - 文章预览和长图导出使用应用内的 WebKit。通过手机发起导出时，Mac 上打开过 `Reduction.app` 即可找到渲染程序。

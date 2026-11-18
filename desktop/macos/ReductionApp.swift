@@ -40,6 +40,8 @@ final class AppController: NSObject, NSApplicationDelegate, WKNavigationDelegate
     private var web: WKWebView?
     private var menuBar: NSStatusItem?
     private var petItem: NSMenuItem?
+    private var lensItem: NSMenuItem?
+    private var lensPermissionItem: NSMenuItem?
     private var shortcutItem: NSMenuItem?
     private var loginItem: NSMenuItem?
     private var timer: Timer?
@@ -59,11 +61,13 @@ final class AppController: NSObject, NSApplicationDelegate, WKNavigationDelegate
         setMessage("正在启动 Reduction…")
         configureMenus()
         pet.onClick = { [weak self] in self?.togglePanel() }
+        pet.onLensSettingsChanged = { [weak self] in self?.updateLensMenu() }
         pet.setVisible(!UserDefaults.standard.bool(forKey: "reductionPetHidden"))
         petItem?.state = pet.isVisible ? .on : .off
         shortcuts.onEvent = { [weak self] action, down in self?.shortcut(action, down: down) }
         if !UserDefaults.standard.bool(forKey: "reductionShortcutsOff") { enableShortcuts() }
         showPanel()
+        pet.requestInitialLensPermission()
         do {
             try service.start(onReady: { [weak self] in self?.loadPanel() }, onExit: { [weak self] status in
                 self?.serviceFailed("本地服务已退出（\(status)）。\n\n查看菜单中的运行日志。")
@@ -75,6 +79,10 @@ final class AppController: NSObject, NSApplicationDelegate, WKNavigationDelegate
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
+    func applicationDidBecomeActive(_ notification: Notification) {
+        pet.refreshLens()
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         showPanel()
         return true
@@ -82,6 +90,7 @@ final class AppController: NSObject, NSApplicationDelegate, WKNavigationDelegate
 
     func applicationWillTerminate(_ notification: Notification) {
         timer?.invalidate()
+        pet.setVisible(false)
         shortcuts.stop()
         web?.configuration.userContentController.removeScriptMessageHandler(forName: "reduction")
         service.stop()
@@ -166,6 +175,13 @@ final class AppController: NSObject, NSApplicationDelegate, WKNavigationDelegate
         let pet = item("显示桌宠", #selector(togglePet))
         petItem = pet
         controls.addItem(pet)
+        let lens = item("桌面折射", #selector(toggleLens))
+        lensItem = lens
+        controls.addItem(lens)
+        let permission = item("允许桌宠录制屏幕", #selector(requestLensPermission))
+        lensPermissionItem = permission
+        controls.addItem(permission)
+        updateLensMenu()
         let shortcuts = item("启用全局快捷键", #selector(toggleShortcuts))
         shortcutItem = shortcuts
         controls.addItem(shortcuts)
@@ -204,6 +220,16 @@ final class AppController: NSObject, NSApplicationDelegate, WKNavigationDelegate
         pet.setVisible(!pet.isVisible)
         petItem?.state = pet.isVisible ? .on : .off
         UserDefaults.standard.set(!pet.isVisible, forKey: "reductionPetHidden")
+        pet.requestInitialLensPermission()
+    }
+
+    @objc private func toggleLens() { pet.setLensEnabled(!pet.lensEnabled) }
+
+    @objc private func requestLensPermission() { pet.requestLensPermission() }
+
+    private func updateLensMenu() {
+        lensItem?.state = pet.lensEnabled ? .on : .off
+        lensPermissionItem?.isHidden = !pet.lensNeedsPermission || !pet.isVisible
     }
 
     @objc private func toggleShortcuts() {
