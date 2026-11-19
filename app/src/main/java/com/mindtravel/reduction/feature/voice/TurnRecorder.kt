@@ -129,6 +129,7 @@ class TurnRecorder(
         return WavEncoder.pcm16ToWav(data)
     }
 
+    @Synchronized
     fun cancel() {
         turn = null
         capture.cancel()
