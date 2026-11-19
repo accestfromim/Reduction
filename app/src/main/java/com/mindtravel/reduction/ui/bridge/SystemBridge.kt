@@ -11,6 +11,7 @@ import android.os.VibratorManager
 import com.mindtravel.reduction.BuildConfig
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.feature.settings.data.SettingsRepository
+import com.mindtravel.reduction.model.voice.TtsSynthesizer
 import com.mindtravel.reduction.ui.activity.MainActivity
 import org.json.JSONObject
 
@@ -61,6 +62,8 @@ class SystemBridge(
         val current = settings.load()
         return JSONObject().apply {
             put("version", BuildConfig.VERSION_NAME)
+            put("versionCode", BuildConfig.VERSION_CODE)
+            put("ttsEngine", TtsSynthesizer.ENGINE_NAME)
             put("android", Build.VERSION.RELEASE)
             put("sdk", Build.VERSION.SDK_INT)
             put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
@@ -77,11 +80,12 @@ class SystemBridge(
     fun shareDiagnostics() {
         val current = settings.load()
         val info = buildString {
-            appendLine("Reduction v${BuildConfig.VERSION_NAME}")
+            appendLine("Reduction v${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
             appendLine("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
             appendLine("Model: ${current.model}")
             appendLine("Voice: ${current.voice}")
+            appendLine("Local TTS: ${TtsSynthesizer.ENGINE_NAME}")
             appendLine("Key set: ${current.apiKey.isNotBlank()}")
             appendLine("PC SSH: ${current.pcUser}@${current.pcHost}:${current.pcPort}")
             appendLine("TTS cache: %.1f MB".format(voice.cacheSizeMb()))

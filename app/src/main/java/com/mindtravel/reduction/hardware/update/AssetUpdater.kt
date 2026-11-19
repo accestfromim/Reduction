@@ -22,18 +22,13 @@ class AssetUpdater(
         private const val KEY_ACTIVE = "active"
         private const val KEY_ACTIVE_MIN_CODE = "active_min_code"
 
-        /**
-         * The app version whose JS bridge the web assets must be written for.
-         * A pack declaring a lower assetsMinVersionCode targets an earlier bridge and is not used.
-         */
-        const val BRIDGE_VERSION_CODE = 96
         private const val MAX_TOTAL_BYTES = 80L * 1024 * 1024
 
         fun activeDir(context: Context): File? {
             val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             val version = prefs.getString(KEY_ACTIVE, "").orEmpty()
             if (version.isBlank()) return null
-            if (prefs.getInt(KEY_ACTIVE_MIN_CODE, 0) < BRIDGE_VERSION_CODE) return null
+            if (prefs.getInt(KEY_ACTIVE_MIN_CODE, 0) != BuildConfig.VERSION_CODE) return null
             val dir = File(context.filesDir, "web/$version")
             return dir.takeIf { File(it, "index.html").isFile }
         }
@@ -48,9 +43,7 @@ class AssetUpdater(
     fun updateIfNeeded(manifestUrl: String, manifest: UpdateManifest): Boolean {
         val version = manifest.assetsVersion.trim()
         if (version.isBlank() || manifest.assetsZip.isBlank()) return false
-        if (manifest.assetsMinVersionCode < BRIDGE_VERSION_CODE ||
-            manifest.assetsMinVersionCode > BuildConfig.VERSION_CODE
-        ) return false
+        if (manifest.assetsMinVersionCode != BuildConfig.VERSION_CODE) return false
 
         if (!version.matches(Regex("^[A-Za-z0-9._-]{1,64}$"))) {
             Logs.add("Hot assets version invalid")

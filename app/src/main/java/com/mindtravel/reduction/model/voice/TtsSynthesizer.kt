@@ -1,6 +1,7 @@
 package com.mindtravel.reduction.model.voice
 
 import com.k2fsa.sherpa.onnx.GeneratedAudio
+import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.core.settings.AppSettings
 import kotlin.math.roundToInt
 
@@ -13,9 +14,13 @@ class TtsSynthesizer(
     @Synchronized
     fun synthesize(voice: String, text: String): ByteArray {
         val key = AppSettings.localVoice(voice)
-        cache.get(key, text)?.let { return it }
+        cache.get(key, text)?.let {
+            Logs.add("Local TTS cache hit voice=$key")
+            return it
+        }
         if (text.none { it.isLetterOrDigit() }) return ByteArray(0)
         val audio = generate(spokenText(text), if (key == AppSettings.SECOND_VOICE) 1 else 0)
+        Logs.add("Local TTS generated with $ENGINE_NAME voice=$key")
         val pcm = toPlaybackPcm(audio.samples, audio.sampleRate)
         cache.put(key, text, pcm)
         return pcm
@@ -23,6 +28,7 @@ class TtsSynthesizer(
 
     companion object {
         const val MODEL_DIR = "tts-aishell3"
+        const val ENGINE_NAME = "sherpa-onnx · AISHELL-3 VITS (CPU)"
         private const val PLAYBACK_RATE = 24_000
 
         fun rules(dir: String): String =

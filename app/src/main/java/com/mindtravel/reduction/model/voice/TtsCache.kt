@@ -3,7 +3,7 @@ package com.mindtravel.reduction.model.voice
 import java.io.File
 import java.security.MessageDigest
 
-/** Synthesised speech kept in [dir], so the same words are not paid for twice. */
+/** Synthesised speech kept in [dir] to skip inference on repeated text. */
 class TtsCache(private val dir: File) {
 
     companion object {

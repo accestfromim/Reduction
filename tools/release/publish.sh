@@ -4,41 +4,38 @@
 #   tools/release/publish.sh minor      the next minor version:  1.0.62 -> 1.1.0
 #   tools/release/publish.sh major      the next major version:  1.0.62 -> 2.0.0
 #   tools/release/publish.sh 1.4.0      this very version
-# Bumps the version everywhere it is written, runs the tests and lint, builds, makes the
+# Runs the tests and lint, packages one new version, makes the
 # patch from the version now live, uploads, and checks the live files with the app's own
 # update code. The manifest is swapped last, so a failure before that publishes nothing.
 set -euo pipefail
 STEP="${1:-patch}"
-. "$(dirname "$0")/../env.sh"
-cd "$ROOT"
+. "$(dirname "$0")/../../build.sh"
 SERVER="${REDUCTION_UPDATE_HOST:?set REDUCTION_UPDATE_HOST in local.env: the ssh host updates are served from}"
 REMOTE="${REDUCTION_UPDATE_DIR:?set REDUCTION_UPDATE_DIR in local.env: the directory on that host}"
 MANIFEST_URL="${REDUCTION_UPDATE_MANIFEST:?set REDUCTION_UPDATE_MANIFEST in local.env: the address the app asks}"
+lock_android_package
 
-OLD="$(sed -n 's/.*appVersionName.*?: "\(.*\)"/\1/p' app/build.gradle.kts)"
-OLD_CODE="$(sed -n 's/.*appVersionCode.*?: \([0-9]*\)$/\1/p' app/build.gradle.kts)"
-CODE=$((OLD_CODE + 1))
-[ -n "$OLD" ] && [ -n "$OLD_CODE" ] || { echo "cannot read the current version"; exit 1; }
-[ -f "dist/Reduction-v$OLD.apk" ] || { echo "dist/Reduction-v$OLD.apk is missing: the patch is made from it"; exit 1; }
-IFS=. read -r MAJOR MINOR PATCH_NUMBER <<< "$OLD"
-case "$STEP" in
-  patch) NEW="$MAJOR.$MINOR.$((PATCH_NUMBER + 1))" ;;
-  minor) NEW="$MAJOR.$((MINOR + 1)).0" ;;
-  major) NEW="$((MAJOR + 1)).0.0" ;;
-  [0-9]*.[0-9]*.[0-9]*) NEW="$STEP" ;;
-  *) echo "usage: publish.sh [patch|minor|major|<version such as 1.4.0>]"; exit 1 ;;
+# Debug APKs also advance the local version. Make the patch from the APK phones actually have.
+live=$(mktemp)
+trap 'rm -f "$live"' EXIT
+status=$(curl -sSL --output "$live" --write-out '%{http_code}' "$MANIFEST_URL")
+case "$status" in
+  200)
+    metadata=$(python3 -c 'import json,sys; m=json.load(open(sys.argv[1])); print(m["versionName"], m["versionCode"], m["sha256"])' "$live")
+    read -r OLD OLD_CODE old_hash <<< "$metadata"
+    [[ $OLD =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && $OLD_CODE =~ ^[1-9][0-9]*$ && $old_hash =~ ^[0-9a-fA-F]{64}$ ]]
+    printf '%s  %s\n' "$old_hash" "dist/Reduction-v$OLD.apk" | sha256sum --check ;;
+  404)
+    # Before the first manifest, use the latest local release APK as the initial patch base.
+    OLD=$(printf '%s\n' dist/Reduction-v*.apk | sed -nE 's|^dist/Reduction-v([0-9]+\.[0-9]+\.[0-9]+)\.apk$|\1|p' | sort -V | tail -1)
+    [[ -n $OLD ]] || { echo "Missing previous release APK in dist/" >&2; exit 1; }
+    OLD_CODE=$("$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "dist/Reduction-v$OLD.apk" | sed -n "s/^package: .*versionCode='\([0-9]*\)'.*/\1/p")
+    [[ $OLD_CODE =~ ^[1-9][0-9]*$ ]] ;;
+  *) echo "Could not read the published update manifest (HTTP $status)" >&2; exit 1 ;;
 esac
-[ "$NEW" != "$OLD" ] || { echo "$NEW is the version already published"; exit 1; }
-[ "$(printf '%s\n%s\n' "$OLD" "$NEW" | sort -V | tail -1)" = "$NEW" ] || { echo "$NEW is lower than the published $OLD"; exit 1; }
-echo "== $OLD ($OLD_CODE) -> $NEW ($CODE)"
 
-sed -i "s/?: $OLD_CODE\$/?: $CODE/; s/?: \"$OLD\"/?: \"$NEW\"/" app/build.gradle.kts
-sed -i "s/VERSION_CODE:-$OLD_CODE/VERSION_CODE:-$CODE/; s/VERSION_NAME:-$OLD/VERSION_NAME:-$NEW/" build.sh
-sed -i "s/BRIDGE_VERSION_CODE = $OLD_CODE/BRIDGE_VERSION_CODE = $CODE/" app/src/main/java/com/mindtravel/reduction/hardware/update/AssetUpdater.kt
-sed -i "s/v$OLD/v$NEW/g; s/必须不低于 $OLD_CODE（/必须不低于 $CODE（/" docs/DEVELOPMENT.md
-
-echo "== tests and lint"
-$GRADLE -q :app:testReleaseUnitTest :app:lintRelease
+echo "== tests, lint and package"
+build_android_package release "$STEP" :app:testReleaseUnitTest :app:lintRelease
 python3 - <<'PY'
 import glob, re, sys
 tests = failures = 0
@@ -50,9 +47,9 @@ print(f'{tests} tests, {failures} failed; {lint} lint errors')
 sys.exit(1 if failures or lint else 0)
 PY
 
-echo "== build"
-./build.sh | tail -1
-APK="Reduction-v$NEW.apk"; PATCH="patch-$OLD_CODE-$CODE.bin"
+NEW=$APK_VERSION_NAME
+CODE=$APK_VERSION_CODE
+APK=${APK_FILE##*/}; PATCH="patch-$OLD_CODE-$CODE.bin"
 python3 tools/release/make_update.py --from "dist/Reduction-v$OLD.apk" --from-code "$OLD_CODE" --to "dist/$APK" --to-code "$CODE" --to-name "$NEW"
 "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify "dist/$APK"
 

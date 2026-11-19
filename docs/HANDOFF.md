@@ -77,7 +77,8 @@ docs/                       本文、DEVELOPMENT.md、THIRD_PARTY.md
 
 ```bash
 tools/models/fetch-models.sh     # 第一次：取本地语音模型，核对校验值
-./build.sh                       # 手机安装包：dist/Reduction-v<版本>.apk
+./build.sh --debug               # 手机调试包，每次打包递增版本
+./build.sh                       # 使用发布签名，生成 dist/Reduction-v<版本>.apk
 desktop/install.sh               # 电脑端：构建、编译桌宠、装图标、重启服务和桌宠
 ```
 
@@ -117,7 +118,7 @@ tools/release/publish.sh major    # 大版本号加一
 
 - 更新服务器的地址在 `local.env` 里，三个 `REDUCTION_UPDATE_*`。
 - 它需要 `dist/` 里有上一版的安装包来生成补丁。`dist/` 不入库。
-- 发完要把版本号文件的改动提交掉（`app/build.gradle.kts`、`build.sh`、`AssetUpdater.kt`、`docs/DEVELOPMENT.md`）。这一步脚本不做。
+- 打包成功后，把 `version.properties` 的变更随更新一起提交。普通 Gradle 构建和测试沿用这个文件里的版本。
 - 电脑端没有版本，改完跑 `desktop/install.sh` 就是发了。
 
 ## 八、数据和日志在哪

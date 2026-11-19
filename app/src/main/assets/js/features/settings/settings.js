@@ -27,9 +27,11 @@ export function openSettings() {
   if (typeof raw === 'string' && raw) {
     try {
       const info = JSON.parse(raw);
+      const build = info.versionCode ? ` (${info.versionCode})` : '';
       ui.setAppInfo(
-        `版本 ${info.version} · Android ${info.android} (API ${info.sdk})\n` +
+        `版本 ${info.version}${build} · Android ${info.android} (API ${info.sdk})\n` +
         `设备 ${info.device}\n` +
+        (info.ttsEngine ? `本地朗读引擎：${info.ttsEngine}\n` : '') +
         `Key：${info.hasKey ? '已设置' : '未设置'}\n` +
         `电脑：${info.pcUser || ''}@${info.pcHost || '未设置'}:${info.pcPort || 22}\n` +
         `音频缓存：${Number(info.cacheMb || 0).toFixed(1)} MB`

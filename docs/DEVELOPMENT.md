@@ -1,6 +1,6 @@
 # Reduction 开发说明
 
-给读代码和改代码的人：功能细节、代码结构、构建、测试和发版。产品介绍见根目录的 `README.md`。当前版本 v1.0.65。
+给读代码和改代码的人：功能细节、代码结构、构建、测试和发版。产品介绍见根目录的 `README.md`。手机版本记录在 [version.properties](../version.properties)。
 
 ## 交互
 
@@ -89,7 +89,7 @@
 
 ## 安装
 
-1. 把 `Reduction-v1.0.65.apk` 传到手机。
+1. 把本次构建在 `dist/` 里输出的 APK 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -254,7 +254,7 @@ assets/js/ui/ui.js, markdown.js, splash.js（启动动画落进图标框）
 - SSE 中 `content: null` 不会变成字符串 `"null"`。
 - 工具参数只接受字符串片段，缺 id/name 会直接失败。
 - 协议层不把 `JSONObject` 传给业务层。
-- 资源热更新包的 `assetsMinVersionCode` 必须不低于 96（当前桥接协议的起始版本），否则不会被使用。
+- 资源热更新包的 `assetsMinVersionCode` 必须等于手机安装包的 `versionCode`，保证网页资源与原生桥接版本一致。
 - 设置升级会自动从旧版本迁移，不会丢 API Key。
 
 测试：
@@ -320,8 +320,11 @@ desktop/install.sh --remove  # 去掉桌面图标和开机自启（数据保留�
 
 ```bash
 cp local.env.example local.env     # 填 JAVA_HOME、ANDROID_HOME
-./build.sh                         # dist/Reduction-v<版本>.apk
+./build.sh --debug                 # dist/Reduction-v<版本>-debug.apk
+./build.sh                         # 配置发布签名后生成 dist/Reduction-v<版本>.apk
 ```
+
+两个打包命令在成功时都会将末位版本号和 Android versionCode 各加一，并写回 `version.properties`。日常编译和测试直接用 Gradle，沿用已记录的版本号。
 
 本地语音用的运行库和模型不入库，clone 之后取一次：
 
