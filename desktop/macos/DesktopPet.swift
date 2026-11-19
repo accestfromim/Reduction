@@ -1,5 +1,6 @@
 import AppKit
 import OSLog
+import ScreenCaptureKit
 
 final class DesktopPet: NSObject {
     private let window = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 76, height: 76),
@@ -11,9 +12,7 @@ final class DesktopPet: NSObject {
     private let log = Logger(subsystem: "com.mindtravel.reduction.macos", category: "PetLens")
     private var lens: PetLens?
     private var screenSleeping = false
-    private(set) var lensEnabled = !UserDefaults.standard.bool(forKey: "reductionLensOff")
-    private(set) var lensNeedsPermission = false
-    var onLensSettingsChanged: () -> Void = {}
+    private var hasCapturePermission = false
     var onClick: () -> Void = {}
     var isVisible: Bool { window.isVisible }
 
@@ -93,31 +92,28 @@ final class DesktopPet: NSObject {
         refreshLens()
     }
 
-    func setLensEnabled(_ enabled: Bool) {
-        lensEnabled = enabled
-        UserDefaults.standard.set(!enabled, forKey: "reductionLensOff")
-        refreshLens()
-        if enabled && isVisible { requestLensPermission() }
-    }
+    @MainActor
+    func requestScreenCapturePermission() async {
+        if CGPreflightScreenCaptureAccess() {
+            log.notice("屏幕录制权限已获授权")
+            refreshLens()
+            return
+        }
 
-    func requestInitialLensPermission() {
-        guard isVisible, lensNeedsPermission, !UserDefaults.standard.bool(forKey: "reductionLensPrompted") else { return }
-        requestLensPermission()
-    }
-
-    func requestLensPermission() {
-        guard lensNeedsPermission else { return }
-        UserDefaults.standard.set(true, forKey: "reductionLensPrompted")
-        CGRequestScreenCaptureAccess()
-        refreshLens()
+        log.notice("Reduction 启动时请求 macOS 屏幕录制权限")
+        do {
+            _ = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
+            refreshLens()
+        } catch let error as SCStreamError where error.code == .userDeclined {
+            log.notice("macOS 尚未授权屏幕录制")
+        } catch {
+            log.error("请求屏幕录制权限失败 \(error.localizedDescription, privacy: .public)")
+        }
     }
 
     func refreshLens() {
-        let needsPermission = lensEnabled && !CGPreflightScreenCaptureAccess()
-        if needsPermission && !lensNeedsPermission && isVisible { log.notice("桌宠折射等待屏幕录制授权") }
-        lensNeedsPermission = needsPermission
-        onLensSettingsChanged()
-        guard isVisible, lensEnabled, !screenSleeping, !needsPermission else {
+        hasCapturePermission = CGPreflightScreenCaptureAccess()
+        guard isVisible, !screenSleeping, hasCapturePermission else {
             lens?.update(window: nil)
             return
         }
@@ -137,16 +133,15 @@ final class DesktopPet: NSObject {
     }
 
     private func lensFailed(_ error: Error) {
-        lensNeedsPermission = !CGPreflightScreenCaptureAccess()
-        onLensSettingsChanged()
-        if !lensNeedsPermission && isVisible {
-            log.error("桌宠折射不可用：\(error.localizedDescription, privacy: .public)")
+        hasCapturePermission = CGPreflightScreenCaptureAccess()
+        if hasCapturePermission && isVisible {
+            log.error("桌宠折射不可用 \(error.localizedDescription, privacy: .public)")
             showReply("桌面折射无法运行。\n\(error.localizedDescription)")
         }
     }
 
     @objc private func updateLensWindow() {
-        guard isVisible, lensEnabled, !screenSleeping, !lensNeedsPermission else { return }
+        guard isVisible, !screenSleeping, hasCapturePermission else { return }
         lens?.update(window: window)
     }
 

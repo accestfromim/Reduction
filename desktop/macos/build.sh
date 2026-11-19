@@ -47,7 +47,7 @@ for size in 16 32 128 256 512; do
   sips -z "$((size * 2))" "$((size * 2))" "$ICON" --out "$STAGE/Reduction.iconset/icon_${size}x${size}@2x.png" >/dev/null
 done
 iconutil -c icns "$STAGE/Reduction.iconset" -o "$RESOURCES/Reduction.icns"
-codesign --force --sign - "$APP"
+codesign --force --sign "${REDUCTION_MACOS_SIGNING_IDENTITY:--}" "$APP"
 codesign --verify --strict "$APP"
 
 OUTPUT="$ROOT/dist/Reduction.app"
