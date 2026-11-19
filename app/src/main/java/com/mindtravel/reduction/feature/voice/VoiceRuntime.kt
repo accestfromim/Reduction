@@ -7,6 +7,7 @@ import com.mindtravel.reduction.core.settings.SettingsGateway
 import com.mindtravel.reduction.feature.chat.ui.ReplyObserver
 import com.mindtravel.reduction.feature.voice.VoiceMachine.Effect
 import com.mindtravel.reduction.feature.voice.VoiceMachine.Event
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -156,21 +157,13 @@ class VoiceRuntime(
         capture.start(settingsRepository.load().apiKey, object : TurnListener.Events {
             private fun current() = state.turn == turn && state.phase == VoiceState.LISTENING
 
-            override fun onSpeechStart() {
-                if (current()) emitter.emit("onVoicePartial", "")
-            }
-
-            override fun onPartial(text: String) {
-                if (current()) emitter.emit("onVoicePartial", text)
-            }
-
             override fun onAlive() {
                 if (current()) cue.alive()
             }
 
             // Reported the moment the turn is over, before the microphone is closed, so
             // that "好的" does not wait for it. The audio follows in onTurnEnd.
-            override fun onTurnEnding(heard: Boolean) = dispatch(Event.TurnSpoken(turn))
+            override fun onTurnEnding() = dispatch(Event.TurnSpoken(turn))
 
             override fun onTurnEnd(turn: TurnListener.Turn) {
                 recording.complete(turn)
@@ -188,8 +181,14 @@ class VoiceRuntime(
     private fun transcribe(turn: Int) {
         val recording = recordings[turn]
         scope.launch {
-            val text = if (recording == null) "" else capture.transcribe(recording.await())
-            dispatch(Event.Transcribed(turn, text))
+            try {
+                val text = if (recording == null) "" else capture.transcribe(recording.await())
+                dispatch(Event.Transcribed(turn, text))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                dispatch(Event.TranscriptionFailed(turn, e.message ?: "语音识别失败"))
+            }
         }
     }
 

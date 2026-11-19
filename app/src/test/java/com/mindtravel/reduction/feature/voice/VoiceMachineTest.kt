@@ -133,6 +133,15 @@ class VoiceMachineTest {
     }
 
     @Test
+    fun aFailedFinalTranscriptionReportsTheErrorWithoutSendingAnyText() {
+        val (state, effects) = run(Event.TurnSpoken(1), Event.TranscriptionFailed(1, "识别失败"), Event.OkDone(1), from = listening)
+        assertEquals(VoiceState.IDLE, state.phase)
+        assertTrue(Effect.ShowError("识别失败") in effects)
+        assertEquals(1, effects.count { it is Effect.Transcribe })
+        assertTrue(effects.none { it is Effect.Submit })
+    }
+
+    @Test
     fun cancellingWhileListeningStillSaysOk() {
         val (state, effects) = run(Event.UserCancel, from = listening)
         assertEquals(VoiceState.TURN_ACK, state.phase)

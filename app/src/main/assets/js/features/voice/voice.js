@@ -36,10 +36,6 @@ export function applyVoiceState(name) {
   }
 }
 
-export function showPartial(text) {
-  if (state.voice === 'LISTENING') ui.setStatus(text || '正在听…');
-}
-
 export function showVoiceError(message) {
   ui.toast(message || '免按住录音失败');
 }

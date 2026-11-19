@@ -589,7 +589,6 @@ await page.click('#closePc');
 await page.evaluate(() => {
   window.Native.onVoiceState('PREPARING');
   window.Native.onVoiceState('LISTENING');
-  window.Native.onVoicePartial('帮我查一下明天的天气');
 });
 await new Promise((resolve) => setTimeout(resolve, 100));
 await shot('05-wake-listening.png');

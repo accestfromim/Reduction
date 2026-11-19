@@ -3,7 +3,7 @@ package com.mindtravel.reduction.feature.voice
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.core.audio.AudioGateway
 import com.mindtravel.reduction.hardware.audio.HeadsetMicController
-import com.mindtravel.reduction.model.voice.RollingAsr
+import com.mindtravel.reduction.hardware.audio.WavEncoder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -13,8 +13,7 @@ import kotlinx.coroutines.withContext
 
 /**
  * Captures one user turn. The recorder decides on the device, from the audio alone, when
- * the turn starts and ends. The growing audio is also transcribed every second, but only
- * for the live caption: a transcript never ends a turn. Events arrive on the main thread.
+ * the turn starts and ends. Only a finished recording is sent for transcription.
  */
 class TurnListener(
     private val audioGateway: AudioGateway,
@@ -22,32 +21,21 @@ class TurnListener(
     private val headsetMic: HeadsetMicController,
     /** Keeps a recording, with what was heard in it, for later use. */
     private val keepRecording: (kind: String, wav: ByteArray, heard: String) -> Unit,
-    private val rollingAsr: RollingAsr,
     private val scope: CoroutineScope
 ) : TurnCapture {
     interface Events {
-        fun onSpeechStart()
-
         /** The microphone is still delivering audio. Arrives twice a second. */
         fun onAlive()
-        fun onPartial(text: String)
 
         /** The turn is over; [onTurnEnd] follows once the recording has been closed. */
-        fun onTurnEnding(heard: Boolean)
+        fun onTurnEnding()
         fun onTurnEnd(turn: Turn)
         fun onNoSpeech()
         fun onError(message: String)
     }
 
-    /** A finished turn. [text] is the last rolling transcript with the end word removed. */
-    class Turn(
-        val text: String,
-        val wav: ByteArray?,
-        internal val apiKey: String
-    )
+    class Turn(val wav: ByteArray?, internal val apiKey: String)
 
-    /** The latest live caption: what is kept if the final transcription fails. */
-    private var caption = ""
     private var token = 0
     private var apiKey = ""
     private var events: Events? = null
@@ -55,7 +43,6 @@ class TurnListener(
 
     @Volatile
     private var headsetActive = false
-    private var speechStarted = false
 
     /**
      * Opens the microphone ahead of the opening cue, so recording can begin the instant
@@ -87,7 +74,6 @@ class TurnListener(
         this.events = events
         val current = token
         val started = recorder.start(
-            onSpeechStart = { onMain(current) { beginRolling(current, events) } },
             onAlive = { onMain(current) { events.onAlive() } },
             onEnd = { reason ->
                 onMain(current) {
@@ -132,48 +118,24 @@ class TurnListener(
 
     /** The final transcript of [turn]; blank when nothing intelligible was said. */
     override suspend fun transcribe(turn: Turn): String {
-        val text = finalText(turn)
-        turn.wav?.let { wav -> withContext(Dispatchers.IO) { keepRecording("turn", wav, text) } }
-        return text
-    }
-
-    private suspend fun finalText(turn: Turn): String {
-        val wav = turn.wav ?: return turn.text
-        return try {
-            val raw = withContext(Dispatchers.IO) { audioGateway.transcribe(turn.apiKey, wav) }
-            stripEndWord(raw).ifBlank { turn.text }
-        } catch (t: Throwable) {
-            Logs.add("Final ASR failed: ${t.message}")
-            turn.text
+        val wav = turn.wav ?: return ""
+        return withContext(Dispatchers.IO) {
+            var text = ""
+            try {
+                require(wav.size <= MAX_ASR_WAV_BYTES) { "单次语音识别最长 120 秒，请缩短这段话再说一次" }
+                text = stripEndWord(audioGateway.transcribe(turn.apiKey, wav))
+                text
+            } finally {
+                keepRecording("turn", wav, text)
+            }
         }
-    }
-
-    private fun beginRolling(current: Int, events: Events) {
-        speechStarted = true
-        events.onSpeechStart()
-        rollingAsr.start(
-            apiKey = apiKey,
-            snapshot = { recorder.snapshotWav() },
-            onResult = { text, _ ->
-                if (current == token) onRollingResult(events, text)
-            },
-            onError = { message -> Logs.add("Rolling ASR error: $message") }
-        )
-    }
-
-    private fun onRollingResult(events: Events, text: String?) {
-        if (text.isNullOrBlank()) return
-        caption = text
-        events.onPartial(stripEndWord(text))
     }
 
     private fun end(events: Events) {
         val key = apiKey
-        val heard = caption
-        events.onTurnEnding(heard = speechStarted)
+        events.onTurnEnding()
         reset(cancelRecorder = false)
-        val wav = recorder.stop()
-        events.onTurnEnd(Turn(stripEndWord(heard), wav, key))
+        events.onTurnEnd(Turn(recorder.stop(), key))
     }
 
     private fun fail(events: Events, message: String) {
@@ -183,9 +145,6 @@ class TurnListener(
 
     private fun reset(cancelRecorder: Boolean) {
         token++
-        rollingAsr.stop()
-        caption = ""
-        speechStarted = false
         apiKey = ""
         events = null
         if (cancelRecorder) recorder.cancel()
@@ -198,6 +157,9 @@ class TurnListener(
     private fun stripEndWord(raw: String): String = (EndWords.strip(raw) ?: raw).trim()
 
     companion object {
+        // TurnRecorder produces mono 16-bit PCM with WavEncoder's 44-byte WAV header.
+        private const val MAX_ASR_WAV_BYTES = 44 + 120 * WavEncoder.SAMPLE_RATE * Short.SIZE_BYTES
+
         /** The longest to wait for a Bluetooth headset to start delivering microphone audio. */
         private const val ROUTE_SWITCH_LIMIT_MS = 1_500L
 

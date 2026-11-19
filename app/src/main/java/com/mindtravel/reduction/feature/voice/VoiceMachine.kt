@@ -74,6 +74,8 @@ object VoiceMachine {
         /** The words of a finished recording; blank when nothing was understood. */
         data class Transcribed(val turn: Int, val text: String) : Event
 
+        data class TranscriptionFailed(val turn: Int, val message: String) : Event
+
         /** "好的" has been heard to the end. */
         data class OkDone(val turn: Int) : Event
 
@@ -204,6 +206,9 @@ object VoiceMachine {
 
     private fun turnAck(s: State, e: Event): Step = when {
         e is Event.OkDone && e.turn == s.turn -> settle(s.copy(okSounding = false), Effect.ReleaseRoute)
+
+        e is Event.TranscriptionFailed && e.turn == s.turn && s.pending == Pending.WORDS ->
+            settle(s.copy(pending = Pending.GO_IDLE), Effect.ShowError(e.message), Effect.Say(Cue.NOT_HEARD))
 
         e is Event.Transcribed && e.turn == s.turn && s.pending == Pending.WORDS ->
             if (e.text.isBlank()) {

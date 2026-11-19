@@ -52,7 +52,6 @@ import com.mindtravel.reduction.hardware.pc.PcGateway
 import com.mindtravel.reduction.hardware.power.DeviceBattery
 import com.mindtravel.reduction.hardware.pc.SshPcClient
 import com.mindtravel.reduction.model.ModelGraph
-import com.mindtravel.reduction.model.voice.RollingAsr
 import com.mindtravel.reduction.model.voice.TtsCache
 import com.mindtravel.reduction.model.voice.TtsSynthesizer
 import com.mindtravel.reduction.model.voice.VoiceDetector
@@ -199,7 +198,6 @@ class AppCore private constructor(context: Context) {
         ),
         headsetMic = headsetMic,
         keepRecording = recordings::keep,
-        rollingAsr = RollingAsr(models.audioGateway, scope),
         scope = scope
     )
 

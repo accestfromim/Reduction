@@ -32,10 +32,6 @@ window.Native = {
     voice.applyVoiceState(name);
   },
 
-  onVoicePartial(text) {
-    voice.showPartial(text);
-  },
-
   onVoiceError(message) {
     voice.showVoiceError(message);
   },
