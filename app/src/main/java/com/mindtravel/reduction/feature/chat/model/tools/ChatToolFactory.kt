@@ -11,6 +11,7 @@ import com.mindtravel.reduction.feature.memo.data.MemoStore
 import com.mindtravel.reduction.hardware.pc.PcGateway
 import com.mindtravel.reduction.hardware.pc.PcProfile
 import com.mindtravel.reduction.model.chat.SearchGateway
+import java.time.LocalDate
 
 class ChatToolFactory(
     private val searchGateway: SearchGateway,
@@ -34,13 +35,13 @@ class ChatToolFactory(
     /** Answers too long for one go, kept whole across the replies of a conversation. */
     private val longResults = LongResults()
 
-    fun create(settings: AppSettings): ToolRegistry {
+    fun create(settings: AppSettings, referenceDate: LocalDate): ToolRegistry {
         val harness = harness(settings)
         val tools = buildList {
             add(PatchCardsTool(cards, emitter))
-            add(ReadCardTool(cards))
-            add(SearchCardsTool(cards))
-            add(MemoTool(memos, emitter))
+            add(ReadCardTool(cards, memos))
+            add(SearchCardsTool(cards, memos))
+            add(MemoTool(memos, emitter) { referenceDate })
             if (settings.webSearchEnabled) add(WebSearchTool(searchGateway, settings.apiKey))
             if (settings.calculatorEnabled) add(CalculatorTool())
             // Drawing an article is done by the computer's browser: offered when there is a computer to ask.
@@ -77,6 +78,7 @@ class ChatToolFactory(
         profile = PcProfile(settings.pcHost, settings.pcPort, settings.pcUser),
         apiKey = settings.apiKey,
         model = settings.model,
+        defaultEngine = if (settings.agentEngine == "codex") AgentHarness.Engine.CODEX else AgentHarness.Engine.OPENCODE,
         launcherScript = agentLauncherScript,
         macLauncherScript = macAgentLauncherScript
     )

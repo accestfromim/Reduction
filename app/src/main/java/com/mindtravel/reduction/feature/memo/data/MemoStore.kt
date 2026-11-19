@@ -328,8 +328,7 @@ class MemoStore(
      * the open ones come first, then by day; finished ones stay at the end, greyed.
      */
     @Synchronized
-    fun view(): View {
-        val day = today()
+    fun view(day: LocalDate = today()): View {
         fun listed(memos: List<Memo>): List<Memo> = memos
             .sortedWith(compareBy<Memo> { it.done }.thenBy { it.due ?: LocalDate.MAX }.thenBy { it.part?.ordinal ?: -1 })
 
@@ -343,7 +342,7 @@ class MemoStore(
     fun today(): LocalDate = Instant.ofEpochMilli(now()).atZone(zone).toLocalDate()
 
     /** Whether [memo] is open and its day has passed. */
-    fun isOverdue(memo: Memo): Boolean = !memo.done && memo.due != null && memo.due!! < today()
+    fun isOverdue(memo: Memo, day: LocalDate = today()): Boolean = !memo.done && (memo.due?.isBefore(day) == true)
 
     private fun oneLine(text: String): String =
         text.trim().replace(Regex("\\s+"), " ").take(MAX_TEXT)

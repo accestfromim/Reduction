@@ -28,7 +28,7 @@
 - 资源热更新：JS/CSS/HTML 可下载小资源包更新，不重装 APK
 - 更新推送依赖 App 与电脑 SSH 连接存活；App 被杀或断线时，下次连接补查
 - 播放中打断只认唤醒词“Hi Reduction”；需要耳机输出
-- sub agent：super agent 只做对话、任务卡、派发、验收；所有 sub agent 经 run_agent 一个接口派发，在电脑上的沙箱里后台运行，可随时查询进度；它们用手机设置里的 DeepSeek API Key 和模型
+- sub agent：super agent 只做对话、任务卡、派发、验收。子代理经 `run_agent` 派发，在电脑沙箱里后台运行，可随时查询进度。OpenCode 读取 Reduction 的 DeepSeek 设置，Codex 使用执行电脑上专供 Reduction 的登录。
 - 诊断日志：连接电脑期间，手机每 3 秒把运行日志追加到电脑的 `~/reduction-agents/logs/phone.log`
 - 录音留存：每轮说的话、每次按住说话、每次唤醒词触发前 5 秒的音频（听到名字但没有唤醒的那几秒也留）各存成一个 WAV，识别出的文字放在同名的文本文件里；连接电脑期间送到电脑的 `~/reduction-agents/recordings/`，电脑上的文件大小核对无误后从手机删除；没连上时留在手机上，最多 300 MB，满了先丢最早的
 - 会话状态：助手可以查看电脑上 Claude、codex、opencode 编程会话各自的状态（session_status）。电脑上的脚本读会话记录，只交回摘要：最后活动时间、在做什么、是否卡住或在等用户、最后一句话的开头；会话原文不离开电脑
@@ -71,7 +71,7 @@
 - 不静默：提问后请求没发出去会自动重发，共三次，第一次重发时说“网络不太好，正在重试”；三次都不通就说“网络不通，没能回答，请稍后再说一遍”。没听清、出错、麦克风打不开也各有一句。这些话预先备好，没有网络也能播：用当前音色合成后留在手机上，合成不了时用随包自带的录音
 - 录音提示：开麦的同时响起一个微弱、缓慢起伏的和弦（C 六九和弦，重心放在中低音：C3、G3 打底，C4、E4、G4 是主体，D5、A5 只留一点亮色；立体声，每个音由左右两根相差极小的弦叠成，并在两耳之间缓缓游走；一道响度的波峰每四秒从低音走到高音），它持续就表示麦克风仍在收音，录音中断时它会自己停下；每次关麦播“好的”（说完、没人说话、取消、出错都一样）
 - 待办与计划：底层是一个备忘录插件（`feature/memo`），待办和时间只存在它那里，界面和助手都只通过它读写
-  - 用户说的是待办就登记成待办，走助手唯一的 `todo` 工具；带日期的落进时间轴，相对日期（“明天”“三天后”）在写入时按当天日期解析成具体日期
+  - 用户说的是待办就登记成待办，走助手的 `todo` 工具。程序按原消息使用的日历日期换算相对时间，模型收到具体日期和日期范围。界面按查看当天显示“今天”“明天”或“下周二”，聊天记录保留原话。
   - 没时间的待办挂在最上面，用户当天第一次开口时由助手提一次，请用户补日期
   - 审阅卡片「计划」由程序从插件写出来，分今天、未来、没日期三块，日期可以不填，这时它在程序里是 `empty`：程序把它视同明天发生，每天早上提醒一次，提醒语是“这些没有标记时间，你要补齐吗？”，直到填上日期。`empty` 的含义只在程序层，助手的提示词和工具说明里没有它；每条显示内容、时间和状态；点一下完成，再点一下重新打开。已完成只移出提醒，记录保留
   - 待办精确到天，日期之外有一个可空的时段：早上、上午、下午、晚上。不填就是当天；时段背后没有钟点。用户说了几点，写在待办的内容里
@@ -296,7 +296,19 @@ open dist/Reduction.app
 - `Control + Shift + 空格` 按住说话，`Control + Option + Shift + 空格` 按住听写，`Control + Shift + R` 打开或收起面板。听写结果可在回复窗口编辑、复制。第一次录音时由系统请求麦克风权限。
 - 对话、卡片、待办和任务记录沿用 `~/.local/share/reduction/`，设置在 `~/.config/reduction/settings.json`。运行日志可从菜单栏打开，路径为 `~/.local/share/reduction/macos.log`。若要和 Android 同步，在 Mac 打开「系统设置 → 通用 → 共享 → 远程登录」，再在手机配置这台电脑。
 - 文章预览和长图导出使用应用内的 WebKit。通过手机发起导出时，Mac 上打开过 `Reduction.app` 即可找到渲染程序。
-- 派发 OpenCode 任务需要安装 Python 3、OpenCode 和 Anthropic Sandbox Runtime。Node.js 22.12 或更新版本可用 `npm install -g @anthropic-ai/sandbox-runtime@0.0.83` 安装 `srt`。安装后确认 `opencode` 和 `srt` 位于 `/usr/local/bin`、`/opt/homebrew/bin` 或 `~/.local/bin` 等可执行路径。只读任务可以读取项目并写入自己的结果目录，写入项目需要使用现有的写入模式。默认网络访问限于模型和 OpenCode 服务。需要其他域名时，可在启动应用的环境中将 `REDUCTION_AGENT_ALLOWED_DOMAINS` 设为空格分隔的域名。
+- 派发子代理任务需要 Python 3 和 Anthropic Sandbox Runtime。Node.js 22.12 或更新版本可用 `npm install -g @anthropic-ai/sandbox-runtime@0.0.83` 安装 `srt`。确认 `srt` 和选用的执行器在 `/usr/local/bin`、`/opt/homebrew/bin` 或 `~/.local/bin` 等可执行路径。只读任务可以读取项目并写入自己的结果目录。写入项目需要使用写入模式。默认网络访问限于执行器使用的服务。需要其他域名时，可在启动应用的环境中将 `REDUCTION_AGENT_ALLOWED_DOMAINS` 设为空格分隔的域名。
+
+### 子代理执行器
+
+在桌面或手机的「设置 → 子代理执行器」选择 OpenCode 或 Codex，保存后用于新任务。手机通过 SSH 派发时，执行器和登录凭据位于 SSH 所连接的电脑。Linux 和 WSL 的任务由 `bwrap` 隔离。
+
+- OpenCode 使用 Reduction 设置中的 DeepSeek API Key 和模型。
+- Codex 使用支持 `codex exec --json` 的新版 Codex CLI。先在执行电脑上登录一次。下面的命令将凭据存入专供 Reduction 的目录。macOS 也可以使用 ChatGPT 应用随附的 Codex CLI。
+
+```bash
+env CODEX_HOME="$HOME/.local/share/reduction-codex" \
+  codex -c 'cli_auth_credentials_store="file"' login
+```
 
 ### Windows + WSL 和 Linux
 

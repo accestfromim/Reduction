@@ -57,10 +57,17 @@ extension PhoneStore {
             let remoteHistory = peer["history"]
             next.historyClearedAt = max(next.historyClearedAt, remoteHistory["clearedAt"].integer)
             next.history.removeAll { $0.at <= next.historyClearedAt }
-            var known = Set(next.history.map(\.id))
+            var indices = Dictionary(next.history.enumerated().map { ($0.element.id, $0.offset) },
+                                     uniquingKeysWith: { first, _ in first })
             for entry in remoteHistory["lines"].values {
                 let line = try JSONDecoder().decode(HistoryLine.self, from: entry.data())
-                if line.at > next.historyClearedAt, ["assistant", "user"].contains(line.role), !line.id.isEmpty, known.insert(line.id).inserted {
+                guard line.at > next.historyClearedAt, ["assistant", "user"].contains(line.role), !line.id.isEmpty else { continue }
+                if let index = indices[line.id] {
+                    if next.history[index].referenceDate == nil {
+                        next.history[index].referenceDate = line.referenceDate
+                    }
+                } else {
+                    indices[line.id] = next.history.count
                     next.history.append(line)
                 }
             }

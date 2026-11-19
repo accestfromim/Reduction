@@ -62,7 +62,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import java.io.File
-import java.time.LocalDate
 
 /**
  * Everything a conversation needs, living as long as the process does — not as long as
@@ -180,7 +179,6 @@ class AppCore private constructor(context: Context) {
         cards = cardRepository,
         chat = chatController,
         emitter = ui,
-        today = { LocalDate.now().toString() },
         deviceNotices = {
             batteryWatch.notices(deviceBattery.readings().map { BatteryWatch.Device(it.name, it.percent, it.charging) })
         },

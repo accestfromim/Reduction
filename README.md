@@ -92,7 +92,7 @@ desktop/install.sh     # 装成应用：桌宠、开机自启、桌面图标
 
 ### 让手机调度电脑上的 agent
 
-在电脑上开启 SSH 服务，在手机 App 里点电脑图标，复制公钥加到电脑的 `~/.ssh/authorized_keys`，再填入电脑地址。子代理使用手机配置的 DeepSeek API Key。Linux 和 WSL 需要 `bwrap`，macOS 需要 Python 3 和 Anthropic Sandbox Runtime。两者都需要 [OpenCode](https://opencode.ai/)。[macOS 依赖与使用说明](docs/DEVELOPMENT.md#macos)
+在电脑上开启 SSH 服务，在手机 App 里点电脑图标，复制公钥加到电脑的 `~/.ssh/authorized_keys`，再填入电脑地址。在「设置 → 子代理执行器」选择 OpenCode 或 Codex。Linux 和 WSL 需要 `bwrap`，macOS 需要 Python 3 和 Anthropic Sandbox Runtime。[执行器登录和依赖](docs/DEVELOPMENT.md#子代理执行器)
 
 ## 你的数据在哪
 

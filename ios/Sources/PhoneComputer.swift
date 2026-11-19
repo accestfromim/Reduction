@@ -299,7 +299,11 @@ final class PhoneComputer {
             let folder = named == "project" ? settings["pcProject"].text : "~/reduction-agents/\(named)"
             let mac = Data(try harness("macos-agent.py").utf8).base64EncodedString()
             let wrapped = "REDUCTION_MAC_AGENT_SCRIPT=\(Self.quote(mac))\n" + script
-            let environment = "AGENT_KEY=\(Self.quote(key)) AGENT_MODEL=\(Self.quote("deepseek/" + settings["model"].text)) AGENT_ENGINE=opencode "
+            let engine = settings["agentEngine"].text
+            var environment = "AGENT_ENGINE=\(Self.quote(engine)) "
+            if engine == "opencode" {
+                environment += "AGENT_KEY=\(Self.quote(key)) AGENT_MODEL=\(Self.quote("deepseek/" + settings["model"].text)) "
+            }
             let returned = try await runScript(wrapped, with: "sh -s --", args: ["start", write ? "build" : "plan", folder, prompt],
                                                client: client, environment: environment)
             guard let line = returned.split(whereSeparator: \.isNewline).first(where: { $0.hasPrefix("RUN ") }) else {

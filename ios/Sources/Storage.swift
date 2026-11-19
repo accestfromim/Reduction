@@ -61,6 +61,15 @@ struct HistoryLine: Codable, Equatable {
     var role: String
     var content: String
     var at: Int
+    var referenceDate: String? = nil
+
+    var modelContent: String {
+        var day = referenceDate
+        if day == nil, at > 0 {
+            day = MemoDays.name(Date(timeIntervalSince1970: Double(at) / 1000))
+        }
+        return RelativeDates.context(content, referenceDate: day)
+    }
 }
 
 struct PhoneMemo: Codable, Equatable {
@@ -97,7 +106,7 @@ final class PhoneStore {
     static let defaults: [String: JSON] = [
         "model": "deepseek-flash", "voice": "stella", "autoSpeak": true, "webSearchEnabled": true, "calculatorEnabled": true,
         "pcHost": "", "pcUser": "", "pcPort": 22, "pcProject": "~/Reduction-iterate",
-        "opencodeEnabled": false, "opencodeWriteEnabled": false
+        "agentEngine": "opencode", "opencodeEnabled": false, "opencodeWriteEnabled": false
     ]
 
     private let file: URL
@@ -145,6 +154,9 @@ final class PhoneStore {
         }
         var next = Self.defaults
         for key in Self.defaults.keys where input[key] != .null { next[key] = input[key] }
+        guard ["opencode", "codex"].contains(next["agentEngine"]?.text ?? "") else {
+            throw ReductionError("子代理执行器无效")
+        }
         guard ["deepseek-flash", "deepseek-v4-pro"].contains(next["model"]?.text ?? ""),
               ["stella", "tide"].contains(next["voice"]?.text ?? ""),
               (1...65535).contains(next["pcPort"]?.integer ?? 0) else { throw ReductionError("模型、音色或 SSH 端口无效") }
@@ -280,11 +292,11 @@ final class PhoneStore {
         return (1...200).prefix { mediaURL("\(id).p\($0).jpg") != nil }.count
     }
 
-    func remember(_ role: String, _ text: String) throws {
+    func remember(_ role: String, _ text: String, referenceDate: String = MemoDays.name()) throws {
         guard !text.trimmed.isEmpty else { return }
         try change { next in
             let at = max(nowMilliseconds(), next.historyClearedAt + 1, (next.history.last?.at ?? 0) + 1)
-            next.history.append(HistoryLine(id: UUID().uuidString, role: role, content: text, at: at))
+            next.history.append(HistoryLine(id: UUID().uuidString, role: role, content: text, at: at, referenceDate: referenceDate))
             next.history = Array(next.history.suffix(100))
         }
     }

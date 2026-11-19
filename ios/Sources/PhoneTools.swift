@@ -60,7 +60,7 @@ enum PhoneTools {
             specification("search_cards", "按词搜索卡片名称和正文。", [("query", "string", "用空格分隔的关键词"), ("folder", "string", "可选文件夹"), ("match", "string", "all 或 any")], required: ["query"]),
             specification("todo", "登记、改动或查询用户自己的待办。date 用 yyyy-MM-dd，未指定时可留空。part 可填早上、上午、下午、晚上、none。", [
                 ("action", "string", "add、update、done、delete 或 list"), ("id", "integer", "待办编号"), ("text", "string", "待办内容"),
-                ("date", "string", "日期"), ("part", "string", "时段"), ("done", "boolean", "是否完成")
+                ("date", "string", "具体日期 yyyy-MM-dd"), ("part", "string", "时段"), ("done", "boolean", "是否完成")
             ], required: ["action"]),
             specification("read_more", "读取分片的长结果。", [("id", "integer", "长结果编号"), ("piece", "integer", "片号")], required: ["id"])
         ]
@@ -72,7 +72,7 @@ enum PhoneTools {
         }
         if online && (settings["opencodeEnabled"].flag || settings["opencodeWriteEnabled"].flag) {
             tools.append(specification("session_status", "查看自己电脑上的编程会话摘要。", [], required: []))
-            tools.append(specification("run_agent", "在用户自己的电脑上派发 OpenCode 沙箱任务，或查询、结束已有任务。", [
+            tools.append(specification("run_agent", "在用户自己的电脑上用设置中选定的子代理执行器派发沙箱任务，或查询、结束已有任务。", [
                 ("action", "string", "start、status 或 stop"), ("task", "string", "任务描述"),
                 ("access", "string", "read 或 write"), ("folder", "string", "project 或实际任务文件夹名"), ("run", "integer", "任务编号")
             ], required: ["action"]))
@@ -90,7 +90,7 @@ enum PhoneTools {
 
     static func read(_ args: JSON, store: PhoneStore) throws -> ToolAnswer {
         let name = try PhoneStore.cleanName(args["name"].text)
-        if name == "计划" { return ToolAnswer(text: store.memoText()) }
+        if name == "计划" { return ToolAnswer(text: store.memoText(absoluteDates: true)) }
         guard let card = store.state.cards[name] else { throw ReductionError("卡片「\(name)」不存在") }
         let parts = args["pages"].text.split(separator: "-", maxSplits: 1)
         let first = parts.first.flatMap { Int($0) } ?? 1

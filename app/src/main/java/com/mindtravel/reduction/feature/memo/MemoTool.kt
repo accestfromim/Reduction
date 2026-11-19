@@ -13,18 +13,18 @@ import java.time.LocalDate
 /**
  * The one way the assistant touches to-dos. Everything the user says that is a to-do goes
  * through here: add one, move its day, change it, finish it, drop it. A to-do is due on a
- * day, given as the date that was meant — "明天" is worked out from today's date first.
+ * day, given as the date that was meant. Relative dates use the request's original date.
  */
 class MemoTool(
     private val store: MemoStore,
     private val emitter: EventSink,
-    private val today: () -> LocalDate = { store.today() }
+    private val referenceDate: () -> LocalDate = { store.today() }
 ) : ChatTool {
 
     override val spec = ToolSpec(
         name = "todo",
 description = "待办与提醒的唯一入口。用户说的待办登记在这里；待办精确到天，可以再带一个时段（早上、上午、下午、晚上），没有几点几分。有日期的待办在当天早上提醒一次，过期未完成每天提醒一次，直到完成或改期。完成只移出提醒，记录保留。" +
-            "日期用 yyyy-MM-dd，“明天”“后天”这类相对说法先按今天的日期算成具体日期再填。",
+            "日期用 yyyy-MM-dd。涉及历史消息时，使用该条消息标注的日期和换算结果。",
         parameters = listOf(
             ToolParam("action", "add：登记一条；update：改内容或日期；done：标记完成或重新打开；delete：删掉一条；list：看现在的待办", choices = listOf("add", "update", "done", "delete", "list")),
             ToolParam("id", "update、done、delete 时的编号，例如 3；list 时可不填", required = false),
@@ -102,13 +102,13 @@ description = "待办与提醒的唯一入口。用户说的待办登记在这�
     }
 
     private fun list(): String {
-        val view = store.view()
-        val day = today()
+        val day = store.today()
+        val view = store.view(day)
         fun line(memo: MemoStore.Memo): String =
-            "- #${memo.id} " + memo.text + " · " + (memo.due?.let { DueParser.describe(it, memo.part, day) } ?: (memo.part?.label ?: "没有标记时间")) +
-                (if (memo.done) " · 已完成" else if (store.isOverdue(memo)) " · 已过期" else "")
+            "- #${memo.id} " + memo.text + " · " + (memo.due?.let { DueParser.describe(it, memo.part) } ?: (memo.part?.label ?: "没有标记时间")) +
+                (if (memo.done) " · 已完成" else if (store.isOverdue(memo, day)) " · 已过期" else "")
         return buildString {
-            appendLine("今天：")
+            appendLine("到期日截至 $day")
             if (view.today.isEmpty()) appendLine("（没有）") else view.today.forEach { appendLine(line(it)) }
             appendLine("未来：")
             if (view.future.isEmpty()) appendLine("（没有）") else view.future.forEach { appendLine(line(it)) }
@@ -126,7 +126,7 @@ description = "待办与提醒的唯一入口。用户说的待办登记在这�
     private fun due(args: JSONObject): LocalDate? {
         val date = args.stringOrNull("date")?.trim()
         if (date.isNullOrEmpty() || date.equals(DueParser.EMPTY, ignoreCase = true)) return null
-        return DueParser.dayOf(date, today()) ?: throw IllegalArgumentException("日期读不出来（$date）")
+        return DueParser.dayOf(date, referenceDate()) ?: throw IllegalArgumentException("日期读不出来（$date）")
     }
 
     /** The part of the day the call names; null when none was said, or it was taken away. An unknown one is an error. */
@@ -137,7 +137,7 @@ description = "待办与提醒的唯一入口。用户说的待办登记在这�
     }
 
     private fun whenLabel(memo: MemoStore.Memo): String =
-        memo.due?.let { "，${DueParser.describe(it, memo.part, today())}" }
+        memo.due?.let { "，${DueParser.describe(it, memo.part)}" }
             ?: ("，没有标记时间" + (memo.part?.let { "，${it.label}" } ?: ""))
 
     private fun find(args: JSONObject): MemoStore.Memo? {

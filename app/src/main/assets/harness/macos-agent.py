@@ -10,8 +10,9 @@ import uuid
 from pathlib import Path
 
 
-def sandbox_config(project, run, program, agent, domains):
-    readable = [project, run / "home", run / "result", run / "prompt.txt", program.parent]
+def sandbox_config(project, run, program, agent, domains, auth):
+    codex_home = auth.get("CODEX_HOME")
+    readable = [project, run / "home", run / "result", run / "prompt.txt", program if codex_home else program.parent]
     git_pointer = project / ".git"
     if git_pointer.is_file():
         common = subprocess.run(
@@ -22,6 +23,14 @@ def sandbox_config(project, run, program, agent, domains):
     writable = [run / "home", run / "result"]
     if agent == "build":
         writable.append(project)
+    if codex_home:
+        readable.extend([Path(codex_home), Path(auth["CODEX_CA_CERTIFICATE"])])
+        writable.append(Path(codex_home))
+        if program.as_posix().endswith("/node_modules/@openai/codex/bin/codex.js"):
+            node = shutil.which("node")
+            if not node:
+                sys.exit("harness：npm 安装的 Codex 需要 Node.js")
+            readable.extend([program.parents[2], Path(node).resolve(strict=True).parent])
 
     def literal(paths):
         return [{"path": str(path), "literal": True} for path in paths]
@@ -37,7 +46,7 @@ def sandbox_config(project, run, program, agent, domains):
     }
 
 
-def backend(engine, model, agent, workspace, prompt):
+def backend(engine, model, agent, workspace, prompt, result_file):
     executable = shutil.which(engine)
     if not executable:
         sys.exit(f"harness：这台 Mac 上找不到 {engine}")
@@ -48,6 +57,22 @@ def backend(engine, model, agent, workspace, prompt):
             sys.exit("harness：请在 Reduction 中配置有效的 DeepSeek API Key")
         args = ["run", "--format", "json", "--model", model, "--agent", agent, "--dir", str(workspace), "--", prompt]
         return program, args, {"DEEPSEEK_API_KEY": key}, ["api.deepseek.com", "models.dev", "opencode.ai"]
+    if engine == "codex":
+        codex_home = Path.home() / ".local" / "share" / "reduction-codex"
+        auth_file = codex_home / "auth.json"
+        if not auth_file.is_file() or auth_file.stat().st_size == 0:
+            sys.exit("harness：请在执行电脑上登录 Reduction 的 Codex，见 iOS 或桌面使用说明")
+        # macOS 无法嵌套 Seatbelt。外层 srt 对 Codex 和所有子进程生效。
+        args = [
+            "exec", "--json", "--ephemeral", "--ignore-user-config", "--ignore-rules",
+            "--skip-git-repo-check", "--dangerously-bypass-approvals-and-sandbox",
+            "-c", 'cli_auth_credentials_store="file"', "--output-last-message", str(result_file),
+            "--", prompt,
+        ]
+        # 沙箱里的 Codex 通过 PEM 文件验证 macOS 系统信任的证书。
+        certificates = Path(os.environ.get("CODEX_CA_CERTIFICATE") or "/etc/ssl/cert.pem").expanduser().resolve(strict=True)
+        auth = {"CODEX_HOME": str(codex_home), "CODEX_CA_CERTIFICATE": str(certificates)}
+        return program, args, auth, ["api.openai.com", "auth.openai.com", "chatgpt.com"]
     if engine == "claude":
         auth = {name: os.environ[name] for name in ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN") if os.environ.get(name)}
         if not auth:
@@ -113,10 +138,10 @@ def main():
         sys.exit("harness：macOS 需要 Anthropic Sandbox Runtime（srt），请按电脑端说明安装")
 
     project = Path(folder).resolve(strict=True)
-    program, args, auth, domains = backend(engine, model, agent, project, prompt)
+    run = Path(state).resolve() / "runs" / uuid.uuid4().hex
+    program, args, auth, domains = backend(engine, model, agent, project, prompt, run / "result" / "result.md")
     domains += os.environ.get("REDUCTION_AGENT_ALLOWED_DOMAINS", "").split()
     os.umask(0o077)
-    run = Path(state).resolve() / "runs" / uuid.uuid4().hex
     home = run / "home"
     temp = home / "tmp"
     temp.mkdir(parents=True)
@@ -124,7 +149,7 @@ def main():
     (home / ".reduction-result").symlink_to(run / "result", target_is_directory=True)
     (run / "prompt.txt").write_text(prompt + "\n", encoding="utf-8")
     settings = run / "sandbox.json"
-    settings.write_text(json.dumps(sandbox_config(project, run, program, agent, domains)), encoding="utf-8")
+    settings.write_text(json.dumps(sandbox_config(project, run, program, agent, domains, auth)), encoding="utf-8")
     socket_root = Path.home() / ".cache" / "reduction"
     socket_root.mkdir(parents=True, exist_ok=True)
     env = {

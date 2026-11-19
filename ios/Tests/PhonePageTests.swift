@@ -74,6 +74,70 @@ final class PhonePageTests: XCTestCase {
     }
 
     @MainActor
+    func testMessageDatesSurviveReloadAndSync() throws {
+        let fm = FileManager.default
+        let caches = try fm.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        let root = caches.appendingPathComponent("MessageDates-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: root) }
+        let sourcePath = root.appendingPathComponent("source")
+        let source = try PhoneStore(directory: sourcePath)
+        let text = "明天档案归档，下周二核对。这周整理资料。用「明天」当标签。"
+        try source.remember("user", text, referenceDate: "2026-11-18")
+
+        let reloaded = try PhoneStore(directory: sourcePath)
+        let target = try PhoneStore(directory: root.appendingPathComponent("target"))
+        XCTAssertTrue(try target.merge(reloaded.syncPayload()))
+        let line = try XCTUnwrap(target.state.history.last)
+        XCTAssertEqual(line.content, text)
+        XCTAssertEqual(line.modelContent,
+                       "［原消息日期 2026-11-18］\n2026-11-19档案归档，2026-11-24核对。2026-11-16 至 2026-11-22整理资料。用「明天」当标签。")
+        XCTAssertEqual(try MemoDays.parse("下周二", referenceDate: "2026-11-19"), "2026-11-24")
+        XCTAssertEqual(try MemoDays.parse("这周二", referenceDate: "2026-11-19"), "2026-11-17")
+        XCTAssertEqual(try MemoDays.parse("两天后", referenceDate: "2026-11-18"), "2026-11-20")
+        XCTAssertEqual(try MemoDays.parse("下周二", referenceDate: "2026-12-31"), "2027-01-05")
+        XCTAssertEqual(RelativeDates.display("2026-11-24", relativeTo: "2026-11-19"), "下周二")
+    }
+
+    @MainActor
+    func testMemoDatesUseTheTurnDateAndRenderForEachView() throws {
+        let fm = FileManager.default
+        let caches = try fm.url(for: .cachesDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
+        let root = caches.appendingPathComponent("MemoDates-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: root) }
+        let store = try PhoneStore(directory: root)
+        let result = try store.applyMemo(["action": "add", "text": "档案归档", "date": "明天", "part": "早上"],
+                                         referenceDate: "2026-11-18")
+        let memo = try XCTUnwrap(store.state.memos.first)
+        XCTAssertEqual(memo.due, "2026-11-19")
+        XCTAssertTrue(result.contains("2026-11-19 早上"))
+        XCTAssertTrue(try PhoneTools.read(["name": "计划"], store: store).text.contains("档案归档 · 2026-11-19 早上"))
+        XCTAssertEqual(MemoDays.label(memo, today: "2026-11-18"), "明天 早上")
+        XCTAssertEqual(MemoDays.label(memo, today: "2026-11-19"), "今天 早上")
+        XCTAssertFalse(store.memoText().contains("# 没日期"))
+        _ = try store.applyMemo(["action": "add", "text": "整理归档清单"])
+        XCTAssertTrue(store.memoText().contains("# 没日期\n- #2 整理归档清单"))
+    }
+
+    @MainActor
+    func testSharedPlanShowsUndatedGroupWhenItHasTasks() async throws {
+        let controller = PhonePageController()
+        controller.loadViewIfNeeded()
+        let view = try XCTUnwrap(controller.view.subviews.compactMap { $0 as? WKWebView }.first)
+        try await ready(view)
+
+        let result = try await view.callAsyncJavaScript("""
+            const cards = await import('/js/features/cards/cards.js');
+            document.getElementById('tabCards').click();
+            cards.openCard('计划');
+            const headings = Array.from(document.querySelectorAll('#cardPlan .plan-head'), node => node.textContent);
+            return { headings, hasUndated: JSON.parse(window.Android.memoView()).undated.length > 0 };
+            """, arguments: [:], in: nil, contentWorld: .page)
+        let values = try XCTUnwrap(result as? [String: Any])
+        let expected = try XCTUnwrap(values["hasUndated"] as? Bool) ? ["今天", "未来", "没日期"] : ["今天", "未来"]
+        XCTAssertEqual(values["headings"] as? [String], expected)
+    }
+
+    @MainActor
     func testSharedPageKeepsCardEdits() async throws {
         let controller = PhonePageController()
         controller.loadViewIfNeeded()
@@ -100,6 +164,34 @@ final class PhonePageTests: XCTestCase {
         let deleted = try await reopened.callAsyncJavaScript("return window.Android.deleteCard(title);", arguments: ["title": title],
                                                             in: nil, contentWorld: .page)
         XCTAssertEqual(deleted as? Bool, true)
+    }
+
+    @MainActor
+    func testSharedSettingsSaveAgentEngine() async throws {
+        let controller = PhonePageController()
+        controller.loadViewIfNeeded()
+        let view = try XCTUnwrap(controller.view.subviews.compactMap { $0 as? WKWebView }.first)
+        try await ready(view)
+        let raw = try await view.evaluateJavaScript("window.Android.loadSettings()")
+        let previous = try XCTUnwrap(raw as? String)
+        addTeardownBlock { @MainActor in
+            defer { withExtendedLifetime(controller) {} }
+            let saved = try await view.callAsyncJavaScript("return window.Android.saveSettings(previous);",
+                                                           arguments: ["previous": previous], in: nil, contentWorld: .page)
+            XCTAssertEqual(saved as? Bool, true)
+        }
+
+        for engine in ["codex", "opencode"] {
+            let saved = try await view.callAsyncJavaScript("""
+                document.getElementById('settingsBtn').click();
+                const picker = document.getElementById('agentEngineSelect');
+                picker.value = engine;
+                picker.dispatchEvent(new Event('change'));
+                document.getElementById('saveSettings').click();
+                return JSON.parse(window.Android.loadSettings()).agentEngine;
+                """, arguments: ["engine": engine], in: nil, contentWorld: .page)
+            XCTAssertEqual(saved as? String, engine)
+        }
     }
 
     @MainActor

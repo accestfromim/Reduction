@@ -232,31 +232,32 @@ final class PhoneCore {
 
     func submit(id: String, raw: String, images: JSON = .null) throws -> Bool {
         guard chat == nil else { throw ReductionError("请等待当前回复完成") }
+        let referenceDate = MemoDays.name()
         let key = try store.apiKey()
         guard !key.isEmpty else { throw ReductionError("请在设置中填写 DeepSeek API Key") }
         let attached = try messagePictures(images)
         let text = raw.trimmed.isEmpty && !attached.isEmpty ? "已发送图片" : raw.trimmed
         guard !text.isEmpty else { return false }
-        try store.remember("user", text)
+        try store.remember("user", text, referenceDate: referenceDate)
         if !attached.isEmpty, let id = store.state.history.last?.id { pictures[id] = attached }
         let keep = Set(store.state.history.suffix(6).map(\.id))
         pictures = pictures.filter { keep.contains($0.key) }
         mutedReply = nil
         computer.changed()
         emit("onReplyBegin", [.string(id), .string(text)])
-        let task = Task { await answer(id: id, api: DeepSeek(key: key)) }
+        let task = Task { await answer(id: id, api: DeepSeek(key: key), referenceDate: referenceDate) }
         chat = (id, task)
         return true
     }
 
-    private func answer(id: String, api: DeepSeek) async {
+    private func answer(id: String, api: DeepSeek, referenceDate: String) async {
         defer { if chat?.id == id { chat = nil } }
         do {
             let settings = try store.settings()
             let tools = PhoneTools.available(settings: settings, online: computer.state == "connected")
             let allowed = Set(tools.map { $0["function"]["name"].text })
             let model = settings["model"].text
-            var messages = historyForModel()
+            var messages = historyForModel(referenceDate: referenceDate)
             for _ in 0..<12 {
                 try Task.checkCancellation()
                 if settings["autoSpeak"].flag && mutedReply != id { speech.begin(id: id, api: api, voice: settings["voice"].text) }
@@ -268,7 +269,7 @@ final class PhoneCore {
                 try Task.checkCancellation()
                 if reply.calls.isEmpty {
                     guard !reply.text.trimmed.isEmpty else { throw ReductionError("DeepSeek 没有返回文字") }
-                    try store.remember("assistant", reply.text)
+                    try store.remember("assistant", reply.text, referenceDate: referenceDate)
                     emit("onChatDone", [.string(id), .string(reply.text)])
                     speech.finish()
                     computer.changed()
@@ -285,7 +286,8 @@ final class PhoneCore {
                     let success: Bool
                     do {
                         guard allowed.contains(call.name) else { throw ReductionError("工具当前未启用") }
-                        let result = try await run(call.name, args: JSON(text: call.arguments.isEmpty ? "{}" : call.arguments), api: api)
+                        let result = try await run(call.name, args: JSON(text: call.arguments.isEmpty ? "{}" : call.arguments),
+                                                   api: api, referenceDate: referenceDate)
                         text = pages.store(result.text)
                         attachments.append(contentsOf: result.pictures.map(\.part))
                         success = true
@@ -311,13 +313,14 @@ final class PhoneCore {
         }
     }
 
-    private func historyForModel() -> [JSON] {
+    private func historyForModel(referenceDate: String) -> [JSON] {
         let cards = store.state.cards.values.sorted { $0.name < $1.name }
         let outline = cards.map { "- \($0.name) \($0.purpose)" }.joined(separator: "\n")
         let prompts = cards.filter(\.prompt).map(\.text).joined(separator: "\n\n")
         let system = """
-        你是 Reduction 随身助手。回复要自然简短，给出可执行的信息。今天是 \(MemoDays.name())。
-        按用户要求使用工具。用户要求记待办时用 todo，日程日期先转换为明确日期。用户要求记资料时使用卡片。
+        你是 Reduction 随身助手。回复要自然简短，给出可执行的信息。今天是 \(referenceDate)。
+        程序按原消息日期换算相对时间，给出具体日期或日期范围。引用旧话时，按被引用消息的日期理解。日程日期不明确时先确认。写入待办和派发子代理时使用具体日期。跟用户说话时可以按本轮日期说今天、明天或下周几。
+        按用户要求使用工具。用户要求记待办时用 todo，date 填 yyyy-MM-dd。用户要求记资料时使用卡片。
         用 read_card 取原文后再修改已有卡片。放入图片时用 ![说明](media:编号)，只用上下文提供的附件编号。
         子代理在用户自己的电脑运行，手机负责派发、验收并告知结果。工具失败要明确说明。
         当前卡片目录
@@ -325,14 +328,15 @@ final class PhoneCore {
         \(prompts)
         """
         return [["role": "system", "content": .string(system)]] + store.state.history.suffix(24).map { line in
-            guard let attached = pictures[line.id], !attached.isEmpty else { return ["role": .string(line.role), "content": .string(line.content)] }
+            let content = line.modelContent
+            guard let attached = pictures[line.id], !attached.isEmpty else { return ["role": .string(line.role), "content": .string(content)] }
             let ids = attached.map(\.name).joined(separator: "、")
-            let parts = [JSON.object(["type": "text", "text": .string(line.content + "\n附件编号 \(ids)")])] + attached.map(\.part)
+            let parts = [JSON.object(["type": "text", "text": .string(content + "\n附件编号 \(ids)")])] + attached.map(\.part)
             return ["role": .string(line.role), "content": .array(parts)]
         }
     }
 
-    private func run(_ name: String, args: JSON, api: DeepSeek) async throws -> ToolAnswer {
+    private func run(_ name: String, args: JSON, api: DeepSeek, referenceDate: String) async throws -> ToolAnswer {
         switch name {
         case "calculator": return ToolAnswer(text: try PhoneTools.calculator(args["expression"].text))
         case "web_search": return ToolAnswer(text: try await api.search(args["query"].text))
@@ -343,7 +347,7 @@ final class PhoneCore {
         case "read_card": return try PhoneTools.read(args, store: store)
         case "search_cards": return ToolAnswer(text: try PhoneTools.search(args, store: store))
         case "todo":
-            let text = try store.applyMemo(args)
+            let text = try store.applyMemo(args, referenceDate: referenceDate)
             memosChanged()
             return ToolAnswer(text: text)
         case "read_more": return ToolAnswer(text: try pages.read(args))

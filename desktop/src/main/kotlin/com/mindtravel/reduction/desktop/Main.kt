@@ -51,7 +51,6 @@ import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
-import java.time.LocalDate
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -327,7 +326,6 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         cards = cards,
         chat = chat,
         emitter = page,
-        today = { LocalDate.now().toString() },
         place = "电脑"
     )
 

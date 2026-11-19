@@ -14,16 +14,20 @@ object MemoCard {
     const val CARD = "计划"
     const val PURPOSE = "程序写入的待办与日期：今天、未来、没日期。助手用 todo 工具增改，用户在卡片上勾掉"
 
-    fun render(store: MemoStore): String {
-        val view = store.view()
+    fun render(store: MemoStore, absoluteDates: Boolean = false): String {
         val today = store.today()
+        val view = store.view(today)
+        val title = if (absoluteDates) "到期日截至 $today" else "今天"
+        val displayDate = if (absoluteDates) null else today
         return buildString {
             appendLine("这张卡片和待办是同一份数据，由程序写入。点一下就能完成一条；助手的增改通过 todo 工具。")
             // Today's finished to-dos are listed, so a day's work can be read back. Later
             // ones and undated ones are only counted: what matters there is what is still open.
-            section("今天", view.today, today, store, showFinished = true)
-            section("未来", view.future, today, store, showFinished = false)
-            section("没日期", view.undated, today, store, showFinished = false)
+            section(title, view.today, today, displayDate, store, showFinished = true)
+            section("未来", view.future, today, displayDate, store, showFinished = false)
+            if (absoluteDates || view.undated.isNotEmpty()) {
+                section("没日期", view.undated, today, displayDate, store, showFinished = false)
+            }
         }.trimEnd() + "\n"
     }
 
@@ -31,6 +35,7 @@ object MemoCard {
         title: String,
         memos: List<MemoStore.Memo>,
         today: LocalDate,
+        displayDate: LocalDate?,
         store: MemoStore,
         showFinished: Boolean
     ) {
@@ -52,8 +57,8 @@ object MemoCard {
             val day = memo.due
             if (day != null) {
                 append(" · ")
-                append(DueParser.describe(day, memo.part, today))
-                if (store.isOverdue(memo)) append(" · 已过期")
+                append(DueParser.describe(day, memo.part, displayDate))
+                if (store.isOverdue(memo, today)) append(" · 已过期")
             } else if (memo.part != null) {
                 append(" · ")
                 append(memo.part!!.label)

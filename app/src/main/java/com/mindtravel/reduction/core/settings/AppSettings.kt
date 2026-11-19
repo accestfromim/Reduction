@@ -19,7 +19,8 @@ data class AppSettings(
     val opencodeEnabled: Boolean = false,
     val opencodeWriteEnabled: Boolean = false,
     val opencodeSessionId: String = "",
-    val pcProject: String = DEFAULT_PROJECT
+    val pcProject: String = DEFAULT_PROJECT,
+    val agentEngine: String = "opencode"
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("apiKey", apiKey)
@@ -34,6 +35,7 @@ data class AppSettings(
         put("wakeWordEnabled", wakeWordEnabled)
         put("bargeInEnabled", bargeInEnabled)
         put("headsetMicEnabled", headsetMicEnabled)
+        put("agentEngine", agentEngine)
         put("opencodeEnabled", opencodeEnabled)
         put("opencodeWriteEnabled", opencodeWriteEnabled)
         put("opencodeSessionId", opencodeSessionId)
@@ -62,6 +64,7 @@ data class AppSettings(
                 wakeWordEnabled = json.optBoolean("wakeWordEnabled", false),
                 bargeInEnabled = json.optBoolean("bargeInEnabled", true),
                 headsetMicEnabled = json.optBoolean("headsetMicEnabled", false),
+                agentEngine = if (json.stringOrEmpty("agentEngine") == "codex") "codex" else "opencode",
                 opencodeEnabled = json.optBoolean("opencodeEnabled", false),
                 opencodeWriteEnabled = json.optBoolean("opencodeWriteEnabled", false),
                 opencodeSessionId = json.stringOrEmpty("opencodeSessionId").trim(),

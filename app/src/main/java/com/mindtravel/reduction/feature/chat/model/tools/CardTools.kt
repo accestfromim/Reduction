@@ -4,10 +4,15 @@ import com.mindtravel.reduction.core.events.EventSink
 import com.mindtravel.reduction.core.stringOrNull
 import com.mindtravel.reduction.feature.chat.data.CardPatch
 import com.mindtravel.reduction.feature.chat.data.CardRepository
+import com.mindtravel.reduction.feature.memo.MemoCard
+import com.mindtravel.reduction.feature.memo.data.MemoStore
 import com.mindtravel.reduction.model.chat.ChatImage
 import com.mindtravel.reduction.model.chat.ToolParam
 import com.mindtravel.reduction.model.chat.ToolSpec
 import org.json.JSONObject
+
+private fun CardRepository.readForModel(name: String, memos: MemoStore?): String? =
+    if (memos != null && name.trim() == MemoCard.CARD) MemoCard.render(memos, absoluteDates = true) else read(name)
 
 /** Every change to the memo cards: create, edit, delete, any number of them, as one patch. */
 class PatchCardsTool(
@@ -60,7 +65,7 @@ class PatchCardsTool(
  * it. Pictures and the pages of PDFs are handed over as pictures, to be looked at; a note after
  * the text says which they are. Nothing of this is written into the card.
  */
-class ReadCardTool(private val cards: CardRepository) : ChatTool {
+class ReadCardTool(private val cards: CardRepository, private val memos: MemoStore? = null) : ChatTool {
 
     override val spec = ToolSpec(
         name = "read_card",
@@ -83,7 +88,7 @@ class ReadCardTool(private val cards: CardRepository) : ChatTool {
         showing = emptyList()
         val args = JSONObject(argumentsJson)
         val name = args.stringOrNull("name").orEmpty()
-        val text = cards.read(name) ?: return "没有名为“${name.trim()}”的卡片。现有卡片：" +
+        val text = cards.readForModel(name, memos) ?: return "没有名为“${name.trim()}”的卡片。现有卡片：" +
             cards.list().joinToString("、") { it.name }.ifBlank { "无" }
         val from = PAGE_RANGE.find(args.stringOrNull("pages").orEmpty())?.groupValues?.get(1)?.toIntOrNull()?.coerceAtLeast(1) ?: 1
 
@@ -146,7 +151,7 @@ class ReadCardTool(private val cards: CardRepository) : ChatTool {
  * Finds where something is said across the cards: the cards, the very lines, and the
  * section each line stands in. Nothing is reworded — what comes back is the cards' own text.
  */
-class SearchCardsTool(private val cards: CardRepository) : ChatTool {
+class SearchCardsTool(private val cards: CardRepository, private val memos: MemoStore? = null) : ChatTool {
 
     override val spec = ToolSpec(
         name = "search_cards",
@@ -179,7 +184,7 @@ class SearchCardsTool(private val cards: CardRepository) : ChatTool {
             val low = name.lowercase()
             if (if (any) words.any { it in low } else words.all { it in low }) named += name
             var section = ""
-            cards.read(name).orEmpty().lines().forEachIndexed { index, raw ->
+            cards.readForModel(name, memos).orEmpty().lines().forEachIndexed { index, raw ->
                 val line = raw.trim()
                 HEADING.find(line)?.let { section = it.groupValues[1].trim() }
                 if (line.isEmpty()) return@forEachIndexed

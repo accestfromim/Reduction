@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 /** Told when a reply begins and when it is completely over (generated and spoken). */
 interface ReplyObserver {
@@ -55,7 +56,7 @@ class ChatController(
      * Starts a reply to [messages]. [onCompleted] is given the finished text once, when the
      * reply has been generated in full.
      */
-    fun send(requestId: String, messages: List<ChatMessage>, onCompleted: (String) -> Unit = {}): Boolean {
+    fun send(requestId: String, messages: List<ChatMessage>, referenceDate: LocalDate, onCompleted: (String) -> Unit = {}): Boolean {
         val settings = settingsRepository.load()
         if (settings.apiKey.isBlank()) {
             emitter.emit("onChatError", requestId, "请先在设置里填写 API Key")
@@ -69,7 +70,7 @@ class ChatController(
             listOfNotNull(system) + messages.filter { it.role != Role.SYSTEM }.takeLast(MAX_MESSAGES - 1)
         }
 
-        val registry = toolFactory.create(settings)
+        val registry = toolFactory.create(settings, referenceDate)
         val request = ChatRequest(
             apiKey = settings.apiKey,
             model = settings.model,

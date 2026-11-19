@@ -5,32 +5,30 @@ import UserNotifications
 enum MemoDays {
     static let parts = ["EARLY": "早上", "MORNING": "上午", "AFTERNOON": "下午", "EVENING": "晚上"]
 
-    private static func formatter() -> DateFormatter {
+    private static func formatter(timeZone: TimeZone) -> DateFormatter {
         let date = DateFormatter()
         date.locale = Locale(identifier: "en_US_POSIX")
         date.calendar = Calendar(identifier: .gregorian)
-        date.timeZone = .current
+        date.timeZone = timeZone
         date.dateFormat = "yyyy-MM-dd"
         return date
     }
 
-    static func name(_ date: Date = Date()) -> String { formatter().string(from: date) }
-    static func date(_ name: String) -> Date? { formatter().date(from: name) }
+    static func name(_ date: Date = Date(), timeZone: TimeZone = .current) -> String {
+        formatter(timeZone: timeZone).string(from: date)
+    }
 
-    static func parse(_ raw: String) throws -> String? {
+    static func date(_ name: String, timeZone: TimeZone = .current) -> Date? {
+        let format = formatter(timeZone: timeZone)
+        guard let day = format.date(from: name), format.string(from: day) == name else { return nil }
+        return day
+    }
+
+    static func parse(_ raw: String, referenceDate: String = name()) throws -> String? {
         let value = raw.trimmed
         if value.isEmpty || value.lowercased() == "empty" { return nil }
-        let offsets = ["今天": 0, "明天": 1, "后天": 2, "大后天": 3]
-        let day = Date()
-        if let count = offsets[value], let date = Calendar.current.date(byAdding: .day, value: count, to: day) {
-            return name(date)
-        }
-        if let match = value.wholeMatch(of: #/([0-9]{1,4})\s*天后/#), let count = Int(match.1),
-           let date = Calendar.current.date(byAdding: .day, value: count, to: day) { return name(date) }
-        let format = formatter()
-        guard let date = format.date(from: value), format.string(from: date) == value else {
-            throw ReductionError("请用 yyyy-MM-dd 指定待办日期")
-        }
+        if let day = RelativeDates.dayOf(value, referenceDate: referenceDate) { return day }
+        guard date(value) != nil else { throw ReductionError("请用 yyyy-MM-dd 指定待办日期") }
         return value
     }
 
@@ -42,10 +40,11 @@ enum MemoDays {
         return key
     }
 
-    static func label(_ memo: PhoneMemo, today: String) -> String {
+    static func label(_ memo: PhoneMemo, today: String? = nil) -> String {
         let part = memo.part.flatMap { parts[$0] } ?? ""
         guard let due = memo.due else { return part.isEmpty ? "没有标记时间" : part }
-        return (due == today ? "今天" : due) + (part.isEmpty ? "" : " \(part)")
+        let date = today.map { RelativeDates.display(due, relativeTo: $0) } ?? due
+        return date + (part.isEmpty ? "" : " \(part)")
     }
 
     static func groups(_ memos: [PhoneMemo], today: String = name()) -> (today: [PhoneMemo], future: [PhoneMemo], undated: [PhoneMemo]) {
@@ -75,11 +74,17 @@ extension PhoneStore {
                                "exact": true, "notify": .bool(authorized)]).encoded()
     }
 
-    func memoText() -> String {
+    func memoText(absoluteDates: Bool = false) -> String {
         let today = MemoDays.name()
         let groups = MemoDays.groups(state.memos, today: today)
-        return zip(["今天", "未来", "没日期"], [groups.today, groups.future, groups.undated]).map { title, memos in
-            let lines = memos.map { "- #\($0.id) \($0.text) · \(MemoDays.label($0, today: today))\($0.done ? " · 已完成" : "")" }
+        let title = absoluteDates ? "到期日截至 \(today)" : "今天"
+        var sections = [(title, groups.today), ("未来", groups.future)]
+        if absoluteDates || !groups.undated.isEmpty { sections.append(("没日期", groups.undated)) }
+        return sections.map { title, memos in
+            let lines = memos.map { memo in
+                let label = MemoDays.label(memo, today: absoluteDates ? nil : today)
+                return "- #\(memo.id) \(memo.text) · \(label)\(memo.done ? " · 已完成" : "")"
+            }
             return "# \(title)\n" + (lines.isEmpty ? "（没有）" : lines.joined(separator: "\n"))
         }.joined(separator: "\n\n")
     }
@@ -95,22 +100,23 @@ extension PhoneStore {
         return state.memos[index]
     }
 
-    func applyMemo(_ args: JSON) throws -> String {
+    func applyMemo(_ args: JSON, referenceDate: String = MemoDays.name()) throws -> String {
         let action = args["action"].text
-        if action == "list" { return memoText() }
+        if action == "list" { return memoText(absoluteDates: true) }
         if action == "add" {
             let text = args["text"].text.trimmed
             guard !text.isEmpty else { throw ReductionError("请填写待办内容") }
-            let due = try MemoDays.parse(args["date"].text)
+            let due = try MemoDays.parse(args["date"].text, referenceDate: referenceDate)
             let part = try MemoDays.part(args["part"].text)
             let at = nowMilliseconds()
             let id = state.nextMemo
+            let memo = PhoneMemo(id: id, uid: UUID().uuidString, text: text, due: due, part: part,
+                                 done: false, createdAt: at, updatedAt: at)
             try change {
-                $0.memos.append(PhoneMemo(id: id, uid: UUID().uuidString, text: text, due: due, part: part,
-                                        done: false, createdAt: at, updatedAt: at))
+                $0.memos.append(memo)
                 $0.nextMemo += 1
             }
-            return "已登记 #\(id) \(text)"
+            return "已登记 #\(id) \(text) · \(MemoDays.label(memo))"
         }
         let id = args["id"].integer == 0 ? Int(args["id"].text.trimmed) ?? 0 : args["id"].integer
         guard let index = state.memos.firstIndex(where: { $0.id == id }) else { throw ReductionError("待办 #\(id) 不存在") }
@@ -133,12 +139,16 @@ extension PhoneStore {
             try change { next in
                 var memo = next.memos[index]
                 if !newText.isEmpty { memo.text = newText }
-                if !newDate.isEmpty { memo.due = try MemoDays.parse(newDate); memo.remindedOn = "" }
+                if !newDate.isEmpty {
+                    memo.due = try MemoDays.parse(newDate, referenceDate: referenceDate)
+                    memo.remindedOn = ""
+                }
                 if !newPart.isEmpty { memo.part = try MemoDays.part(newPart) }
                 memo.updatedAt = max(memo.updatedAt + 1, nowMilliseconds())
                 next.memos[index] = memo
             }
-            return "已修改待办 #\(id) \(state.memos[index].text)"
+            let memo = state.memos[index]
+            return "已修改待办 #\(id) \(memo.text) · \(MemoDays.label(memo))"
         default:
             throw ReductionError("待办操作无效")
         }
@@ -180,9 +190,9 @@ final class MemoNotifications {
         let pending = items.filter { !$0.done }
         let now = Date()
         let near = (0..<45).compactMap { calendar.date(byAdding: .day, value: $0, to: now) }
-        let horizon = near.last.map(MemoDays.name) ?? MemoDays.name(now)
+        let horizon = near.last.map { MemoDays.name($0) } ?? MemoDays.name(now)
         let distantNames = Set(pending.compactMap(\.due).filter { $0 > horizon }).sorted().prefix(16)
-        let dates = near + distantNames.compactMap(MemoDays.date)
+        let dates = near + distantNames.compactMap { MemoDays.date($0) }
         for date in dates {
             guard let alarm = calendar.date(bySettingHour: 9, minute: 0, second: 0, of: date), alarm > now else { continue }
             let day = MemoDays.name(date)

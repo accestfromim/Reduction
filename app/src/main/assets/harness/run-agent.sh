@@ -6,7 +6,7 @@
 #                                                        then a line "=====RESULT FILE=====" and what the agent
 #                                                        wrote into its result file, if anything
 #
-# AGENT_ENGINE picks who does the work: opencode (the default) or claude (Claude Code).
+# AGENT_ENGINE 选择执行器，可用 opencode（默认）、codex 或 claude。
 # A run is ended after AGENT_TIMEOUT seconds; its exit code is then 124.
 #
 # Every run is given a folder of its own, ~/.reduction-result, to leave its final result in:
@@ -28,6 +28,7 @@
 # model key the phone sends with each start (AGENT_KEY), the phone's own DeepSeek key.
 # Claude Code runs on this computer's own login: it is given its settings folder, with
 # the records of other sessions in it hidden, and nothing else of the home directory.
+# Codex 使用执行电脑上专供 Reduction 的登录目录。
 set -eu
 
 home=$HOME
@@ -74,20 +75,29 @@ start)
   locate "${2:?folder}"
   prompt=${3:?prompt}
   case "$agent" in build|plan) ;; *) say "harness：未知的 agent 类型 $agent" ;; esac
-  case "$engine" in opencode|claude) ;; *) say "harness：未知的执行者 $engine" ;; esac
+  case "$engine" in opencode|codex|claude) ;; *) say "harness：未知的执行者 $engine" ;; esac
   if [ "$(uname -s)" = Darwin ]; then
-    export PATH="$home/.local/bin:$home/.opencode/bin:/opt/homebrew/bin:/usr/local/bin:$PATH"
+    export PATH="$home/.local/bin:$home/.opencode/bin:/opt/homebrew/bin:/usr/local/bin:$PATH:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS"
     command -v python3 >/dev/null 2>&1 || say "harness：macOS 需要 Python 3"
     [ -n "${REDUCTION_MAC_AGENT_SCRIPT:-}" ] || say "harness：没有收到 macOS 沙箱启动程序，请更新发出任务的 Reduction"
     printf '%s' "$REDUCTION_MAC_AGENT_SCRIPT" | base64 -d | python3 - "$state" "$dir" "$agent" "$prompt" "$engine" "$limit" "$model"
     exit
   fi
   command -v bwrap >/dev/null 2>&1 || say "harness：电脑上没有 bwrap，无法隔离运行"
-  if [ "$engine" = claude ]; then
+  case "$engine" in
+  codex)
+    codex=$(PATH="$home/.local/bin:$PATH" command -v codex) || say "harness：这台电脑上找不到 Codex CLI"
+    codex=$(readlink -f "$codex")
+    codex_home=$home/.local/share/reduction-codex
+    [ -s "$codex_home/auth.json" ] || say "harness：请在执行电脑上登录 Reduction 的 Codex，见 iOS 或桌面使用说明"
+    umask 077
+    ;;
+  claude)
     claude=$(readlink -f "$(PATH="$home/.local/bin:$PATH" command -v claude 2>/dev/null || echo /nonexistent)")
     [ -x "$claude" ] || say "harness：这台电脑上找不到 Claude Code"
     [ -d "$home/.claude" ] || say "harness：这台电脑上的 Claude Code 还没有登录"
-  else
+    ;;
+  opencode)
     [ -x "$opencode" ] || say "harness：找不到 opencode"
     mkdir -p "$state/opencode"
     # The agent runs on the key the phone sent. Without one it falls back to this computer's.
@@ -99,7 +109,8 @@ start)
       cp -p "$home/.local/share/opencode/auth.json" "$state/opencode/auth.json" 2>/dev/null \
         || say "harness：没有收到模型密钥，这台电脑的 opencode 也没有登录"
     fi
-  fi
+    ;;
+  esac
 
   id=$(date +%Y%m%d-%H%M%S)-$$
   run=$state/runs/$id
@@ -114,21 +125,44 @@ start)
     --unshare-pid --die-with-parent --new-session
   [ -d /mnt/wsl ] && set -- "$@" --ro-bind /mnt/wsl /mnt/wsl
   # A read-only agent gets its folder read-only from the system itself, not by being asked.
-  if [ "$agent" = plan ] && [ "$engine" = claude ]; then
-    set -- "$@" --ro-bind "$dir" "$dir" --chdir "$dir"
-  else
-    set -- "$@" --bind "$dir" "$dir" --chdir "$dir"
-  fi
+  workspace_mount=--bind
+  if [ "$agent" = plan ] && [ "$engine" != opencode ]; then workspace_mount=--ro-bind; fi
+  set -- "$@" "$workspace_mount" "$dir" "$dir" --chdir "$dir"
 
   # A git worktree keeps its history in the main repository; the agent needs that to use git.
   if [ -f "$dir/.git" ]; then
     common=$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
     if [ -n "$common" ] && [ -d "$common" ]; then
-      if [ "$agent" = plan ] && [ "$engine" = claude ]; then set -- "$@" --ro-bind "$common" "$common"; else set -- "$@" --bind "$common" "$common"; fi
+      if [ "$engine" = codex ]; then
+        set -- "$@" --ro-bind "$common" "$common"
+      else
+        set -- "$@" "$workspace_mount" "$common" "$common"
+      fi
     fi
   fi
 
-  if [ "$engine" = claude ]; then
+  case "$engine" in
+  codex)
+    set -- "$@" --setenv CODEX_HOME "$codex_home" --bind "$codex_home" "$codex_home"
+    case "$codex" in
+      */node_modules/@openai/codex/bin/codex.js)
+        packages=${codex%/codex/bin/codex.js}
+        node=$(command -v node) || say "harness：npm 安装的 Codex 需要 Node.js"
+        node=$(readlink -f "$node")
+        set -- "$@" --ro-bind "$packages" "$packages" --ro-bind "$(dirname "$node")" "$(dirname "$node")" \
+          --setenv PATH "$(dirname "$node"):/usr/local/bin:/usr/bin:/bin"
+        ;;
+      "$home"/*)
+        set -- "$@" --ro-bind "$codex" "$codex"
+        ;;
+    esac
+    # bwrap 负责隔离工作目录。Codex 在这个已隔离的进程里执行。
+    set -- "$@" timeout "$limit" "$codex" exec --json --ephemeral --ignore-user-config --ignore-rules \
+      --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -c 'cli_auth_credentials_store="file"' \
+      --output-last-message "$home/.reduction-result/result.md" -
+    input=$run/prompt.txt
+    ;;
+  claude)
     # Claude Code itself, its settings and login, and nothing of what other sessions said.
     set -- "$@" --ro-bind "$(dirname "$(dirname "$claude")")" "$(dirname "$(dirname "$claude")")" --bind "$home/.claude" "$home/.claude" --tmpfs "$home/.claude/projects"
     [ -f "$home/.claude.json" ] && set -- "$@" --bind "$home/.claude.json" "$home/.claude.json"
@@ -141,13 +175,15 @@ start)
     # step, allowing ordinary work and refusing what looks dangerous. The walls around it hold either way.
     set -- "$@" timeout "$limit" "$claude" -p --output-format stream-json --verbose --permission-mode auto
     input=$run/prompt.txt
-  else
+    ;;
+  opencode)
     set -- "$@" --ro-bind "$home/.opencode" "$home/.opencode" --bind "$state" "$home/.local/share"
     [ -d "$home/.config/opencode" ] && set -- "$@" --ro-bind "$home/.config/opencode" "$home/.config/opencode"
     [ -d "$home/.cache/opencode" ] && set -- "$@" --bind "$home/.cache/opencode" "$home/.cache/opencode"
     set -- "$@" timeout "$limit" "$opencode" run --format json --model "$model" --agent "$agent" --auto --dir "$dir" "$prompt"
     input=/dev/null
-  fi
+    ;;
+  esac
 
   # Detached from this shell, so the run outlives the SSH command that started it.
   nohup setsid sh -c '
