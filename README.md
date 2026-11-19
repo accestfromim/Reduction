@@ -50,6 +50,8 @@ Reduction回答一个问题：我们有可能在生活更轻松的同时、可�
 
 ## 全栈方案
 
+[四端构建和跨日测试](shared/README.md)
+
 [DeepSeek](https://platform.deepseek.com/) API Key：提供大模型、语音文字互转、网络搜索服务
 
 ### 蓝牙耳机

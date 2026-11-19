@@ -15,7 +15,7 @@
 
 ## 构建
 
-在仓库根目录运行下面的命令。Swift Package Manager 会按 `Package.resolved` 获取依赖。
+在仓库根目录运行下面的命令。构建需要 Xcode 和 JDK 17，可在根目录的 `local.env` 中用 `JAVA_HOME` 指定 JDK 的 `Contents/Home`。Xcode 会通过项目的 Gradle Wrapper 构建 `ReductionShared` 框架，并由 Swift Package Manager 按 `Package.resolved` 获取依赖。
 
 ```bash
 xcodebuild -project ios/Reduction.xcodeproj -scheme Reduction \
@@ -24,6 +24,7 @@ xcodebuild -project ios/Reduction.xcodeproj -scheme Reduction \
 ```
 
 界面继续使用 Android 和 macOS 已使用的 HTML、CSS、Markdown、公式、PDF 和文章模板。iOS 通过绑定在本机回环地址的受保护接口把网页连接到 Swift 实现。应用进程负责录放音、模型请求、文件和通知，电脑通过原有同步协议交换数据。
+消息日期换算和待办日期标签由 `shared` 模块提供，iOS 和 JVM 端使用同一份规则。
 
 在卡片的文章预览中点「导出长图」，即可把长图交给系统分享菜单。超过单张图可用内存范围的文章可拆成几张卡片导出。
 
