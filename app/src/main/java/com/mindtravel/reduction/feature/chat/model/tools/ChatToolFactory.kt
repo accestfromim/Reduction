@@ -1,7 +1,6 @@
 package com.mindtravel.reduction.feature.chat.model.tools
 
 import com.mindtravel.reduction.core.events.EventSink
-import com.mindtravel.reduction.core.host.ToolApprovalHost
 import com.mindtravel.reduction.core.settings.AppSettings
 import com.mindtravel.reduction.feature.article.ArticleBuilder
 import com.mindtravel.reduction.feature.article.RenderArticleTool
@@ -15,7 +14,6 @@ import com.mindtravel.reduction.model.chat.SearchGateway
 class ChatToolFactory(
     private val searchGateway: SearchGateway,
     private val pcGateway: PcGateway,
-    private val approvalHost: ToolApprovalHost,
     private val emitter: EventSink,
     private val cards: CardRepository,
     /** To-dos and their times: the memo plugin, and the only place they are kept. */
@@ -38,6 +36,7 @@ class ChatToolFactory(
         val tools = buildList {
             add(PatchCardsTool(cards, emitter))
             add(ReadCardTool(cards))
+            add(OpenCardTool(cards, emitter))
             add(SearchCardsTool(cards))
             add(MemoTool(memos, emitter))
             if (settings.webSearchEnabled) add(WebSearchTool(searchGateway, settings.apiKey))
@@ -53,7 +52,7 @@ class ChatToolFactory(
                         project = settings.pcProject,
                         agentsRoot = AGENTS_ROOT,
                         allowWrite = settings.opencodeWriteEnabled,
-                        approvalHost = approvalHost
+                        directories = settings.agentDirectories
                     )
                 )
             }
@@ -67,7 +66,7 @@ class ChatToolFactory(
     /** The reports of runs that have ended since they were last looked at, each with its number. */
     fun endedRuns(settings: AppSettings): List<RunAgentTool.Ended> {
         if (!hasOpenRuns()) return emptyList()
-        return RunAgentTool(harness(settings), agentRuns, settings.pcProject, AGENTS_ROOT, settings.opencodeWriteEnabled, approvalHost)
+        return RunAgentTool(harness(settings), agentRuns, settings.pcProject, AGENTS_ROOT, settings.opencodeWriteEnabled, settings.agentDirectories)
             .endedRuns()
     }
 
@@ -76,7 +75,8 @@ class ChatToolFactory(
         profile = PcProfile(settings.pcHost, settings.pcPort, settings.pcUser),
         apiKey = settings.apiKey,
         model = settings.model,
-        launcherScript = agentLauncherScript
+        launcherScript = agentLauncherScript,
+        directories = settings.agentDirectories
     )
 
     private companion object {

@@ -1,15 +1,17 @@
 package com.mindtravel.reduction.feature.chat.model.tools
 
+import com.mindtravel.reduction.core.settings.AgentDirectory
 import com.mindtravel.reduction.hardware.pc.PcGateway
 import com.mindtravel.reduction.model.chat.ChatImage
 import com.mindtravel.reduction.hardware.pc.PcProfile
+import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Base64
 
 /**
  * Runs sub agents on the computer, in the background. Every run goes through the
- * launcher script, which confines the agent's file system to one folder; inside that
- * folder it may do anything. A run can be asked how far it has got at any time.
+ * launcher script, which mounts the configured directories with their saved permissions.
+ * A run can be asked how far it has got at any time.
  */
 class AgentHarness(
     private val pcGateway: PcGateway,
@@ -17,6 +19,7 @@ class AgentHarness(
     /** The model key and name the agents run on: the same ones the phone itself uses. */
     private val apiKey: String,
     private val model: String,
+    private val directories: List<AgentDirectory> = emptyList(),
     private val launcherScript: () -> String
 ) {
     enum class Agent(val wire: String) {
@@ -106,7 +109,8 @@ class AgentHarness(
 
     private fun launcher(vararg args: String, withModel: Boolean = false, engine: Engine = Engine.OPENCODE): String {
         val environment = if (withModel) {
-            "AGENT_KEY=${quote(apiKey)} AGENT_MODEL=${quote("deepseek/$model")} " +
+            val rules = JSONArray(directories.map { it.toJson() }).toString()
+            "AGENT_DIRECTORIES=${quote(rules)} AGENT_KEY=${quote(apiKey)} AGENT_MODEL=${quote("deepseek/$model")} " +
                 "AGENT_ENGINE=${engine.wire} AGENT_TIMEOUT=${engine.timeoutSeconds} "
         } else {
             ""

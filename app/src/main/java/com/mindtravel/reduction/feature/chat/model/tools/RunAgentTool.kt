@@ -1,15 +1,12 @@
 package com.mindtravel.reduction.feature.chat.model.tools
 
 import com.mindtravel.reduction.core.Logs
-import com.mindtravel.reduction.core.host.ToolApprovalHost
+import com.mindtravel.reduction.core.settings.AgentDirectory
 import com.mindtravel.reduction.core.stringOrNull
 import com.mindtravel.reduction.model.chat.ToolParam
 import com.mindtravel.reduction.model.chat.ToolSpec
 import com.mindtravel.reduction.model.chat.ChatImage
 import org.json.JSONObject
-import java.util.concurrent.CountDownLatch
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The one way to dispatch a sub agent. A run happens in the background on the computer:
@@ -23,7 +20,7 @@ class RunAgentTool(
     private val project: String,
     private val agentsRoot: String,
     private val allowWrite: Boolean,
-    private val approvalHost: ToolApprovalHost,
+    private val directories: List<AgentDirectory>,
     /** How long "start" lingers: only long enough to notice a run that dies at once. */
     private val waitMillis: Long = 2_500,
     private val pollMillis: Long = 500
@@ -31,7 +28,7 @@ class RunAgentTool(
 
     override val spec = ToolSpec(
         name = "run_agent",
-        description = "派发 sub agent 并查询它们的进度。sub agent 在电脑上后台运行，能力不设限，但只能写它所属的文件夹。" +
+        description = "派发 sub agent 并查询它们的进度。sub agent 在电脑上后台运行，按设置中各路径的权限访问文件。" +
             "start 交出任务卡后立刻返回任务编号，不等它做完；" +
             "status 报告还没结束的任务各做到哪了，做完的给出结果；stop 结束一个任务；record 取出一个任务存着的全过程，只在用户明确要看原文时用。任务编号由程序分配。",
         parameters = listOf(
@@ -39,7 +36,7 @@ class RunAgentTool(
             ToolParam("task", "start 时必填。任务卡：目标、约束、验收标准，以及希望交回什么", required = false),
             ToolParam(
                 "folder",
-                "start 时可选。sub agent 所属的文件夹：project 表示项目代码目录；其它值是它自己的独立文件夹名，比如 research。默认 research",
+                "start 时可选。工作目录：已授权目录的完整路径，或独立工作区的名称。project 指设置的项目路径，须事先授权。默认 research",
                 required = false
             ),
             ToolParam(
@@ -72,7 +69,7 @@ class RunAgentTool(
         return when (args.stringOrNull("action")?.trim()) {
             "start" -> {
                 val folderName = args.stringOrNull("folder")?.trim().orEmpty().ifBlank { DEFAULT_FOLDER }
-                val folder = folderPath(folderName) ?: return "文件夹名无效：$folderName（只能用字母、数字、点、横线、下划线）"
+                val folder = folderPath(folderName) ?: return "工作目录未获授权或名称无效：$folderName"
                 start(args, folderName, folder)
             }
             "status" -> status(args)
@@ -153,18 +150,19 @@ class RunAgentTool(
         if (task.isBlank()) return "派发失败：task 为空"
         val write = args.stringOrNull("access")?.trim() == "write"
         if (write && !allowWrite) return "派发失败：设置里没有允许 sub agent 修改文件"
-        val onProject = folderName == PROJECT
-        // Changing the project is the one thing the phone is asked about first.
-        if (write && onProject && !approve(task)) return "已取消：用户拒绝执行"
+        val onProject = folder == project && directories.any { it.path == project }
 
+        val access = directories.joinToString("\n") {
+            "- ${it.path}：${if (write && it.writable) "读写" else "只读"}"
+        }.ifBlank { "没有授权的外部目录。" }
         val brief = if (write) {
-            "你是执行任务的 sub agent。当前目录是你唯一能写的文件夹。" +
+            "你是执行任务的 sub agent。只在系统允许写入的路径工作。" +
                 "交回结果时分两块：依据（只放原文、出处、链接、文件路径、实际 diff、命令输出）和分析（只放推断和判断）。" +
-                "你只做执行、预筛和整理，不替人下结论。$PICTURES\n\n$task"
+                "你只做执行、预筛和整理，不替人下结论。$PICTURES\n\n授权目录，子路径的规则优先：\n$access\n\n$task"
         } else {
             "你是只读的 sub agent，禁止修改任何文件。" +
                 "交回结果时分两块：依据（只放原文、出处、文件路径和行号、命令输出）和分析（只放推断和判断）。" +
-                "如果任务是验收：你不是执行者，逐条对照任务卡；第一行只写 PASS 或 FAIL，随后列直接证据，最后指出最值得人亲自看的一个判决点。$PICTURES\n\n$task"
+                "如果任务是验收：你不是执行者，逐条对照任务卡；第一行只写 PASS 或 FAIL，随后列直接证据，最后指出最值得人亲自看的一个判决点。$PICTURES\n\n授权目录，子路径的规则优先：\n$access\n\n$task"
         }
 
         val id = try {
@@ -247,19 +245,10 @@ class RunAgentTool(
     }.trim()
 
     private fun folderPath(name: String): String? = when {
-        name == PROJECT -> project
+        name == PROJECT -> project.takeIf { directory -> directories.any { it.path == directory } }
+        directories.any { it.path == name } -> name
         FOLDER_NAME.matches(name) -> "$agentsRoot/$name"
         else -> null
-    }
-
-    private fun approve(task: String): Boolean {
-        val result = AtomicBoolean(false)
-        val latch = CountDownLatch(1)
-        approvalHost.requestToolApproval("sub agent 修改项目代码", "项目：$project\n\n$task") { allowed ->
-            result.set(allowed)
-            latch.countDown()
-        }
-        return runCatching { latch.await(5, TimeUnit.MINUTES) && result.get() }.getOrDefault(false)
     }
 
     private companion object {

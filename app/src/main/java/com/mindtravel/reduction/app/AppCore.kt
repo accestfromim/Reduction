@@ -153,7 +153,6 @@ class AppCore private constructor(context: Context) {
     private val toolFactory = ChatToolFactory(
             searchGateway = models.searchGateway,
             pcGateway = pcGateway,
-            approvalHost = ui,
             emitter = ui,
             cards = cardRepository,
             memos = memoStore,

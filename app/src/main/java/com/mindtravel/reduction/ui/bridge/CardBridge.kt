@@ -19,6 +19,8 @@ class CardBridge(
     fun read(name: String): String = cards.read(name).orEmpty()
     fun purpose(name: String): String = cards.purpose(name)
     fun save(name: String, purpose: String, content: String): Boolean = cards.save(name, content, purpose)
+    fun autosave(name: String, purpose: String, content: String, creating: Boolean, oldPurpose: String, oldText: String) =
+        cards.autosave(name, purpose, content, creating, oldPurpose, oldText)
     fun delete(name: String): Boolean = cards.delete(name)
     fun rename(from: String, to: String): Boolean = cards.rename(from, to)
 

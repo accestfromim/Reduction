@@ -71,12 +71,18 @@ await page.evaluateOnNewDocument(() => {
       calculatorEnabled: true,
       wakeWordEnabled: true
     }),
-    saveSettings: () => true,
+    saveSettings: (raw) => { window.__savedSettings = JSON.parse(raw); return true; },
     listCards: () => JSON.stringify(Object.entries(window.__cards).map(([name, card]) => ({
       name, purpose: card.purpose, chars: card.text.length, updatedAt: 0, prompt: card.prompt === true
     }))),
     readCard: (name) => (window.__cards[name] || {}).text || '',
     cardPurpose: (name) => (window.__cards[name] || {}).purpose || '',
+    autosaveCard: (name, purpose, text, creating, oldPurpose, oldText) => {
+      const card = window.__cards[name];
+      if (creating ? !!card : !card || card.purpose !== oldPurpose || card.text !== oldText) return 'conflict';
+      window.__cards[name] = { ...card, purpose, text };
+      return 'saved';
+    },
     saveCard: (name, purpose, text) => { window.__cards[name] = { purpose, text }; return true; },
     deleteCard: (name) => { delete window.__cards[name]; return true; },
     renameCard: (from, to) => { if (window.__cards[to] || !window.__cards[from]) return false; window.__cards[to] = window.__cards[from]; delete window.__cards[from]; return true; },
@@ -259,9 +265,9 @@ const cardsShown = await page.evaluate(async () => {
   // One tap locks the card as a prompt: it can no longer be edited, until it is unlocked.
   const lock = document.getElementById('cardLock');
   lock.click();
-  const lockedNow = window.__cards['科研想法·检索'].prompt === true && hidden('cardEdit') && lock.textContent === '解锁' && crumbs.querySelector('.crumb.here').textContent.startsWith('🔒');
+  const lockedNow = window.__cards['科研想法·检索'].prompt === true && lock.textContent === '解锁' && crumbs.querySelector('.crumb.here').textContent.startsWith('🔒');
   lock.click();
-  opened.locks = lockedNow && window.__cards['科研想法·检索'].prompt === false && !hidden('cardEdit') && lock.textContent === '审核并锁定';
+  opened.locks = lockedNow && window.__cards['科研想法·检索'].prompt === false && lock.textContent === '审核并锁定';
   // The tabs only change the page. "朗读" goes to speech with the card left open; "卡片" comes back to it; pressed
   // again it changes nothing. What is being typed is in the one input under both pages, and stays.
   document.getElementById('micBtn').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
@@ -285,8 +291,8 @@ const cardsShown = await page.evaluate(async () => {
     tabsBefore.join() === [top('tabStream'), top('tabCards')].join();
   // One tap on the reading page copies the whole card.
   window.__copied = '';
-  document.getElementById('cardCopyAll').click();
-  opened.copied = window.__copied === window.__cards['科研想法·检索'].text.trim() && !hidden('cardCopyAll');
+  document.getElementById('cardCopy').click();
+  opened.copied = window.__copied === window.__cards['科研想法·检索'].text.trim() && !hidden('cardCopy');
   // The open card can be floated over other apps, and put away again.
   const float = document.getElementById('cardFloat');
   float.click();
@@ -304,10 +310,11 @@ const cardsEdited = await page.evaluate(async () => {
   window.Native.onCardsChanged('科研想法·检索');
   const followed = document.getElementById('cardBody').textContent.includes('新加的一条');
   // Edit by hand.
-  document.getElementById('cardEdit').click();
-  const editing = !hidden('cardEditor') && hidden('cardBody') && !hidden('cardNameField') && hidden('cardCopyAll');
+  document.getElementById('cardBody').click();
+  const editing = !hidden('cardEditor') && hidden('cardBody') && !hidden('cardNameField') && !hidden('cardCopy');
   document.getElementById('cardText').value = '改过的正文';
-  document.getElementById('cardSave').click();
+  document.getElementById('cardText').dispatchEvent(new Event('input', { bubbles: true }));
+  window.onAndroidBack();
   const saved = hidden('cardEditor') && document.getElementById('cardBody').textContent.includes('改过的正文');
   const backToList = window.onAndroidBack() === true && hidden('cardPage');
   // Create a card by hand.
@@ -315,7 +322,8 @@ const cardsEdited = await page.evaluate(async () => {
   const nameShown = !hidden('cardNameField') && hidden('cardDelete');
   document.getElementById('cardNameInput').value = '科研想法·评测';
   document.getElementById('cardPurposeInput').value = '评测方法与指标';
-  document.getElementById('cardSave').click();
+  document.getElementById('cardText').dispatchEvent(new Event('input', { bubbles: true }));
+  window.onAndroidBack();
   const after = names().slice().sort();
   window.onAndroidBack();
   const backToStream = window.onAndroidBack() === true && !hidden('streamPage');
@@ -390,9 +398,10 @@ const folders = await page.evaluate(async () => {
   const hidden = (id) => document.getElementById(id).classList.contains('hidden');
   document.getElementById('tabCards').click();
   Array.from(document.querySelectorAll('#cardList .card-row')).find((row) => row.textContent === '科研想法·检索').click();
-  document.getElementById('cardEdit').click();
+  document.getElementById('cardBody').click();
   document.getElementById('cardNameInput').value = '科研 / 检索';
-  document.getElementById('cardSave').click();
+  document.getElementById('cardText').dispatchEvent(new Event('input', { bubbles: true }));
+  window.onAndroidBack();
   // The page shows the card's own name large and its folders above it; the whole name is on the title itself.
   const title = document.getElementById('cardCrumbs').title;
   const shownAs = Array.from(document.querySelectorAll('#cardCrumbs .crumb')).map((el) => el.textContent).slice(1);
@@ -687,6 +696,86 @@ if (line.running !== '进行中' || line.closed.bodyShown || line.closed.height 
     !line.fullInput || !line.fullOutput || !line.duration) {
   errors.push('tool line ' + JSON.stringify(line));
 }
+
+const review = await page.evaluate(() => {
+  const visible = (id) => !document.getElementById(id).classList.contains('hidden');
+  const title = () => document.getElementById('cardCrumbs').title;
+  document.getElementById('tabStream').click();
+  window.Native.onCardsChanged('备忘');
+  const writeStaysInChat = visible('streamPage');
+  window.Native.onOpenCard('备忘');
+  const showsRequested = visible('cardPage') && title() === '备忘';
+  window.Native.onCardsChanged('科研/检索');
+  const keepsCurrent = title() === '备忘';
+  document.getElementById('cardBody').click();
+  const editor = document.getElementById('cardText');
+  editor.value = '还没保存的草稿';
+  window.Native.onOpenCard('科研/检索');
+  const keepsDraft = visible('cardEditor') && editor.value === '还没保存的草稿' && title() === '备忘';
+  window.onAndroidBack();
+  document.getElementById('tabStream').click();
+  window.Native.onReplyBegin('review-link', '给我一个回顾入口');
+  window.Native.onChatDone('review-link', '[回顾检索](#card=' + encodeURIComponent('科研/检索') + ')');
+  const link = document.querySelector('.assistant a[href^="#card="]');
+  if (link) link.click();
+  const followsLink = visible('cardPage') && title() === '科研/检索';
+  return { writeStaysInChat, showsRequested, keepsCurrent, keepsDraft, followsLink };
+});
+console.log('card review:', JSON.stringify(review));
+if (Object.values(review).some((passed) => !passed)) errors.push('card review ' + JSON.stringify(review));
+
+const directorySettings = await page.evaluate(() => {
+  const add = document.getElementById('addAgentDirectory');
+  const rows = document.getElementById('agentDirectories').children;
+  document.getElementById('settingsBtn').click();
+  for (const [path, mode] of [['~/notes', 'read'], ['~/project', 'read'], ['~/project/drafts', 'write']]) {
+    add.click();
+    rows[rows.length - 1].querySelector('input').value = path;
+    rows[rows.length - 1].querySelector('select').value = mode;
+  }
+  document.getElementById('saveSettings').click();
+  const saved = window.__savedSettings.agentDirectories;
+  document.getElementById('settingsBtn').click();
+  const restored = rows.length === 3 && rows[2].querySelector('select').value === 'write';
+  rows[0].querySelector('button').click();
+  document.getElementById('saveSettings').click();
+  return { saved, restored, remaining: window.__savedSettings.agentDirectories.length };
+});
+console.log('directory permissions settings:', JSON.stringify(directorySettings));
+if (directorySettings.saved.length !== 3 || directorySettings.saved[0].writable ||
+    directorySettings.saved[2].path !== '~/project/drafts' || !directorySettings.saved[2].writable ||
+    !directorySettings.restored || directorySettings.remaining !== 2) {
+  errors.push('directory permissions settings ' + JSON.stringify(directorySettings));
+}
+
+const autoSaved = await page.evaluate(async () => {
+  const cards = await import('/js/features/cards/cards.js');
+  cards.newCard();
+  document.getElementById('cardNameInput').value = '自动保存验收';
+  document.getElementById('cardPurposeInput').value = '界面测试';
+  const box = document.getElementById('cardText');
+  function type(value) {
+    box.value = value;
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+  type('  保留缩进  ');
+  await new Promise((resolve) => setTimeout(resolve, 850));
+  const created = window.__cards['自动保存验收']?.text === box.value;
+  type('待撤销');
+  box.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
+  if (box.value !== '  保留缩进  ' || document.getElementById('cardSave') || document.getElementById('cardEdit')) return false;
+  type('返回前最后一个字');
+  cards.back();
+  const flushed = window.__cards['自动保存验收']?.text === box.value;
+  cards.editCard();
+  type('我的草稿');
+  window.__cards['自动保存验收'].text = '其他设备的新内容';
+  cards.back();
+  cards.editCard();
+  return created && flushed && box.value === '我的草稿' && window.__cards['自动保存验收'].text === '其他设备的新内容';
+});
+if (!autoSaved) errors.push('card autosave or draft recovery failed');
+console.log('card autosave:', autoSaved);
 
 if (errors.length) {
   console.error('errors:', errors);

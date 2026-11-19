@@ -1,5 +1,5 @@
 #!/bin/sh
-# Runs sub agents, each confined to a single folder, in the background.
+# Runs sub agents with the directory policy supplied by Reduction, in the background.
 #
 #   run-agent.sh start  <build|plan> <folder> <prompt>   prints: RUN <id>
 #   run-agent.sh status <folder> <id>                    prints: STATE <running|done N|lost>, then the run's events,
@@ -18,11 +18,9 @@
 # "=====IMAGE SKIPPED <name>=====" and not sent.
 #   run-agent.sh stop   <folder> <id>                    prints: STOPPED
 #
-# The agent may do anything opencode can do — run commands, use the network, write
-# files — but the only part of the file system it can change is <folder>. The rest of
-# the home directory, other projects, keys and Windows drives are not visible to it;
-# the system is read-only. The environment is emptied so no host secret leaks in.
-# "plan" agents do not change files at all.
+# AGENT_DIRECTORIES is the saved list of absolute or ~/ paths with read/write permissions.
+# Only configured user directories and the selected private workspace are mounted.
+# A plan run mounts all work directories read-only. The result directory stays writable.
 #
 # The one credential an agent can read is the one it runs on. For opencode that is the
 # model key the phone sends with each start (AGENT_KEY), the phone's own DeepSeek key.
@@ -38,23 +36,99 @@ opencode=$home/.opencode/bin/opencode
 
 say() { printf '%s\n' "$1"; exit 0; }
 
-# Checks <folder>, creates it, and sets $dir (resolved) and $state (opencode's own state
-# for this folder, kept outside every agent folder).
+# Resolve <folder> without creating arbitrary host paths. Only a named private workspace may be created.
 locate() {
   dir=$1
   case "$dir" in "~/"*) dir=$home/${dir#"~/"} ;; esac
+  case "$dir" in /*) ;; *) say "harness：工作目录需要绝对路径或 ~/ 路径" ;; esac
+  workspace=
   case "$dir" in
-    "$home"/?*) ;;
-    *) say "harness：文件夹必须在 $home 之下：$dir" ;;
+    "$home"/reduction-agents/*)
+      leaf=${dir#"$home"/reduction-agents/}
+      case "$leaf" in
+        ''|.*|*[!A-Za-z0-9._-]*) ;;
+        *)
+          [ ! -L "$home/reduction-agents" ] && [ ! -L "$dir" ] || say "harness：独立工作目录不能是符号链接"
+          [ "$cmd" != start ] || mkdir -p -- "$dir" || say "harness：无法创建工作目录"
+          workspace=$dir ;;
+      esac ;;
   esac
-  mkdir -p "$dir" 2>/dev/null || say "harness：无法创建文件夹：$dir"
-  dir=$(cd "$dir" && pwd -P)
-  case "$dir" in
-    "$home"/?*) ;;
-    *) say "harness：文件夹解析后不在 $home 之下：$dir" ;;
-  esac
+  if [ -d "$dir" ]; then
+    resolved=$(cd -- "$dir" && pwd -P)
+    [ "$cmd" != start ] || [ "$dir" = "$resolved" ] || say "harness：工作目录需要使用实际路径：$resolved"
+    dir=$resolved
+  elif [ "$cmd" = start ]; then
+    say "harness：找不到工作目录：$dir"
+  fi
+  # Preserve the location of the records of existing runs.
   name=$(printf '%s' "${dir#"$home"/}" | tr -c 'A-Za-z0-9._-' '_')
   state=$home/.local/share/reduction-agents/$name
+  legacy_state=$state
+  if [ -z "$workspace" ]; then
+    digest=$(printf '%s' "$dir" | sha256sum)
+    state=$home/.local/share/reduction-agents/by-path/${digest%% *}
+  fi
+}
+
+mount_plan() {
+  python3 - "$home" "$dir" "$workspace" "$agent" <<'PYMOUNT'
+import json
+import os
+import sys
+from pathlib import Path
+
+home, workdir, workspace, agent = sys.argv[1:]
+system = {"/usr", "/bin", "/sbin", "/lib", "/lib64", "/proc", "/dev", "/tmp", "/etc",
+          "/sys", "/run", "/boot"}
+private = {home + "/" + part for part in (
+    ".opencode", ".claude", ".claude.json", ".config/opencode", ".cache/opencode",
+    ".local/share/opencode", ".local/share/reduction", ".local/share/reduction-agents",
+    ".config/reduction", ".reduction-result", "reduction-agents",
+)}
+if os.environ.get("AGENT_ENGINE") == "claude":
+    private.add(os.environ["REDUCTION_CLAUDE_ROOT"])
+
+def within(path, parent):
+    return path == parent or path.startswith(parent.rstrip("/") + "/")
+
+try:
+    entries = json.loads(os.environ.get("AGENT_DIRECTORIES", "[]"))
+    rules = {}
+    for entry in entries:
+        raw = entry["path"]
+        path = home + raw[1:] if raw.startswith("~/") else raw
+        if (not path.startswith("/") or not path.isprintable()
+                or os.path.normpath(path) != path or os.path.realpath(path) != path):
+            raise ValueError(f"请填写目录的实际绝对路径：{raw!r}")
+        if path in {"/mnt", "/media", "/var", "/opt"} or within(home, path) or any(
+                within(path, reserved) or within(reserved, path) for reserved in system | private):
+            raise ValueError(f"不能授权系统或应用内部目录：{raw}")
+        if not os.path.isdir(path):
+            raise ValueError(f"目录不存在：{raw}")
+        if path in rules:
+            raise ValueError(f"重复授权同一目录：{raw}")
+        rules[path] = agent == "build" and entry["writable"] is True
+
+    if workspace:
+        rules[workspace] = agent == "build"
+    if workdir not in rules:
+        raise ValueError(f"工作目录未获授权：{workdir}")
+
+    mounts = dict(rules)
+    for path in rules:
+        parents = [str(parent) for parent in Path(path).parents]
+        owner = next((parent for parent in parents if parent in rules), None)
+        if owner:
+            # Pin intermediate directories so a writable parent cannot rename one
+            # and thereby expose the original directory below a read-only mount.
+            for parent in parents[:parents.index(owner)]:
+                mounts.setdefault(parent, rules[owner])
+
+    for path, writable in sorted(mounts.items(), key=lambda entry: entry[0].count("/")):
+        print("--bind" if writable else "--ro-bind", path, sep="\t")
+except (ValueError, KeyError, TypeError, AttributeError) as exc:
+    sys.exit(str(exc))
+PYMOUNT
 }
 
 run_dir() {
@@ -62,6 +136,7 @@ run_dir() {
     *[!A-Za-z0-9-]*|'') say "harness：运行编号无效" ;;
   esac
   run=$state/runs/$1
+  [ -d "$run" ] || run=$legacy_state/runs/$1
   [ -d "$run" ] || say "STATE lost"
 }
 
@@ -99,27 +174,35 @@ start)
   mkdir -p "$run/result"
   printf '%s\n' "$prompt" > "$run/prompt.txt"
 
+  if [ "$engine" = claude ]; then
+    REDUCTION_CLAUDE_ROOT=$(dirname "$(dirname "$claude")")
+    export REDUCTION_CLAUDE_ROOT
+  fi
+  mounts=$(mount_plan 2>&1) || say "harness：$mounts"
   set -- \
     --clearenv --setenv HOME "$home" --setenv PATH /usr/local/bin:/usr/bin:/bin \
     --setenv LANG C.UTF-8 --setenv TERM dumb \
-    --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp --tmpfs /mnt --tmpfs "$home" \
+    --ro-bind /usr /usr --dev /dev --proc /proc --tmpfs /tmp \
+    --ro-bind-try /etc/ssl/certs /etc/ssl/certs \
+    --ro-bind-try /etc/resolv.conf /etc/resolv.conf --ro-bind-try /etc/hosts /etc/hosts \
+    --ro-bind-try /etc/nsswitch.conf /etc/nsswitch.conf --ro-bind-try /etc/ld.so.cache /etc/ld.so.cache \
+    --ro-bind-try /etc/passwd /etc/passwd --ro-bind-try /etc/group /etc/group \
     --bind "$run/result" "$home/.reduction-result" \
-    --unshare-pid --die-with-parent --new-session
-  [ -d /mnt/wsl ] && set -- "$@" --ro-bind /mnt/wsl /mnt/wsl
-  # A read-only agent gets its folder read-only from the system itself, not by being asked.
-  if [ "$agent" = plan ] && [ "$engine" = claude ]; then
-    set -- "$@" --ro-bind "$dir" "$dir" --chdir "$dir"
-  else
-    set -- "$@" --bind "$dir" "$dir" --chdir "$dir"
-  fi
-
-  # A git worktree keeps its history in the main repository; the agent needs that to use git.
-  if [ -f "$dir/.git" ]; then
-    common=$(git -C "$dir" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
-    if [ -n "$common" ] && [ -d "$common" ]; then
-      if [ "$agent" = plan ] && [ "$engine" = claude ]; then set -- "$@" --ro-bind "$common" "$common"; else set -- "$@" --bind "$common" "$common"; fi
+    --unshare-user --disable-userns --unshare-pid --unshare-ipc --die-with-parent --new-session
+  for system_dir in /bin /sbin /lib /lib64; do
+    if [ -L "$system_dir" ]; then
+      set -- "$@" --symlink "$(readlink "$system_dir")" "$system_dir"
+    elif [ -d "$system_dir" ]; then
+      set -- "$@" --ro-bind "$system_dir" "$system_dir"
     fi
-  fi
+  done
+  tab=$(printf '\t')
+  while IFS="$tab" read -r binding path; do
+    set -- "$@" "$binding" "$path" "$path"
+  done <<MOUNTS
+$mounts
+MOUNTS
+  set -- "$@" --chdir "$dir"
 
   if [ "$engine" = claude ]; then
     # Claude Code itself, its settings and login, and nothing of what other sessions said.
@@ -135,7 +218,7 @@ start)
     set -- "$@" timeout "$limit" "$claude" -p --output-format stream-json --verbose --permission-mode auto
     input=$run/prompt.txt
   else
-    set -- "$@" --ro-bind "$home/.opencode" "$home/.opencode" --bind "$state" "$home/.local/share"
+    set -- "$@" --ro-bind "$home/.opencode" "$home/.opencode" --bind "$state/opencode" "$home/.local/share/opencode"
     [ -d "$home/.config/opencode" ] && set -- "$@" --ro-bind "$home/.config/opencode" "$home/.config/opencode"
     [ -d "$home/.cache/opencode" ] && set -- "$@" --bind "$home/.cache/opencode" "$home/.cache/opencode"
     set -- "$@" timeout "$limit" "$opencode" run --format json --model "$model" --agent "$agent" --auto --dir "$dir" "$prompt"
@@ -163,7 +246,7 @@ status)
     printf 'STATE lost\n'
   fi
   [ -f "$run/events.jsonl" ] && cat "$run/events.jsonl"
-  if [ -s "$run/result/result.md" ]; then
+  if [ -f "$run/result/result.md" ] && [ ! -L "$run/result/result.md" ]; then
     printf '\n=====RESULT FILE=====\n'
     cat "$run/result/result.md"
   fi

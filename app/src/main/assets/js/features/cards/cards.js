@@ -196,17 +196,16 @@ function show(next) {
   const locked = open.locked === true;
   // A prompt is a card the user has read through and locked: it stays as it is until the user unlocks it.
   const prompt = open.prompt === true;
-  ui.els.cardEdit.classList.toggle('hidden', mode !== 'read' || locked || prompt);
   ui.els.cardLock.classList.toggle('hidden', mode !== 'read' || locked);
   ui.els.cardLock.textContent = prompt ? '解锁' : '审核并锁定';
   setTitle(mode === 'new' ? '' : state.cardName, mode === 'new' ? '新卡片' : '', prompt);
   ui.els.cardFloat.classList.toggle('hidden', mode !== 'read');
   ui.els.cardFloat.textContent = callBridge('floatingCard') === state.cardName ? '取消悬浮' : '悬浮';
-  ui.els.cardCopyAll.classList.toggle('hidden', mode !== 'read');
+  ui.els.cardAttach.classList.toggle('hidden', locked || prompt || asArticle);
   // The name can be changed while editing: that is also how a card is moved into a folder.
   ui.els.cardNameField.classList.toggle('hidden', !editing);
-  ui.els.cardCopy.classList.toggle('hidden', mode === 'new');
-  ui.els.cardDelete.classList.toggle('hidden', mode === 'new');
+  ui.els.cardCopy.classList.remove('hidden');
+  ui.els.cardDelete.classList.toggle('hidden', mode === 'new' || locked || prompt);
 }
 
 function renderOpenCard() {
@@ -392,8 +391,8 @@ export function loadCards() {
   renderList();
 }
 
-/** The app changed a card; `name` is the one it touched last, if any. */
-export function onChanged(name) {
+/** Refreshes the list and the card already being read. */
+export function onChanged() {
   load();
   renderList();
   if (mode === 'read') {
@@ -401,7 +400,20 @@ export function onChanged(name) {
     else show('closed');
   }
   if (mode !== 'closed') show(mode);
-  if (name) ui.toast('卡片“' + name + '”已更新');
+}
+
+export function openForReview(name) {
+  if (mode === 'edit' || mode === 'new') {
+    ui.toast('请先退出当前编辑，再打开卡片');
+    return;
+  }
+  load();
+  if (!exists(name)) {
+    ui.toast('找不到这张卡片');
+    return;
+  }
+  if (mode !== 'read' || state.cardName !== name) openCard(name);
+  ui.showPage('cards');
 }
 
 /** Opens a card, to be read: as its text. The article view is asked for each time. */
@@ -413,11 +425,107 @@ export function openCard(name) {
   show('read');
 }
 
+let saveTimer;
+let original = { purpose: '', text: '' };
+const editing = () => mode === 'edit' || mode === 'new';
+const draftKey = () => 'reduction.card.draft:' + state.cardName;
+const saveStatus = (message) => { document.getElementById('cardSaveState').textContent = message; };
+
+function beginEditing() {
+  clearTimeout(saveTimer);
+  original = { purpose: ui.els.cardPurposeInput.value, text: ui.els.cardText.value };
+  saveStatus('');
+  const stored = localStorage.getItem(draftKey());
+  if (!stored) { resetUndo(); return; }
+  const draft = JSON.parse(stored);
+  original = draft.original;
+  ui.els.cardNameInput.value = draft.name;
+  ui.els.cardPurposeInput.value = draft.purpose;
+  ui.els.cardText.value = draft.text;
+  resetUndo();
+  saveStatus('已恢复本机草稿');
+}
+
+function autoSave() {
+  clearTimeout(saveTimer);
+  if (!editing()) return;
+  const creating = mode === 'new';
+  const name = ui.els.cardNameInput.value.trim().replace(/\s*\/\s*/g, '/');
+  const purpose = ui.els.cardPurposeInput.value.trim();
+  const text = ui.els.cardText.value;
+  if (!name || (creating && !purpose)) return;
+  const key = draftKey();
+  if (!localStorage.getItem(key)) return;
+  const result = callBridge('autosaveCard', creating ? name : state.cardName, purpose, text, creating, original.purpose, original.text);
+  if (result !== 'saved') {
+    saveStatus(result === 'conflict' ? '卡片有其他修改，本机草稿已保留' :
+      result === 'limit' ? '内容超过卡片上限，本机草稿已保留' : '写入失败，本机草稿已保留');
+    return;
+  }
+  original = { purpose, text };
+  if (!creating && name !== state.cardName && callBridge('renameCard', state.cardName, name) !== true) {
+    localStorage.setItem(key, JSON.stringify({ ...fields(), original }));
+    saveStatus('名称不可用，正文已保存');
+    return;
+  }
+  localStorage.removeItem(key);
+  if (creating || name !== state.cardName) {
+    state.cardName = name;
+    load();
+    renderList();
+    show('edit');
+  }
+  saveStatus('已自动保存');
+}
+
+let previousFields;
+const undoStack = [];
+function fields() {
+  return { name: ui.els.cardNameInput.value, purpose: ui.els.cardPurposeInput.value, text: ui.els.cardText.value };
+}
+function resetUndo() {
+  previousFields = fields();
+  undoStack.length = 0;
+}
+export function undoEdit() {
+  const previous = undoStack.pop();
+  if (!previous || !editing()) return;
+  ui.els.cardNameInput.value = previous.name;
+  ui.els.cardPurposeInput.value = previous.purpose;
+  ui.els.cardText.value = previous.text;
+  recordInput(false);
+  autoSave();
+}
+function recordInput(remember = true) {
+  if (!editing()) return;
+  clearTimeout(saveTimer);
+  if (remember && previousFields) {
+    undoStack.push(previousFields);
+    if (undoStack.length > 100) undoStack.shift();
+  }
+  previousFields = fields();
+  const draft = { original, ...previousFields };
+  try {
+    localStorage.setItem(draftKey(), JSON.stringify(draft));
+  } catch (_) {
+    saveStatus('本机草稿保存失败，请复制当前内容');
+    return;
+  }
+  saveStatus('已保存本机草稿');
+  saveTimer = setTimeout(autoSave, 700);
+}
+
+document.getElementById('cardEditor').addEventListener('input', recordInput);
+window.addEventListener('pagehide', autoSave);
+document.addEventListener('visibilitychange', () => { if (document.hidden) autoSave(); });
+
 export function editCard() {
-  if (mode !== 'read') return;
+  const card = state.cards.find((item) => item.name === state.cardName);
+  if (mode !== 'read' || !card || card.locked || card.prompt) return;
   ui.els.cardNameInput.value = state.cardName;
   ui.els.cardPurposeInput.value = String(callBridge('cardPurpose', state.cardName) || '');
   ui.els.cardText.value = String(callBridge('readCard', state.cardName) || '');
+  beginEditing();
   show('edit');
 }
 
@@ -427,6 +535,7 @@ export function newCard() {
   ui.els.cardNameInput.value = '';
   ui.els.cardPurposeInput.value = '';
   ui.els.cardText.value = '';
+  beginEditing();
   show('new');
 }
 
@@ -443,6 +552,7 @@ export function onPage() {
 /** One step back: from editing to reading, from reading to the list. False when no card is open. */
 export function back() {
   if (mode === 'closed') return false;
+  if (editing()) autoSave();
   if (mode === 'edit') {
     renderOpenCard();
     show('read');
@@ -450,40 +560,6 @@ export function back() {
     show('closed');
   }
   return true;
-}
-
-export function saveCard() {
-  const creating = mode === 'new';
-  const name = ui.els.cardNameInput.value.trim().replace(/\s*\/\s*/g, '/');
-  const renamed = !creating && name !== state.cardName;
-  const purpose = ui.els.cardPurposeInput.value.trim();
-  const text = ui.els.cardText.value.trim();
-  if (!name) {
-    ui.toast('先给卡片起个名字');
-    return;
-  }
-  if ((creating || renamed) && exists(name)) {
-    ui.toast('已经有一张叫“' + name + '”的卡片');
-    return;
-  }
-  if (creating && !purpose) {
-    ui.toast('写一句用途，助手靠它判断什么该记到这里');
-    return;
-  }
-  if (renamed && callBridge('renameCard', state.cardName, name) !== true) {
-    ui.toast('改不了名：名称最长 60 字，“/”两边不能是空的');
-    return;
-  }
-  if (callBridge('saveCard', name, purpose, text) !== true) {
-    ui.toast('保存失败：名称最长 60 字，“/”两边不能是空的');
-    return;
-  }
-  load();
-  renderList();
-  state.cardName = name;
-  renderOpenCard();
-  show('read');
-  ui.toast('卡片已保存');
 }
 
 /** The user has read the card through: one tap locks it as a prompt. Another tap takes the lock off. */
@@ -565,6 +641,7 @@ function insertIntoText(text) {
   const line = (before && !before.endsWith('\n') ? '\n' : '') + text + '\n';
   box.value = before + line + box.value.slice(box.selectionEnd ?? at);
   box.selectionStart = box.selectionEnd = at + line.length;
+  recordInput();
 }
 
 /**
@@ -596,18 +673,18 @@ export async function attachMedia(event) {
       const count = await keepPages(id, kept.buffer.slice(0), (page, total) => ui.setStatus('PDF 第 ' + page + '/' + total + ' 页'));
       ui.setStatus('');
       insertIntoText('![' + label + '](media:' + id + ')');
-      ui.toast('PDF 已放进卡片，共 ' + count + ' 页，保存后生效');
+      ui.toast('PDF 已放进卡片，共 ' + count + ' 页');
       return;
     }
     insertIntoText('![' + label + '](media:' + id + ')');
-    ui.toast((file.type.startsWith('audio/') ? '录音' : file.type.startsWith('video/') ? '视频' : '图片') + '已放进卡片，保存后生效');
+    ui.toast((file.type.startsWith('audio/') ? '录音' : file.type.startsWith('video/') ? '视频' : '图片') + '已放进卡片');
   } catch (error) {
     ui.toast('放不进去：' + (error && error.message ? error.message : '读不了这个文件'));
   }
 }
 
 export function copyCard() {
-  const text = String(callBridge('readCard', state.cardName) || '').trim();
+  const text = editing() ? ui.els.cardText.value : String(callBridge('readCard', state.cardName) || '').trim();
   if (!text) {
     ui.toast('卡片是空的');
     return;

@@ -43,16 +43,33 @@ class PatchCardsTool(
         }
         return try {
             val changed = cards.patch(patch)
-            emitter.emit("onCardsChanged", lastTouched(patch))
+            emitter.emit("onCardsChanged")
             "已生效：" + changed.joinToString("；")
         } catch (e: CardPatch.Invalid) {
             "补丁没有生效。${e.message}"
         }
     }
+}
 
-    /** The card to show afterwards: the last one the patch created or changed. */
-    private fun lastTouched(patch: String): String =
-        runCatching { CardPatch.parse(patch).lastOrNull { it !is CardPatch.Delete }?.name }.getOrNull().orEmpty()
+/** Shows a card at the user's request without reading it into the conversation or changing it. */
+class OpenCardTool(
+    private val cards: CardRepository,
+    private val emitter: EventSink
+) : ChatTool {
+    override val spec = ToolSpec(
+        name = "open_card",
+        description = "用户明确想看或回顾卡片内容时，在界面打开对应卡片。仅保存、读取资料或在对话里回答问题时不用它。",
+        parameters = listOf(ToolParam("name", "卡片的完整名称，包含文件夹"))
+    )
+
+    override fun execute(argumentsJson: String): String {
+        val name = CardRepository.cleanName(JSONObject(argumentsJson).stringOrNull("name").orEmpty())
+            ?: return "请提供有效的卡片名称"
+        if (cards.read(name) == null) return "没有名为“$name”的卡片"
+        emitter.emit("onOpenCard", name)
+        val encoded = java.net.URLEncoder.encode(name, "UTF-8").replace("+", "%20")
+        return "已请求打开卡片。回复里保留这个链接，方便用户稍后打开：[打开卡片](#card=$encoded)"
+    }
 }
 
 /**

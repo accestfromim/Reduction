@@ -93,6 +93,14 @@ class CardRepository(private val dir: File) {
     @Synchronized
     fun save(name: String, content: String, purpose: String? = null): Boolean = save(name, content, purpose, byProgram = false)
 
+    @Synchronized
+    fun autosave(name: String, purpose: String, content: String, creating: Boolean, oldPurpose: String, oldText: String): String {
+        if (content.length > MAX_CHARS || purpose.length > MAX_PURPOSE) return "limit"
+        val existing = read(name)
+        if (if (creating) existing != null else existing != oldText || purpose(name) != oldPurpose) return "conflict"
+        return if (save(name, content, purpose)) "saved" else "failed"
+    }
+
     private fun save(name: String, content: String, purpose: String?, byProgram: Boolean): Boolean {
         val file = textFile(name) ?: return false
         if (!byProgram && (isProgramCard(name) || isLocked(name))) return false

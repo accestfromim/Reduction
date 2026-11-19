@@ -71,6 +71,10 @@ class AndroidBridge(
     fun saveCard(name: String, purpose: String, content: String): Boolean = cards.save(name, purpose, content)
 
     @JavascriptInterface
+    fun autosaveCard(name: String, purpose: String, content: String, creating: Boolean, oldPurpose: String, oldText: String) =
+        cards.autosave(name, purpose, content, creating, oldPurpose, oldText)
+
+    @JavascriptInterface
     fun deleteCard(name: String): Boolean = cards.delete(name)
 
     @JavascriptInterface

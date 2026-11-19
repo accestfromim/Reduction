@@ -96,8 +96,9 @@
         <button class="text-btn" id="cardPreview">预览</button>
         <button class="text-btn" id="cardLock">审核并锁定</button>
         <button class="text-btn" id="cardFloat">悬浮</button>
-        <button class="text-btn" id="cardCopyAll">复制全文</button>
-        <button class="text-btn" id="cardEdit">编辑</button>
+        <button class="text-btn card-mini" id="cardCopy" title="复制正文">复制</button>
+        <button class="text-btn card-mini" id="cardAttach" title="添加附件">附件</button>
+        <button class="text-btn card-mini" id="cardDelete" title="删除卡片">删除</button>
       </div>
       <div class="card-read markdown" id="cardBody"></div>
       <div class="card-plan hidden" id="cardPlan"></div>
@@ -114,12 +115,7 @@
         </label>
         <textarea class="brief-text" id="cardText" placeholder="卡片内容（Markdown）。新卡片可以留空。" spellcheck="false"></textarea>
         <input class="hidden" id="cardMediaInput" type="file" accept="image/*,audio/*,video/*,application/pdf" />
-        <div class="actions">
-          <button class="primary-btn" id="cardSave">保存</button>
-          <button class="secondary-btn" id="cardAttach">加附件</button>
-          <button class="secondary-btn" id="cardCopy">复制</button>
-          <button class="secondary-btn" id="cardDelete">删除</button>
-        </div>
+        <small id="cardSaveState" role="status"></small>
       </div>
     </section>
 
@@ -246,9 +242,16 @@
       </label>
 
       <label class="field">
-        <span>opencode 项目目录</span>
+        <span>默认项目路径（须在下方授权）</span>
         <input id="pcProjectInput" placeholder="~/Reduction-iterate" autocomplete="off" />
       </label>
+
+      <div class="field">
+        <span>子代理目录权限</span>
+        <small>填写电脑上的绝对路径或 ~/ 路径。子目录可单独设置，优先于上级目录。写入还需要开启上方的修改开关。</small>
+        <div id="agentDirectories"></div>
+        <button type="button" class="secondary-btn" id="addAgentDirectory">添加目录</button>
+      </div>
 
       <div class="actions">
         <button class="primary-btn" id="saveSettings">保存</button>

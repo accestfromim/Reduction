@@ -3,7 +3,7 @@ package com.mindtravel.reduction.feature.chat.model.tools
 import com.mindtravel.reduction.model.chat.Role
 import com.mindtravel.reduction.model.chat.ChatMessage
 import com.mindtravel.reduction.model.chat.ChatImage
-import com.mindtravel.reduction.core.host.ToolApprovalHost
+import com.mindtravel.reduction.core.settings.AgentDirectory
 import com.mindtravel.reduction.hardware.pc.PcGateway
 import com.mindtravel.reduction.hardware.pc.PcInfo
 import com.mindtravel.reduction.hardware.pc.PcProfile
@@ -40,25 +40,17 @@ class AgentHarnessTest {
         fun stopped(): String = File(dir, "stopped").takeIf { it.isFile }?.readText()?.trim().orEmpty()
     }
 
-    private class Approval(private val answer: Boolean) : ToolApprovalHost {
-        var asked = 0
-        override fun requestToolApproval(title: String, message: String, callback: (Boolean) -> Unit) {
-            asked++
-            callback(answer)
-        }
-    }
-
     /** One registry for the whole test, as in the app: it outlives each tool. */
     private val runs = AgentRuns()
 
-    private fun tool(launcher: FakeLauncher, allowWrite: Boolean = true, approval: Approval = Approval(true)) =
+    private fun tool(launcher: FakeLauncher, allowWrite: Boolean = true, directories: List<AgentDirectory> = emptyList()) =
         RunAgentTool(
             harness = harness(launcher.script),
             runs = runs,
             project = "/home/u/project",
             agentsRoot = "/home/u/agents",
             allowWrite = allowWrite,
-            approvalHost = approval,
+            directories = directories,
             waitMillis = 300,
             pollMillis = 20
         )
@@ -92,7 +84,7 @@ class AgentHarnessTest {
     @Test
     fun aRunThatCannotStartReportsTheLaunchersMessage() {
         val launcher = "printf '%s\\n' 'harness：电脑上没有 bwrap，无法隔离运行'\n"
-        val said = RunAgentTool(harness(launcher), AgentRuns(), "/home/u/p", "/home/u/a", true, Approval(true))
+        val said = RunAgentTool(harness(launcher), AgentRuns(), "/home/u/p", "/home/u/a", true, emptyList())
             .execute(args("action" to "start", "task" to "查资料"))
         assertEquals("派发失败：harness：电脑上没有 bwrap，无法隔离运行", said)
     }
@@ -145,27 +137,23 @@ class AgentHarnessTest {
     fun theDefaultWaitIsTooShortToHoldUpAReply() {
         val launcher = FakeLauncher()
         launcher.status("STATE running\n")
-        val tool = RunAgentTool(harness(launcher.script), AgentRuns(), "/home/u/p", "/home/u/a", true, Approval(true))
+        val tool = RunAgentTool(harness(launcher.script), AgentRuns(), "/home/u/p", "/home/u/a", true, emptyList())
         val startedAt = System.currentTimeMillis()
         tool.execute(args("action" to "start", "task" to "大任务"))
         assertTrue(System.currentTimeMillis() - startedAt < 5_000)
     }
 
     @Test
-    fun changingTheProjectAsksOnThePhoneFirst() {
+    fun aProjectNeedsAStoredDirectoryGrant() {
         val launcher = FakeLauncher()
         launcher.status("STATE done 0\n$textEvent\n")
-        val refused = Approval(false)
-        val said = tool(launcher, approval = refused)
-            .execute(args("action" to "start", "task" to "改代码", "folder" to "project", "access" to "write"))
-        assertEquals("已取消：用户拒绝执行", said)
-        assertEquals(1, refused.asked)
-        assertEquals("nothing was started", emptyList<String>(), launcher.started())
+        val args = args("action" to "start", "task" to "改代码", "folder" to "project", "access" to "write")
+        assertEquals("工作目录未获授权或名称无效：project", tool(launcher).execute(args))
+        assertTrue(launcher.started().isEmpty())
 
-        val reading = Approval(false)
-        tool(launcher, approval = reading).execute(args("action" to "start", "task" to "看代码", "folder" to "project"))
-        assertEquals("reading the project needs no approval", 0, reading.asked)
-        assertEquals(listOf("plan", "/home/u/project"), launcher.started().take(2))
+        val allowed = listOf(AgentDirectory("/home/u/project", writable = true))
+        tool(launcher, directories = allowed).execute(args)
+        assertEquals(listOf("build", "/home/u/project"), launcher.started().take(2))
     }
 
     @Test
@@ -182,7 +170,7 @@ class AgentHarnessTest {
         val launcher = FakeLauncher()
         for (name in listOf("../secret", "a/b", "/etc", "..", ".hidden")) {
             val said = tool(launcher).execute(args("action" to "start", "task" to "x", "folder" to name))
-            assertTrue("$name -> $said", said.startsWith("文件夹名无效"))
+            assertTrue("$name -> $said", said.startsWith("工作目录未获授权或名称无效"))
         }
         assertEquals(emptyList<String>(), launcher.started())
     }
@@ -257,7 +245,7 @@ class AgentHarnessTest {
         val runs = AgentRuns(now = { clock })
         val launcher = FakeLauncher()
         launcher.status("STATE running\n")
-        val tool = RunAgentTool(harness(launcher.script), runs, "/home/u/project", "/home/u/agents", true, Approval(true), 300, 20)
+        val tool = RunAgentTool(harness(launcher.script), runs, "/home/u/project", "/home/u/agents", true, emptyList(), 300, 20)
         tool.execute(args("action" to "start", "task" to "## 查甲的出处\n## 约束：只读\n交回原文和链接", "folder" to "notes"))
 
         val during = AgentLedger.render(runs.all())
@@ -312,7 +300,7 @@ class AgentHarnessTest {
         val runs = AgentRuns()
         val launcher = FakeLauncher()
         launcher.status("STATE running\n")
-        val tool = RunAgentTool(harness(launcher.script), runs, "/home/u/project", "/home/u/agents", true, Approval(true), 300, 20)
+        val tool = RunAgentTool(harness(launcher.script), runs, "/home/u/project", "/home/u/agents", true, emptyList(), 300, 20)
         tool.execute(args("action" to "start", "task" to "画一张图", "folder" to "notes"))
         launcher.status("STATE done 0\n$textEvent\n\n=====IMAGE chart.png image/png=====\nQUJD")
         val ended = tool.endedRuns().single()
@@ -327,7 +315,7 @@ class AgentHarnessTest {
         val runs = AgentRuns()
         val launcher = FakeLauncher()
         launcher.status("STATE running\n")
-        val tool = RunAgentTool(harness(launcher.script), runs, "/home/u/project", "/home/u/agents", true, Approval(true), 300, 20)
+        val tool = RunAgentTool(harness(launcher.script), runs, "/home/u/project", "/home/u/agents", true, emptyList(), 300, 20)
         tool.execute(args("action" to "start", "task" to "画一张图", "folder" to "notes"))
         launcher.status("STATE done 0\n$textEvent\n\n=====IMAGE chart.png image/png=====\nQUJD")
         // A tool's answer is words: it says the picture is on its way, and does not claim to hold it.
