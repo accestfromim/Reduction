@@ -2,7 +2,13 @@
 
 写给接手这个项目的人。读完这一份，应该知道项目是什么、现在在哪、怎么动手、哪里容易踩坑。功能的完整说明在 [DEVELOPMENT.md](DEVELOPMENT.md)，这里不重复，只指路。
 
-状态截至 2026-11-18，仓库 `main` 分支，提交 `4e4ac5a`。
+## 本仓库的分支
+
+日常开发和发布使用本地 `main` 和远端 `origin/main`。远端是 [accestfromim/Reduction](https://github.com/accestfromim/Reduction)，原始仓库是 [mindtravel/Reduction](https://github.com/mindtravel/Reduction)。
+
+- 收到同步要求时，将远端 `ref` 快进到 `upstream/main`。维护者指定的改动才进入 `main`。
+- 向原始仓库贡献时，从 `ref` 新建分支，只移入维护者选定的功能，再向原始仓库发 PR。
+- 本机实验依照维护者的要求保留在工作区。
 
 ## 一、这是什么
 
