@@ -230,13 +230,21 @@
         <input id="headsetMicInput" type="checkbox" />
       </label>
 
+      <label class="field">
+        <span>子代理执行器</span>
+        <select id="agentEngineSelect">
+          <option value="opencode">OpenCode</option>
+          <option value="codex">Codex</option>
+        </select>
+      </label>
+
       <label class="switch-row">
-        <span>允许 sub agent 只读分析项目</span>
+        <span>允许子代理只读分析项目</span>
         <input id="opencodeEnabledInput" type="checkbox" />
       </label>
 
       <label class="switch-row">
-        <span>允许 sub agent 修改代码和执行任务</span>
+        <span>允许子代理修改代码和执行任务</span>
         <input id="opencodeWriteInput" type="checkbox" />
       </label>
 
@@ -246,7 +254,7 @@
       </label>
 
       <label class="field">
-        <span>opencode 项目目录</span>
+        <span>子代理项目目录</span>
         <input id="pcProjectInput" placeholder="~/Reduction-iterate" autocomplete="off" />
       </label>
 

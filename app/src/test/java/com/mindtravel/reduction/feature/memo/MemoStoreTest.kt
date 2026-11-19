@@ -1,6 +1,10 @@
 package com.mindtravel.reduction.feature.memo
 
 import com.mindtravel.reduction.core.events.EventSink
+import com.mindtravel.reduction.core.time.RelativeDates
+import com.mindtravel.reduction.feature.chat.data.CardRepository
+import com.mindtravel.reduction.feature.chat.model.tools.ReadCardTool
+import com.mindtravel.reduction.feature.chat.model.tools.SearchCardsTool
 import com.mindtravel.reduction.feature.memo.data.DueParser
 import com.mindtravel.reduction.feature.memo.data.MemoStore
 import org.junit.Assert.assertEquals
@@ -62,8 +66,46 @@ class MemoStoreTest {
     fun aDayIsSaidWithoutAnHour() {
         assertEquals("今天", DueParser.describe(today, today))
         assertEquals("明天", DueParser.describe(today.plusDays(1), today))
-        assertEquals("11-21", DueParser.describe(day("2026-11-21"), today))
+        assertEquals("这周六", DueParser.describe(day("2026-11-21"), today))
+        assertEquals("下周二", DueParser.describe(day("2026-11-24"), today))
         assertEquals("2027-01-03", DueParser.describe(day("2027-01-03"), today))
+    }
+
+    @Test
+    fun historicalDatesAreResolvedInModelContext() {
+        val reference = day("2026-11-18")
+        val text = "明天档案归档，下周二核对。这周整理资料。用「明天」当标签。"
+        assertEquals(
+            "［原消息日期 2026-11-18］\n2026-11-19档案归档，2026-11-24核对。2026-11-16 至 2026-11-22整理资料。用「明天」当标签。",
+            RelativeDates.context(text, reference)
+        )
+        assertEquals(day("2026-11-24"), DueParser.dayOf("下周二", day("2026-11-19")))
+        assertEquals(day("2026-11-17"), DueParser.dayOf("这周二", reference))
+        assertEquals(day("2026-11-20"), DueParser.dayOf("两天后", reference))
+        assertEquals(day("2026-12-03"), DueParser.dayOf("下个月3号", reference))
+        assertEquals(day("2027-01-05"), DueParser.dayOf("下周二", day("2026-12-31")))
+    }
+
+    @Test
+    fun theToolAndPlanReadUseTheStoredDateAcrossMidnight() {
+        val store = store()
+        val tool = MemoTool(store, Quiet()) { day("2026-11-18") }
+        clock = at(day("2026-11-19"), hour = 0)
+        val saved = tool.execute("""{"action":"add","text":"档案归档","date":"明天","part":"早上"}""")
+        assertTrue(saved.contains("2026-11-19 早上"))
+        assertEquals(day("2026-11-19"), store.find(1)!!.due)
+        val cards = CardRepository(temporary.newFolder())
+        cards.writeProgramCard(MemoCard.CARD, MemoCard.render(store), MemoCard.PURPOSE)
+        assertTrue(cards.read(MemoCard.CARD)!!.contains("档案归档 · 今天 早上"))
+        assertFalse(MemoCard.render(store).contains("## 没日期"))
+        assertTrue(ReadCardTool(cards, store).execute("""{"name":"计划"}""").contains("档案归档 · 2026-11-19 早上"))
+        assertTrue(SearchCardsTool(cards, store).execute("""{"query":"档案归档"}""").contains("档案归档 · 2026-11-19 早上"))
+
+        clock = at(day("2026-11-20"), hour = 0)
+        assertTrue(MemoView.json(store, exact = true, notify = true).contains("\"due\":\"昨天 早上\""))
+        assertTrue(tool.execute("""{"action":"list"}""").contains("档案归档 · 2026-11-19 早上"))
+        store.add("整理归档清单", null)
+        assertTrue(MemoCard.render(store).contains("## 没日期\n\n- [ ] #2 整理归档清单"))
     }
 
     // ── the to-dos themselves ───────────────────────────────────────────────
@@ -103,10 +145,10 @@ class MemoStoreTest {
         val tool = tool(store)
         // An hour, if the assistant sends one anyway, is not part of the protocol.
         val said = tool.execute("""{"action":"add","text":"下午三点开会","date":"2026-11-18","time":"15:00"}""")
-        assertEquals("记下了 #1：下午三点开会，明天", said)
+        assertEquals("记下了 #1：下午三点开会，2026-11-18", said)
         assertEquals(day("2026-11-18"), store.find(1)!!.due)
         assertTrue(tool.spec.parameters.none { it.name == "time" })
-        assertEquals("改好了 #1：下午三点开会，后天", tool.execute("""{"action":"update","id":"1","date":"后天"}"""))
+        assertEquals("改好了 #1：下午三点开会，2026-11-19", tool.execute("""{"action":"update","id":"1","date":"后天"}"""))
     }
 
     @Test
@@ -114,8 +156,8 @@ class MemoStoreTest {
         val file = File(temporary.newFolder(), "memos.json")
         val store = store(file)
         val tool = tool(store)
-        assertEquals("记下了 #1：交报告，明天 下午", tool.execute("""{"action":"add","text":"交报告","date":"2026-11-18","part":"下午"}"""))
-        assertEquals("记下了 #2：买菜，明天", tool.execute("""{"action":"add","text":"买菜","date":"2026-11-18"}"""))
+        assertEquals("记下了 #1：交报告，2026-11-18 下午", tool.execute("""{"action":"add","text":"交报告","date":"2026-11-18","part":"下午"}"""))
+        assertEquals("记下了 #2：买菜，2026-11-18", tool.execute("""{"action":"add","text":"买菜","date":"2026-11-18"}"""))
         assertEquals(MemoStore.Part.AFTERNOON, store.find(1)!!.part)
         assertNull(store.find(2)!!.part)
         // Kept as a date and a part, nothing finer; and read back the same.
@@ -124,15 +166,15 @@ class MemoStoreTest {
         // It shows wherever the to-do does.
         assertTrue(MemoCard.render(store).contains("#1 交报告 · 明天 下午\n"))
         assertTrue(MemoCard.render(store).contains("#2 买菜 · 明天\n"))
-        assertTrue(tool.execute("""{"action":"list"}""").contains("#1 交报告 · 明天 下午"))
+        assertTrue(tool.execute("""{"action":"list"}""").contains("#1 交报告 · 2026-11-18 下午"))
         assertTrue(MemoView.json(store, exact = true, notify = true).contains("\"due\":\"明天 下午\""))
         assertFalse(Regex("\\d\\d:\\d\\d").containsMatchIn(MemoCard.render(store)))
         // Within a day, the whole-day ones first, then by part.
         tool.execute("""{"action":"add","text":"晨跑","date":"2026-11-18","part":"早上"}""")
         assertEquals(listOf("买菜", "晨跑", "交报告"), store.view().future.map { it.text })
         // Changed alone, taken away, and refused when it is not one of the four.
-        assertEquals("改好了 #1：交报告，明天 晚上", tool.execute("""{"action":"update","id":"1","part":"晚上"}"""))
-        assertEquals("改好了 #1：交报告，明天", tool.execute("""{"action":"update","id":"1","part":"none"}"""))
+        assertEquals("改好了 #1：交报告，2026-11-18 晚上", tool.execute("""{"action":"update","id":"1","part":"晚上"}"""))
+        assertEquals("改好了 #1：交报告，2026-11-18", tool.execute("""{"action":"update","id":"1","part":"none"}"""))
         assertTrue(tool.execute("""{"action":"update","id":"1","part":"半夜"}""").startsWith("没有生效"))
     }
 
@@ -278,7 +320,7 @@ class MemoStoreTest {
         assertTrue(text.contains("## 没日期"))
         assertTrue(text.contains("[x] #${done.id} 做完了 · 今天\n"))
         assertTrue(text.contains("还没做 · 明天\n"))
-        assertTrue(text.contains("拖着的 · 11-16 · 已过期"))
+        assertTrue(text.contains("拖着的 · 昨天 · 已过期"))
         assertFalse(Regex("\\d\\d:\\d\\d").containsMatchIn(text))
     }
 

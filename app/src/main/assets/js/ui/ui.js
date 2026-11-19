@@ -34,6 +34,7 @@ export const els = {
   wakeWordInput: byId('wakeWordInput'),
   bargeInInput: byId('bargeInInput'),
   headsetMicInput: byId('headsetMicInput'),
+  agentEngineSelect: byId('agentEngineSelect'),
   opencodeEnabledInput: byId('opencodeEnabledInput'),
   opencodeWriteInput: byId('opencodeWriteInput'),
   opencodeSessionInput: byId('opencodeSessionInput'),
