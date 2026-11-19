@@ -36,7 +36,7 @@ class ReplyStreamer(
     private var splitter = SentenceSplitter()
 
     @Synchronized
-    fun start(apiKey: String, voice: String, events: Events) {
+    fun start(voice: String, events: Events) {
         stop()
         val current = ++session
         extractor = SpeechTextExtractor()
@@ -55,10 +55,12 @@ class ReplyStreamer(
             try {
                 var index = 0
                 for (text in queue) {
+                    if (current != session) return@launch
                     // Timings go to the log: they show where a pause in speech comes from.
                     val synthStart = System.currentTimeMillis()
                     // Every piece at one loudness: the same as the cues around it.
-                    val pcm = Loudness.leveled(synthesizer.synthesize(apiKey, voice, text))
+                    val pcm = Loudness.leveled(synthesizer.synthesize(voice, text))
+                    if (pcm.isEmpty()) continue
                     val synthMs = System.currentTimeMillis() - synthStart
                     if (current != session) return@launch
                     val queueStart = System.currentTimeMillis()

@@ -6,7 +6,7 @@ import org.json.JSONObject
 data class AppSettings(
     val apiKey: String = "",
     val model: String = "deepseek-flash",
-    val voice: String = "stella",
+    val voice: String = DEFAULT_VOICE,
     val autoSpeak: Boolean = true,
     val pcHost: String = "",
     val pcPort: Int = 22,
@@ -41,6 +41,12 @@ data class AppSettings(
     }
 
     companion object {
+        const val DEFAULT_VOICE = "aishell3-0"
+        const val SECOND_VOICE = "aishell3-1"
+
+        fun localVoice(value: String?): String =
+            if (value == SECOND_VOICE || value == "tide") SECOND_VOICE else DEFAULT_VOICE
+
         /** On the computer; "~" is the home directory of the user the phone logs in as. */
         const val DEFAULT_PROJECT = "~/Reduction-iterate"
 
@@ -52,7 +58,7 @@ data class AppSettings(
             return AppSettings(
                 apiKey = json.stringOrEmpty("apiKey").trim(),
                 model = json.stringOrEmpty("model").trim().ifBlank { "deepseek-flash" },
-                voice = json.stringOrEmpty("voice").trim().takeIf { it == "tide" } ?: "stella",
+                voice = localVoice(json.stringOrEmpty("voice").trim()),
                 autoSpeak = json.optBoolean("autoSpeak", true),
                 pcHost = json.stringOrEmpty("pcHost").trim(),
                 pcPort = json.optInt("pcPort", 22).takeIf { it in 1..65535 } ?: 22,

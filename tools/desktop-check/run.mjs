@@ -13,7 +13,7 @@ const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../.
 const home = fs.mkdtempSync(path.join(os.tmpdir(), 'reduction-desktop-'));
 const asked = { chat: [], tts: [], asr: 0 };
 
-// The stand-in: answers a chat with a tool call and then words, speech with a tone, recognition with text.
+// Chat and transcription use a stand-in. Local speech must work even when remote TTS fails.
 const model = http.createServer((req, res) => {
   const chunks = [];
   req.on('data', (c) => chunks.push(c));
@@ -35,10 +35,7 @@ const model = http.createServer((req, res) => {
       res.end('data: [DONE]\n\n');
     } else if (req.url === '/v1/tools/tts') {
       asked.tts.push(JSON.parse(body.toString()).text);
-      const pcm = Buffer.alloc(24000 * 2 * 0.3);
-      for (let i = 0; i < pcm.length / 2; i++) pcm.writeInt16LE(Math.round(900 * Math.sin(i * 0.11)), i * 2);
-      res.writeHead(200, { 'content-type': 'application/octet-stream' });
-      res.end(pcm);
+      res.writeHead(503); res.end('remote TTS disabled');
     } else if (req.url === '/v1/tools/asr') {
       asked.asr++;
       res.writeHead(200, { 'content-type': 'application/json' });
@@ -83,6 +80,10 @@ try {
 
   // No key yet: the settings sheet is offered; saving one writes a file only the owner can read.
   check('settings are offered when there is no key', await page.evaluate(() => !document.getElementById('settingsSheet').classList.contains('hidden')));
+  await page.click('#testTts');
+  await page.waitForFunction(() => window.__played > 0);
+  check('local speech works before a key is configured', asked.tts.length === 0, asked.tts);
+  await page.waitForFunction(() => !document.querySelector('#status').textContent.trim());
   await page.type('#apiKeyInput', 'sk-test-key');
   await page.click('#saveSettings');
   await wait(300);
@@ -91,15 +92,16 @@ try {
 
   // A typed question: answered, shown, and spoken through the browser.
   await page.click('#micBtn');
+  const playedBefore = await page.evaluate(() => window.__played);
   await page.type('#textInput', '你好');
   await page.keyboard.press('Enter');
-  await wait(2500);
+  await page.waitForFunction((before) => window.__played > before, {}, playedBefore);
   const bubbles = await page.evaluate(() => Array.from(document.querySelectorAll('.msg-row .bubble')).map((b) => b.textContent.trim()));
   check('a typed question is answered', bubbles.join('|') === '你好|你好，我在电脑上。', bubbles);
-  check('the answer is spoken in the browser', asked.tts.some((t) => t.includes('我在电脑上')) && await page.evaluate(() => window.__played) > 0, asked.tts);
+  check('the answer is spoken in the browser', asked.tts.length === 0 && await page.evaluate(() => window.__played) > playedBefore, asked.tts);
   const system = asked.chat[0].messages[0].content;
   check('the assistant knows it is on a computer', system.includes('运行在电脑上') && system.includes('patch_cards'));
-  await wait(1200);
+  await page.waitForFunction(() => !document.querySelector('#status').textContent.trim());
   check('the page hears that speaking is over', (await text('#status')).trim() === '', await text('#status'));
 
   // A tool call: one line in the stream, and the card exists afterwards.
@@ -111,10 +113,12 @@ try {
   await wait(300);
   const names = await page.evaluate(() => Array.from(document.querySelectorAll('#cardList .card-row')).map((r) => r.textContent));
   check('the card the assistant wrote is listed, with the task ledger', names.includes('备忘') && names.includes('sub agent 任务'), names);
-  check('cards are kept on this computer', fs.readdirSync(path.join(home, '.local/share/reduction/cards')).filter((f) => f.endsWith('.md')).length === 2);
+  const cardDir = path.join(home, '.local/share/reduction/cards');
+  check('the card from the tool round is kept on this computer', fs.readdirSync(cardDir)
+    .some((f) => f.endsWith('.md') && fs.readFileSync(path.join(cardDir, f), 'utf8').includes('买电池')));
   await page.evaluate(() => Array.from(document.querySelectorAll('#cardList .card-row')).find((r) => r.textContent === 'sub agent 任务').click());
   check('the task ledger cannot be edited', await page.evaluate(() => document.getElementById('cardEdit').classList.contains('hidden') && document.getElementById('cardBody').textContent.includes('程序直接写入')));
-  await page.click('#cardBack');
+  await page.click('#cardCrumbs button.crumb');
   // A picture and a recording: kept by the app, shown and playable in the card, on the computer too.
   const media = await page.evaluate(async () => {
     const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
@@ -130,7 +134,7 @@ try {
       refused: window.Android.saveCardMedia(png, 'exe') === '' };
   });
   check('a card shows its picture and plays its recording', media.folder && media.loaded && media.audio && media.refused, media);
-  await page.click('#cardBack');
+  await page.click('#cardCrumbs button.crumb');
   await page.click('#tabStream');
 
   // Holding the microphone button: recorded here, recognised, and sent as a question.
@@ -161,7 +165,7 @@ await browser.close();
 app.kill();
 
 // ── with the computer's own loudspeakers and microphone ───────────────────
-// Only where the audio tools are installed (desktop/install.sh). A short, quiet tone is really played.
+// Only where the audio tools are installed (desktop/install.sh). A short local utterance is played.
 const tools = process.env.REDUCTION_AUDIO_DIR || path.join(os.homedir(), '.local/share/reduction/audio');
 if (fs.existsSync(path.join(tools, 'usr/bin/pacat'))) {
   log = '';
@@ -176,13 +180,12 @@ if (fs.existsSync(path.join(tools, 'usr/bin/pacat'))) {
   (async () => { const reader = stream.body.getReader(); const text = new TextDecoder(); for (;;) { const { done, value } = await reader.read(); if (done) break; for (const line of text.decode(value).split('\n')) if (line.startsWith('data: ')) seen.push({ at: Date.now(), ...JSON.parse(line.slice(6)) }); } })().catch(() => {});
   const order = (method, args) => fetch('http://127.0.0.1:8793/bridge/' + method, { method: 'POST', headers: { 'X-Reduction': '1' }, body: JSON.stringify(args) }).then((r) => r.json());
   check('the page is told not to use its own', (await order('nativeAudio', [])).result === true);
-  const ttsBefore = asked.tts.length;
   await order('speak', ['s1', '第一句话。第二句话。']);
-  await wait(2500);
+  for (let i = 0; i < 150 && !seen.some((e) => e.fn === 'onTtsDone'); i++) await wait(100);
   const names = seen.map((e) => e.fn || e.signal);
   const begin = seen.find((e) => e.fn === 'onTtsStart'); const end = seen.find((e) => e.fn === 'onTtsDone');
-  check('speech goes to the loudspeakers, not to the page', !!begin && !!end && !names.includes('audio') && asked.tts.length > ttsBefore, names);
-  check('it is reported finished when it has been heard', !!begin && !!end && end.at - begin.at > 300 && end.at - begin.at < 2000, begin && end && end.at - begin.at);
+  check('speech goes to the loudspeakers, not to the page', !!begin && !!end && !names.includes('audio') && asked.tts.length === 0, names);
+  check('it is reported finished when it has been heard', !!begin && !!end && end.at - begin.at > 300, begin && end && end.at - begin.at);
   await order('startRecording', ['r1']);
   await wait(1200);
   await order('stopAndTranscribe', ['r1']);

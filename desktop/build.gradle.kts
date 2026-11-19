@@ -44,12 +44,23 @@ sourceSets {
             // The page, the scripts that run sub agents, and the bundled cue recordings, as the phone has them.
             srcDir("../app/src/main/assets")
             srcDir("../app/src/main/res/raw")
-            exclude("kws/**", "kws-en/**", "vad/**")
+            exclude("kws/**", "kws-en/**", "vad/**", "tts-aishell3/**")
         }
     }
 }
 
+val localTts = layout.buildDirectory.dir("local-tts")
+val prepareTts by tasks.registering(Exec::class) {
+    val script = rootProject.file("tools/models/fetch-models.sh")
+    inputs.file(script)
+    inputs.property("host", System.getProperty("os.name") + System.getProperty("os.arch"))
+    outputs.dir(localTts)
+    commandLine("bash", script, "--desktop")
+}
+
 dependencies {
+    implementation(files(localTts.map { it.file("sherpa-onnx-jvm.jar") }).builtBy(prepareTts))
+    runtimeOnly(files(localTts.map { it.file("sherpa-onnx-native.jar") }).builtBy(prepareTts))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     implementation("org.json:json:20240303")
@@ -64,4 +75,14 @@ application {
     applicationName = "reduction"
     // A plain IPv4 listener: the only kind Windows forwards "localhost" to when this runs inside WSL.
     applicationDefaultJvmArgs = listOf("-Djava.net.preferIPv4Stack=true")
+}
+
+distributions.main {
+    contents.from(localTts.map { it.dir("tts-aishell3") }) {
+        into("models/tts-aishell3")
+    }
+}
+
+tasks.named<JavaExec>("run") {
+    systemProperty("reduction.tts.dir", localTts.get().dir("tts-aishell3").asFile.absolutePath)
 }

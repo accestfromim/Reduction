@@ -3,7 +3,7 @@ import { callBridge } from '../../core/bridge.js';
 export const DEFAULT_SETTINGS = Object.freeze({
   apiKey: '',
   model: 'deepseek-flash',
-  voice: 'stella',
+  voice: 'aishell3-0',
   autoSpeak: true,
   pcHost: '',
   pcPort: 22,
@@ -27,7 +27,7 @@ export function normalizeSettings(raw) {
   return {
     apiKey: string(raw?.apiKey).trim(),
     model: string(raw?.model, 'deepseek-flash').trim() || 'deepseek-flash',
-    voice: raw?.voice === 'tide' ? 'tide' : 'stella',
+    voice: ['tide', 'aishell3-1'].includes(raw?.voice) ? 'aishell3-1' : 'aishell3-0',
     autoSpeak: raw?.autoSpeak !== false,
     pcHost: string(raw?.pcHost).trim(),
     pcPort: Math.max(1, Math.min(65535, Number(raw?.pcPort) || 22)),

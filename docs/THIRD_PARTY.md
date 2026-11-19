@@ -4,8 +4,9 @@
 
 | 组件 | 用在哪 | 上游 | 许可证 |
 | --- | --- | --- | --- |
-| sherpa-onnx（`app/libs/sherpa-onnx-arm64.aar`，不入库，`tools/models/fetch-models.sh` 取） | 本地唤醒词、结束词、人声检测的运行库 | k2-fsa/sherpa-onnx v2.0.1 | Apache-2.0 |
+| sherpa-onnx（`app/libs/sherpa-onnx-arm64.aar`，不入库，`tools/models/fetch-models.sh` 取） | 本地唤醒词、结束词、人声检测和 VITS 朗读的运行库 | k2-fsa/sherpa-onnx v2.0.1 | Apache-2.0 |
 | 关键词模型（`assets/kws`、`assets/kws-en`，不入库，同上） | 认“完毕”和“Hi Reduction” | sherpa-onnx 发布的 zipformer KWS 模型（wenetspeech mobile、gigaspeech） | Apache-2.0 |
+| AISHELL-3 VITS（低采样率普通话多说话人模型） | 手机、电脑离线朗读 | [icefall 模型](https://huggingface.co/csukuangfj/icefall-tts-aishell3-vits-low-2024-04-06) · [AISHELL-3 语料](https://www.openslr.org/93) | Apache-2.0，随应用附带许可证 |
 | Silero VAD（`assets/vad/silero_vad.onnx`，不入库，同上） | 判断有没有人在说话 | snakers4/silero-vad | MIT |
 | marked | Markdown 渲染 | markedjs/marked | MIT |
 | DOMPurify | 渲染前清洗 HTML | cure53/DOMPurify | Apache-2.0 或 MPL-2.0 |

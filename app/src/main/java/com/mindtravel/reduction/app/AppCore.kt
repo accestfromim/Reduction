@@ -52,6 +52,7 @@ import com.mindtravel.reduction.hardware.pc.PcGateway
 import com.mindtravel.reduction.hardware.power.DeviceBattery
 import com.mindtravel.reduction.hardware.pc.SshPcClient
 import com.mindtravel.reduction.model.ModelGraph
+import com.mindtravel.reduction.model.voice.AndroidTts
 import com.mindtravel.reduction.model.voice.TtsCache
 import com.mindtravel.reduction.model.voice.TtsSynthesizer
 import com.mindtravel.reduction.model.voice.VoiceDetector
@@ -100,21 +101,17 @@ class AppCore private constructor(context: Context) {
     // ── models ──────────────────────────────────────────────────────────────
     private val models = ModelGraph()
     private val ttsCache = TtsCache(File(context.cacheDir, "tts_cache"))
-    private val ttsSynthesizer = TtsSynthesizer(models.audioGateway, ttsCache)
+    private val ttsSynthesizer = TtsSynthesizer(ttsCache, AndroidTts(context.assets)::generate)
 
     // ── features: voice ─────────────────────────────────────────────────────
     private val spokenCues = SpokenCues(
-        settingsRepository = settingsRepository,
-        synthesizer = ttsSynthesizer,
         bundled = mapOf(
             Cue.OK to cueSound(context, R.raw.ack_done),
             Cue.RETRYING to cueSound(context, R.raw.cue_retrying),
             Cue.NO_NETWORK to cueSound(context, R.raw.cue_no_network),
             Cue.FAILED to cueSound(context, R.raw.cue_failed),
             Cue.NOT_HEARD to cueSound(context, R.raw.cue_not_heard)
-        ),
-        sampleRate = AudioQueue.SAMPLE_RATE,
-        scope = scope
+        )
     )
     private val ackCue = AckCue(
         queue = audioQueue,
@@ -289,7 +286,6 @@ class AppCore private constructor(context: Context) {
         agentWatch.start()
         phoneSync.start()
         WakeWordBus.clipSink = { wav, keyword -> recordings.keep("wake", wav, keyword) }
-        spokenCues.prepare()
         Logs.add("Core started")
     }
 

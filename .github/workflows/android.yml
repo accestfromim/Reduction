@@ -35,18 +35,12 @@ jobs:
           yes | "$SDKMANAGER" --licenses >/dev/null || true
           "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
 
-      # app/libs/sherpa-onnx-arm64.aar and the wake-word models are not in git.
-      # The cache makes later runs skip the ~100 MB download.
+      # Both Gradle modules fetch their pinned speech models and native libraries here.
       - name: Cache speech library and models
         uses: actions/cache@v4
         with:
           path: .models
           key: models-${{ runner.os }}-${{ hashFiles('tools/models/fetch-models.sh') }}
-
-      - name: Fetch speech library and models
-        run: |
-          chmod +x tools/models/fetch-models.sh
-          tools/models/fetch-models.sh
 
       - name: Test, lint and build
         run: |

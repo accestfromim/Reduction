@@ -47,21 +47,6 @@ class DeepSeekHttp(
         }
     }
 
-    fun postBytes(path: String, apiKey: String, body: JSONObject): ByteArray {
-        val request = request(path, apiKey)
-            .header("Content-Type", JSON_CONTENT_TYPE)
-            .post(body.toString().toRequestBody(JSON_CONTENT_TYPE.toMediaType()))
-            .build()
-        return client.newCall(request).execute().use { response ->
-            val bytes = response.body?.bytes() ?: ByteArray(0)
-            if (!response.isSuccessful) {
-                throw httpError(response.code, String(bytes, Charsets.UTF_8))
-            }
-            if (bytes.isEmpty()) throw ApiException("接口返回为空")
-            bytes
-        }
-    }
-
     fun postMultipart(
         path: String,
         apiKey: String,

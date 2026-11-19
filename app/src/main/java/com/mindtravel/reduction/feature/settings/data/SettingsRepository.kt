@@ -41,7 +41,7 @@ class SettingsRepository(context: Context) : SettingsGateway {
         val legacy = AppSettings(
             apiKey = prefs.getString("apiKey", "") ?: "",
             model = prefs.getString("model", "deepseek-flash") ?: "deepseek-flash",
-            voice = prefs.getString("voice", "stella") ?: "stella",
+            voice = AppSettings.localVoice(prefs.getString("voice", null)),
             autoSpeak = prefs.getBoolean("autoSpeak", true),
             pcHost = prefs.getString("pcUrl", "") ?: "",
             pcPort = 22,

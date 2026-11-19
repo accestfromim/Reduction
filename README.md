@@ -50,7 +50,7 @@ Reduction回答一个问题：我们有可能在生活更轻松的同时、可�
 
 ## 全栈方案
 
-[DeepSeek](https://platform.deepseek.com/) API Key：提供大模型、语音文字互转、网络搜索服务
+对话、整段语音转写和联网搜索使用 DeepSeek API Key。朗读使用随应用安装的普通话模型，在设备 CPU 上运行。 [DeepSeek 开放平台](https://platform.deepseek.com/)
 
 ### 蓝牙耳机
 
@@ -60,7 +60,7 @@ Reduction回答一个问题：我们有可能在生活更轻松的同时、可�
 
 ```bash
 cp local.env.example local.env     # 填 JDK 17 和 Android SDK 的位置
-tools/models/fetch-models.sh       # 取语音运行库和唤醒词模型（有几十 MB，不入库）
+tools/models/fetch-models.sh       # 取语音运行库、唤醒词和本地朗读模型
 ./build.sh                         # 得到 dist/Reduction-v<版本>.apk
 ```
 

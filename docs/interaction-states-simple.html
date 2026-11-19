@@ -90,7 +90,7 @@
           <code class="layer-pkg">assets/js · ui/</code>
         </div>
         <div class="mods">
-          <div class="mod"><div class="mod-t">voice.js</div><div class="mod-d">按 onVoiceState 画状态条、录音条、实时字幕</div></div>
+          <div class="mod"><div class="mod-t">voice.js</div><div class="mod-d">按 onVoiceState 画状态条和录音条</div></div>
           <div class="mod"><div class="mod-t">chat.js</div><div class="mod-d">朗读页：流式文字，每次工具调用一行；不存历史、不拼请求</div></div>
           <div class="mod"><div class="mod-t">app.js</div><div class="mod-d">Native 事件入口，按钮与输入绑定</div></div>
           <div class="mod"><div class="mod-t">AndroidBridge</div><div class="mod-d">JS ↔ Kotlin 门面，JsEmitter 发事件</div></div>
@@ -98,7 +98,7 @@
         </div>
       </div>
 
-      <div class="port"><span>↓ 意图 <b>voiceFinish · voiceCancel · submitText · speak</b></span><span>↑ 事件 <b>onVoiceState · onVoicePartial · onReplyBegin · onChatToken</b></span></div>
+      <div class="port"><span>↓ 意图 <b>voiceFinish · voiceCancel · submitText · speak</b></span><span>↑ 事件 <b>onVoiceState · onReplyBegin · onChatToken</b></span></div>
 
       <div class="layer" style="--c:var(--fn)">
         <div class="layer-head">
@@ -126,9 +126,9 @@
         <div class="mods">
           <div class="mod"><div class="mod-t">KeywordSpotterModel</div><div class="mod-d">本地 sherpa-onnx：英文模型认唤醒词 Hi Reduction（连读，或中间停顿），中文模型认结束词“完毕”</div></div>
           <div class="mod"><div class="mod-t">VoiceDetector</div><div class="mod-d">本地 Silero VAD，逐帧判断有无人声</div></div>
-          <div class="mod"><div class="mod-t">RollingAsr</div><div class="mod-d">每秒识别一次增长中的整段音频</div></div>
+          <div class="mod"><div class="mod-t">DeepSeekAudioApi</div><div class="mod-d">录音结束后转写一次完整音频</div></div>
           <div class="mod"><div class="mod-t">ChatGateway</div><div class="mod-d">流式对话 + 工具调用（SSE）</div></div>
-          <div class="mod"><div class="mod-t">TtsSynthesizer</div><div class="mod-d">单段合成 + PCM 缓存</div></div>
+          <div class="mod"><div class="mod-t">TtsSynthesizer</div><div class="mod-d">CPU 本地 VITS 合成和 PCM 缓存</div></div>
         </div>
       </div>
 
@@ -233,7 +233,7 @@ stateDiagram-v2
           <th class="row" style="--c:var(--ui)">UI 层</th>
           <td>状态条为空</td>
           <td class="ack">状态条“准备中”，录音条出现；唤醒时震动</td>
-          <td>实时字幕；“结束”按钮</td>
+          <td>录音状态和“结束”按钮</td>
           <td class="ack">状态条“好的”；有文本时出用户气泡</td>
           <td>流式文字，每次工具调用一行（摘要、完成时间、状态）；状态条“回复中 / 播放中”</td>
         </tr>
@@ -249,9 +249,9 @@ stateDiagram-v2
           <th class="row" style="--c:var(--md)">模型层</th>
           <td>KWS 持续跑</td>
           <td class="ack">无模型调用</td>
-          <td>Silero VAD（人声）+ KWS（结束词“完毕”）在本地逐帧运行；滚动 ASR 只出实时字幕，不参与结束判定</td>
-          <td class="ack">滚动结果直接定稿，或整段识别；随后 LLM 首 token</td>
-          <td>LLM token 流；TTS 逐段合成，命中缓存直接返回</td>
+          <td>Silero VAD（人声）+ KWS（结束词“完毕”）在本地逐帧运行</td>
+          <td class="ack">整段语音转写成功后发给 LLM</td>
+          <td>LLM token 流；本地 TTS 逐段合成，命中缓存直接返回</td>
         </tr>
         <tr>
           <th class="row" style="--c:var(--hw)">硬件层</th>

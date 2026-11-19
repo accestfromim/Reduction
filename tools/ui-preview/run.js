@@ -62,7 +62,7 @@ await page.evaluateOnNewDocument(() => {
     loadSettings: () => JSON.stringify({
       apiKey: 'preview-key',
       model: 'deepseek-flash',
-      voice: 'stella',
+      voice: 'aishell3-0',
       autoSpeak: true,
       pcHost: 'desktop.tailnet.ts.net',
       pcPort: 22,

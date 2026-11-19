@@ -4,6 +4,7 @@
 # tree is exactly what upstream published; a mismatch stops the script.
 #
 #   tools/models/fetch-models.sh            fetch what is missing
+#   tools/models/fetch-models.sh --desktop  prepare the local desktop TTS runtime and model
 #   tools/models/fetch-models.sh --check    only report what is missing or does not match
 #
 # ── configuration ────────────────────────────────────────────────────────────────────────────────────
@@ -38,6 +39,11 @@ CHINESE_KEYWORDS='w án b ì @完毕'
 # Speech or noise: Silero VAD v4.
 VAD_URL=$RELEASES/asr-models/silero_vad_v4.onnx
 VAD_SHA=a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28
+# AISHELL-3 low VITS, Mandarin, from icefall. Only the small text-normalisation FSTs are used.
+TTS_NAME=vits-icefall-zh-aishell3
+TTS_SHA=ab468db3a3308cdd861495e0db2f25d79418a0c00639f74944c7cdf5dd8c6ec1
+SHERPA_VERSION=2.0.1
+JVM_SHA=8320e2457b6e38dd624fb619d3552e11ef78ffeb394622056126b16f2fd99d12
 # ── end of configuration ─────────────────────────────────────────────────────────────────────────────
 
 check_only=false
@@ -52,11 +58,12 @@ obtain() {                                  # url, cache name, sha256
   if [ -f "$path" ] && [ "$(sha256sum "$path" | cut -d' ' -f1)" = "$want" ]; then return 0; fi
   if $check_only; then echo "missing $name"; missing=1; return 1; fi
   echo "getting $name"
-  curl -L --fail --retry 3 -o "$path.part" "$url" || { echo "!! $name could not be downloaded"; missing=1; return 1; }
-  mv "$path.part" "$path"
-  if [ "$(sha256sum "$path" | cut -d' ' -f1)" != "$want" ]; then
-    echo "!! $name does not match its checksum"; rm -f "$path"; missing=1; return 1
+  local part
+  part=$(mktemp "$CACHE/$name.XXXXXXXX")
+  if ! curl -L --fail --retry 3 -o "$part" "$url" || [ "$(sha256sum "$part" | cut -d' ' -f1)" != "$want" ]; then
+    rm -f "$part"; echo "!! $name could not be fetched and verified"; missing=1; return 1
   fi
+  mv -f "$part" "$path"
 }
 
 # Unpacks a keyword model into the app's assets under the names the app loads, and writes its
@@ -78,6 +85,35 @@ place_keywords() {                          # cache name, directory inside it, d
   printf '%s\n' "$4" > "$dest/keywords.txt"
   echo "placed  $3"
 }
+
+place_tts() {
+  local dest=$1
+  obtain "$RELEASES/tts-models/$TTS_NAME.tar.bz2" "$TTS_NAME.tar.bz2" "$TTS_SHA" || return 1
+  mkdir -p "$dest"
+  tar -xjf "$CACHE/$TTS_NAME.tar.bz2" -C "$dest" --strip-components=1 \
+    "$TTS_NAME"/{model.onnx,lexicon.txt,tokens.txt,phone.fst,date.fst,number.fst}
+}
+
+if [ "${1:-}" = --desktop ]; then
+  case "$(uname -s)-$(uname -m)" in
+    Linux-x86_64) platform=linux-x64; native_sha=744330a68a7024d9412f029c23b06f847b8444787c94e5118e0fdaf1b4b2cb3f ;;
+    Linux-aarch64) platform=linux-aarch64; native_sha=c09d51e7190f5b8bcc20cf0d25bcb2e66324737ace5ce9d678ae37b8c79d6c2f ;;
+    Darwin-arm64) platform=osx-aarch64; native_sha=718a4ea4799341146ef9a0cc15daa70e6622ae4a16911952604035f396703499 ;;
+    Darwin-x86_64) platform=osx-x64; native_sha=617a6263b4793495ea6a5f882cfc5dbf9e57cf4ad1e126104bddf8cf90846f72 ;;
+    *) echo "Unsupported desktop TTS host: $(uname -sm)" >&2; exit 1 ;;
+  esac
+  out="$ROOT/desktop/build/local-tts"
+  place_tts "$out/tts-aishell3"
+  for binding in jvm "native-lib-$platform"; do
+    name="sherpa-onnx-$binding-$SHERPA_VERSION.jar"
+    if [ "$binding" = jvm ]; then sha=$JVM_SHA; jar=jvm; else sha=$native_sha; jar=native; fi
+    obtain "$RELEASES/v$SHERPA_VERSION/$name" "$name" "$sha"
+    cp "$CACHE/$name" "$out/sherpa-onnx-$jar.jar"
+  done
+  exit 0
+fi
+
+place_tts "$ROOT/app/src/main/assets/tts-aishell3" || missing=1
 
 obtain "$LIBRARY_URL" sherpa-onnx-2.0.1.aar "$LIBRARY_SHA" &&
   { mkdir -p "$ROOT/app/libs"; cp -f "$CACHE/sherpa-onnx-2.0.1.aar" "$ROOT/app/libs/sherpa-onnx-arm64.aar"; } &&

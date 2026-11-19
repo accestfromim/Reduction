@@ -258,7 +258,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     /** REDUCTION_API_BASE points the models somewhere else, which is how this is tested without spending anything. */
     private val models = ModelGraph(System.getenv("REDUCTION_API_BASE")?.takeIf { it.isNotBlank() }?.let { DeepSeekHttp(baseUrl = it) } ?: DeepSeekHttp())
     private val ttsCache = TtsCache(File(data, "tts_cache"))
-    private val synthesizer = TtsSynthesizer(models.audioGateway, ttsCache)
+    private val synthesizer = TtsSynthesizer(ttsCache, DesktopTts()::generate)
     private val onMain: (() -> Unit) -> Unit = { block -> scope.launch { block() } }
 
     /** The machine's own loudspeakers and microphone; null when they cannot be reached, and the page stands in. */
@@ -269,15 +269,11 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         settings, ReplyStreamer(synthesizer, audio?.Speech(onMain) ?: pageSpeech, scope), ttsCache, page
     )
     private val cues = SpokenCues(
-        settingsRepository = settings,
-        synthesizer = synthesizer,
         bundled = mapOf(
             Cue.OK to bundled("ack_done.wav"), Cue.RETRYING to bundled("cue_retrying.wav"),
             Cue.NO_NETWORK to bundled("cue_no_network.wav"), Cue.FAILED to bundled("cue_failed.wav"),
             Cue.NOT_HEARD to bundled("cue_not_heard.wav")
-        ),
-        sampleRate = SAMPLE_RATE,
-        scope = scope
+        )
     )
     private val agentRuns = AgentRuns(File(data, "agent-runs.json"))
     /** Sets cards as articles: for the assistant's tool, and for the page's preview, which asks for the template in use. */
@@ -455,7 +451,6 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
             deliver = { report -> conversation.submit(report.text, report.title, report.images) },
             scope = scope
         ).start()
-        cues.prepare()
     }
 
     override fun requestToolApproval(title: String, message: String, callback: (Boolean) -> Unit) {
@@ -517,7 +512,6 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         "loadSettings" -> settings.load().toJson().toString()
         "saveSettings" -> {
             settings.save(AppSettings.fromJson(args.getString(0)))
-            cues.prepare()
             true
         }
         "loadHistory" -> conversation.historyJson()
@@ -619,8 +613,6 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         WavPcm.parse(javaClass.classLoader.getResourceAsStream(name)!!.use { it.readBytes() }).data
 
     private companion object {
-        const val SAMPLE_RATE = 24_000
-
         /** What the model is asked to do with a dictation. */
         const val DICTATION = "你是语音输入法。用户发来的是一段口述的语音识别结果，把它整理成可以直接发出去的书面文字：" +
             "理顺语序，去掉口头语、语气词、重复和说到一半又改口的部分，改正明显的识别错字，补上标点。" +
