@@ -38,6 +38,7 @@ final class AppController: NSObject, NSApplicationDelegate, WKNavigationDelegate
     private let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 550, height: 720),
                                   styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
     private var web: WKWebView?
+    private var realtimeCall: RealtimeCall?
     private var menuBar: NSStatusItem?
     private var petItem: NSMenuItem?
     private var shortcutItem: NSMenuItem?
@@ -88,6 +89,7 @@ final class AppController: NSObject, NSApplicationDelegate, WKNavigationDelegate
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        realtimeCall?.shutdown()
         timer?.invalidate()
         pet.setVisible(false)
         shortcuts.stop()
@@ -141,6 +143,7 @@ final class AppController: NSObject, NSApplicationDelegate, WKNavigationDelegate
         let application = NSMenuItem()
         let menu = NSMenu()
         menu.addItem(item("打开对话与卡片", #selector(showPanel)))
+        menu.addItem(item("实时通话…", #selector(showRealtimeCall)))
         menu.addItem(item("查看运行日志", #selector(openLog)))
         menu.addItem(.separator())
         menu.addItem(withTitle: "退出 Reduction", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
@@ -171,6 +174,7 @@ final class AppController: NSObject, NSApplicationDelegate, WKNavigationDelegate
         status.button?.toolTip = "Reduction"
         let controls = NSMenu()
         controls.addItem(item("打开对话与卡片", #selector(showPanel)))
+        controls.addItem(item("实时通话…", #selector(showRealtimeCall)))
         let pet = item("显示桌宠", #selector(togglePet))
         petItem = pet
         controls.addItem(pet)
@@ -199,6 +203,11 @@ final class AppController: NSObject, NSApplicationDelegate, WKNavigationDelegate
     @objc private func showPanel() {
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
+    }
+
+    @MainActor @objc private func showRealtimeCall() {
+        if realtimeCall == nil { realtimeCall = RealtimeCall() }
+        realtimeCall?.show()
     }
 
     private func togglePanel() {

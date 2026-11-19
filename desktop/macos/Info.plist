@@ -19,9 +19,11 @@
     <key>LSMinimumSystemVersion</key>
     <string>14.4</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>Reduction 在你按住说话或听写时录音，并将录音发送给 DeepSeek 转成文字。</string>
+    <string>Reduction 在你按住说话或听写时将录音发送给 DeepSeek 转成文字，在实时通话时将音频发送给火山引擎。</string>
+    <key>NSCameraUsageDescription</key>
+    <string>开启实时通话摄像头时，Reduction 会将画面发送给火山引擎，让豆包结合画面回答。</string>
     <key>NSScreenCaptureUsageDescription</key>
-    <string>Reduction 使用桌宠所在显示器的画面绘制实时折射。画面只用于本机渲染。</string>
+    <string>桌宠折射的画面只在本机渲染。实时通话会将你选中共享的窗口画面发送给火山引擎。</string>
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsLocalNetworking</key>
