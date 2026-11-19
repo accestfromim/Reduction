@@ -27,6 +27,7 @@ export function openSettings() {
   if (typeof raw === 'string' && raw) {
     try {
       const info = JSON.parse(raw);
+      if (info.android && info.ttsEngine) ui.els.voiceSelect.closest('label').classList.add('hidden');
       const build = info.versionCode ? ` (${info.versionCode})` : '';
       ui.setAppInfo(
         `版本 ${info.version}${build} · Android ${info.android} (API ${info.sdk})\n` +

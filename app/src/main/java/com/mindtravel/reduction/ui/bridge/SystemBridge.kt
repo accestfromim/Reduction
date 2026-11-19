@@ -11,14 +11,14 @@ import android.os.VibratorManager
 import com.mindtravel.reduction.BuildConfig
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.feature.settings.data.SettingsRepository
-import com.mindtravel.reduction.model.voice.TtsSynthesizer
 import com.mindtravel.reduction.ui.activity.MainActivity
 import org.json.JSONObject
 
 class SystemBridge(
     private val activity: MainActivity,
     private val settings: SettingsRepository,
-    private val voice: VoiceBridge
+    private val voice: VoiceBridge,
+    private val ttsEngine: () -> String
 ) {
     fun vibrate(ms: Int) {
         activity.runOnUiThread {
@@ -63,7 +63,7 @@ class SystemBridge(
         return JSONObject().apply {
             put("version", BuildConfig.VERSION_NAME)
             put("versionCode", BuildConfig.VERSION_CODE)
-            put("ttsEngine", TtsSynthesizer.ENGINE_NAME)
+            put("ttsEngine", ttsEngine())
             put("android", Build.VERSION.RELEASE)
             put("sdk", Build.VERSION.SDK_INT)
             put("device", "${Build.MANUFACTURER} ${Build.MODEL}")
@@ -84,8 +84,8 @@ class SystemBridge(
             appendLine("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
             appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
             appendLine("Model: ${current.model}")
-            appendLine("Voice: ${current.voice}")
-            appendLine("Local TTS: ${TtsSynthesizer.ENGINE_NAME}")
+            appendLine("Local TTS: ${ttsEngine()}")
+            appendLine("Bundled voice: ${current.voice}")
             appendLine("Key set: ${current.apiKey.isNotBlank()}")
             appendLine("PC SSH: ${current.pcUser}@${current.pcHost}:${current.pcPort}")
             appendLine("TTS cache: %.1f MB".format(voice.cacheSizeMb()))

@@ -54,7 +54,6 @@ import com.mindtravel.reduction.hardware.pc.SshPcClient
 import com.mindtravel.reduction.model.ModelGraph
 import com.mindtravel.reduction.model.voice.AndroidTts
 import com.mindtravel.reduction.model.voice.TtsCache
-import com.mindtravel.reduction.model.voice.TtsSynthesizer
 import com.mindtravel.reduction.model.voice.VoiceDetector
 import com.mindtravel.reduction.model.wake.KeywordSpotterModel
 import com.mindtravel.reduction.ui.overlay.CardOverlay
@@ -101,7 +100,7 @@ class AppCore private constructor(context: Context) {
     // ── models ──────────────────────────────────────────────────────────────
     private val models = ModelGraph()
     private val ttsCache = TtsCache(File(context.cacheDir, "tts_cache"))
-    private val ttsSynthesizer = TtsSynthesizer(ttsCache, AndroidTts(context.assets)::generate)
+    val tts = AndroidTts(context, ttsCache)
 
     // ── features: voice ─────────────────────────────────────────────────────
     private val spokenCues = SpokenCues(
@@ -125,7 +124,7 @@ class AppCore private constructor(context: Context) {
         scope = scope,
         describeOutput = { AudioRoutes.describe(context) }
     )
-    val speech = SpeechController(settingsRepository, ReplyStreamer(ttsSynthesizer, pcmPlayer, scope), ttsCache, ui)
+    val speech = SpeechController(settingsRepository, ReplyStreamer(tts::openVoice, pcmPlayer, scope), ttsCache, ui)
     private val pushToTalk = PushToTalkSession(
         settingsRepository = settingsRepository,
         audioGateway = models.audioGateway,

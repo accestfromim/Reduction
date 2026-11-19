@@ -266,7 +266,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     val usesSystemAudio: Boolean get() = audio != null
     private val pageSpeech = PageSpeech(page, onMain)
     private val speech = SpeechController(
-        settings, ReplyStreamer(synthesizer, audio?.Speech(onMain) ?: pageSpeech, scope), ttsCache, page
+        settings, ReplyStreamer(synthesizer::openVoice, audio?.Speech(onMain) ?: pageSpeech, scope), ttsCache, page
     )
     private val cues = SpokenCues(
         bundled = mapOf(

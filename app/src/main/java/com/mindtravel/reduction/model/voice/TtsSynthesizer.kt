@@ -3,13 +3,22 @@ package com.mindtravel.reduction.model.voice
 import com.k2fsa.sherpa.onnx.GeneratedAudio
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.core.settings.AppSettings
+import com.mindtravel.reduction.hardware.audio.WavPcm
 import kotlin.math.roundToInt
 
-/** Both hosts feed the same 24 kHz mono PCM playback queue. The model produces 8 kHz floats. */
+/** One voice for a whole reply. Its PCM goes into the same queue as the recording cues. */
+fun interface SpeechVoice : AutoCloseable {
+    suspend fun synthesize(text: String): ByteArray
+    override fun close() {}
+}
+
+/** The bundled Mandarin model, shared with the desktop app. */
 class TtsSynthesizer(
     private val cache: TtsCache,
     private val generate: (text: String, speaker: Int) -> GeneratedAudio
 ) {
+    fun openVoice(voice: String) = SpeechVoice { text -> synthesize(voice, text) }
+
     // A stopped reply may still be finishing native inference when the next one begins.
     @Synchronized
     fun synthesize(voice: String, text: String): ByteArray {
@@ -21,7 +30,7 @@ class TtsSynthesizer(
         if (text.none { it.isLetterOrDigit() }) return ByteArray(0)
         val audio = generate(spokenText(text), if (key == AppSettings.SECOND_VOICE) 1 else 0)
         Logs.add("Local TTS generated with $ENGINE_NAME voice=$key")
-        val pcm = toPlaybackPcm(audio.samples, audio.sampleRate)
+        val pcm = resample(audio.samples.size, audio.sampleRate) { audio.samples[it] }
         cache.put(key, text, pcm)
         return pcm
     }
@@ -44,20 +53,30 @@ class TtsSynthesizer(
             }
         }
 
-        private fun toPlaybackPcm(samples: FloatArray, rate: Int): ByteArray {
-            if (samples.isEmpty()) return ByteArray(0)
-            require(rate > 0) { "本地朗读模型的采样率无效" }
-            val frames = ((samples.size.toLong() * PLAYBACK_RATE + rate / 2) / rate).toInt()
+        internal fun toPlaybackPcm(wav: WavPcm): ByteArray {
+            if (wav.sampleRate == PLAYBACK_RATE && wav.channels == 1) return wav.data
+            fun sample(at: Int) = (wav.data[at].toInt() and 0xff) or (wav.data[at + 1].toInt() shl 8)
+            return resample(wav.frames, wav.sampleRate) { frame ->
+                val offset = frame * wav.channels * 2
+                val mono = if (wav.channels == 1) sample(offset).toFloat() else (sample(offset) + sample(offset + 2)) / 2f
+                mono / Short.MAX_VALUE
+            }
+        }
+
+        private inline fun resample(count: Int, rate: Int, sample: (Int) -> Float): ByteArray {
+            if (count == 0) return ByteArray(0)
+            require(rate > 0) { "本地朗读的采样率无效" }
+            val frames = ((count.toLong() * PLAYBACK_RATE + rate / 2) / rate).toInt()
             val pcm = ByteArray(frames * 2)
             for (i in 0 until frames) {
                 val position = i.toLong() * rate
                 val left = (position / PLAYBACK_RATE).toInt()
-                val right = minOf(left + 1, samples.lastIndex)
+                val right = minOf(left + 1, count - 1)
                 val fraction = (position % PLAYBACK_RATE).toFloat() / PLAYBACK_RATE
-                val value = samples[left] + (samples[right] - samples[left]) * fraction
-                val sample = (value.coerceIn(-1f, 1f) * Short.MAX_VALUE).roundToInt()
-                pcm[i * 2] = sample.toByte()
-                pcm[i * 2 + 1] = (sample shr 8).toByte()
+                val first = sample(left)
+                val value = ((first + (sample(right) - first) * fraction).coerceIn(-1f, 1f) * Short.MAX_VALUE).roundToInt()
+                pcm[i * 2] = value.toByte()
+                pcm[i * 2 + 1] = (value shr 8).toByte()
             }
             return pcm
         }

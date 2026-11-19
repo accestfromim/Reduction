@@ -50,7 +50,7 @@ Reduction回答一个问题：我们有可能在生活更轻松的同时、可�
 
 ## 全栈方案
 
-对话、整段语音转写和联网搜索使用 DeepSeek API Key。朗读使用随应用安装的普通话模型，在设备 CPU 上运行。 [DeepSeek 开放平台](https://platform.deepseek.com/)
+对话、整段语音转写和联网搜索使用 DeepSeek API Key。手机朗读优先使用系统已安装的中文离线音色，系统音色不可用时使用随应用安装的普通话模型。两种朗读方式都可以断网使用。在手机设置中搜索「文字转语音」可试听或安装音色，在应用设置中点「测试朗读」可试听实际效果。 [DeepSeek 开放平台](https://platform.deepseek.com/)
 
 ### 蓝牙耳机
 
