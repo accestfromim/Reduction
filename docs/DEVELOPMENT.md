@@ -1,6 +1,6 @@
 # Reduction 开发说明
 
-给读代码和改代码的人：功能细节、代码结构、构建、测试和发版。产品介绍见根目录的 `README.md`。当前版本 v1.0.68。
+给读代码和改代码的人：功能细节、代码结构、构建、测试和发版。产品介绍见根目录的 `README.md`。当前版本 v1.0.69。
 
 ## 交互
 
@@ -91,7 +91,7 @@
 
 ## 安装
 
-1. 把 `Reduction-v1.0.68.apk` 传到手机。
+1. 把 `Reduction-v1.0.69.apk` 传到手机。
 2. 允许安装未知应用，点 APK 安装。
 3. 首次打开填入 DeepSeek API Key，模型选 `deepseek-flash`，选音色，允许麦克风权限。
 
@@ -257,7 +257,7 @@ assets/js/ui/ui.js, markdown.js, splash.js（启动动画落进图标框）
 - SSE 中 `content: null` 不会变成字符串 `"null"`。
 - 工具参数只接受字符串片段，缺 id/name 会直接失败。
 - 协议层不把 `JSONObject` 传给业务层。
-- 资源热更新包的 `assetsMinVersionCode` 必须不低于 99（当前桥接协议的起始版本），否则不会被使用。
+- 资源热更新包的 `assetsMinVersionCode` 必须不低于 100（当前桥接协议的起始版本），否则不会被使用。
 - 设置升级会自动从旧版本迁移，不会丢 API Key。
 
 测试：
