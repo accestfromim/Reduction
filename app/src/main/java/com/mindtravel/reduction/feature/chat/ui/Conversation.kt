@@ -106,12 +106,8 @@ class Conversation(
         val id = UUID.randomUUID().toString()
         emitter.emit("onReplyBegin", id, shown.trim().ifEmpty { text })
 
-        val directory = cards.list().map { card ->
-            "- ${card.name}：${card.purpose.ifBlank { "（没有写用途）" }}（${card.chars} 字）" +
-                if (cards.isLocked(card.name)) "【用户已审核并锁定的 prompt】" else ""
-        }
         val system = SystemPrompt.build(
-            settings, referenceDate.toString(), directory,
+            settings, referenceDate.toString(), cards.promptDirectory(),
             runCatching(deviceNotices).getOrDefault(emptyList()),
             runCatching(todoNotices).getOrDefault(emptyList()), place
         )

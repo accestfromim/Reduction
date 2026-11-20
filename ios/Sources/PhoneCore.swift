@@ -326,7 +326,10 @@ final class PhoneCore {
     }
 
     private func historyForModel(referenceDate: String) -> [JSON] {
-        let cards = store.state.cards.values.sorted { $0.name < $1.name }
+        let cards = store.state.cards.values.sorted { left, right in
+            if left.prompt != right.prompt { return left.prompt }
+            return left.name.utf16.lexicographicallyPrecedes(right.name.utf16)
+        }
         let outline = cards.map { "- \($0.name) \($0.purpose)" }.joined(separator: "\n")
         let prompts = cards.filter(\.prompt).map(\.text).joined(separator: "\n\n")
         let system = """
