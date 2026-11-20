@@ -2,6 +2,7 @@
 // it does on the phone; here those calls go to the local server, and the server's events
 // come back over one stream. Sound and microphone are this browser's.
 (() => {
+  document.documentElement.classList.add('desktop-client');
   const post = (path, body, type) => fetch(path, { method: 'POST', headers: { 'X-Reduction': '1', 'Content-Type': type || 'application/json' }, body });
 
   function call(method, args) {

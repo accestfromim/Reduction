@@ -63,7 +63,6 @@ export const els = {
   cardEditor: byId('cardEditor'),
   cardNameField: byId('cardNameField'),
   cardNameInput: byId('cardNameInput'),
-  cardPurposeInput: byId('cardPurposeInput'),
   cardText: byId('cardText'),
   cardAttach: byId('cardAttach'),
   cardMediaInput: byId('cardMediaInput'),

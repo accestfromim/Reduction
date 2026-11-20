@@ -26,7 +26,8 @@ class ChatToolFactory(
     private val agentRuns: AgentRuns,
     /** Sets a card as an article; with [renderArticleScript], draws it on the computer. Null: no such tool. */
     private val articles: ArticleBuilder? = null,
-    private val renderArticleScript: () -> String = { "" }
+    private val renderArticleScript: () -> String = { "" },
+    private val hostTools: (AppSettings) -> List<ChatTool> = { emptyList() }
 ) {
     /** Answers too long for one go, kept whole across the replies of a conversation. */
     private val longResults = LongResults()
@@ -36,6 +37,7 @@ class ChatToolFactory(
         val tools = buildList {
             add(PatchCardsTool(cards, emitter))
             add(ReadCardTool(cards))
+            addAll(hostTools(settings))
             add(OpenCardTool(cards, emitter))
             add(SearchCardsTool(cards))
             add(MemoTool(memos, emitter))

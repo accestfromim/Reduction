@@ -97,8 +97,10 @@ class CardRepository(private val dir: File) {
     fun autosave(name: String, purpose: String, content: String, creating: Boolean, oldPurpose: String, oldText: String): String {
         if (content.length > MAX_CHARS || purpose.length > MAX_PURPOSE) return "limit"
         val existing = read(name)
-        if (if (creating) existing != null else existing != oldText || purpose(name) != oldPurpose) return "conflict"
-        return if (save(name, content, purpose)) "saved" else "failed"
+        // The editor only changes the body. Older clients can still submit an explicit purpose change.
+        val changingPurpose = purpose != oldPurpose
+        if (if (creating) existing != null else existing != oldText || (changingPurpose && purpose(name) != oldPurpose)) return "conflict"
+        return if (save(name, content, purpose.takeIf { changingPurpose || (creating && it.isNotEmpty()) })) "saved" else "failed"
     }
 
     private fun save(name: String, content: String, purpose: String?, byProgram: Boolean): Boolean {
@@ -170,6 +172,11 @@ class CardRepository(private val dir: File) {
                 }
             }
         }
+        for (op in ops) when (op) {
+            is CardPatch.Move -> moveAttachments(op.name, op.to)
+            is CardPatch.Delete -> attachmentDirectory(op.name).deleteRecursively()
+            else -> Unit
+        }
         for (name in deletes) delete(name)
         for ((name, change) in writes) {
             if (!save(name, change.first, change.second)) throw CardPatch.Invalid("卡片“$name”写入失败")
@@ -186,10 +193,19 @@ class CardRepository(private val dir: File) {
         if (isProgramCard(source) || isProgramCard(target) || isLocked(source) || read(target) != null) return false
         val text = read(source) ?: return false
         if (!save(target, text, purposeOf(source))) return false
+        moveAttachments(source, target)
         return delete(source)
     }
 
     // ── pictures and sound ──────────────────────────────────────────────────
+
+    fun attachmentDirectory(name: String): File =
+        File(File(dir, "attachments"), encode(requireNotNull(cleanName(name))))
+
+    private fun moveAttachments(from: String, to: String) {
+        val source = attachmentDirectory(from)
+        if (source.exists()) check(source.renameTo(attachmentDirectory(to))) { "附件目录改名失败" }
+    }
 
     private val mediaDir: File get() = File(dir, "media")
 
@@ -260,6 +276,7 @@ class CardRepository(private val dir: File) {
         purposeFile(name)?.delete()
         return (textFile(name)?.takeIf { it.isFile }?.delete() ?: false).also {
             if (it) {
+                attachmentDirectory(name).deleteRecursively()
                 cleanName(name)?.let { clean -> deleted[clean] = System.currentTimeMillis() }
                 saveDeleted()
                 runCatching { sweepMedia() }
@@ -325,7 +342,7 @@ class CardRepository(private val dir: File) {
             val file = textFile(name) ?: continue
             if (file.isFile && file.lastModified() >= at) continue
             if (file.isFile) {
-                file.delete(); purposeFile(name)?.delete(); lockFile(name)?.delete()
+                file.delete(); purposeFile(name)?.delete(); lockFile(name)?.delete(); attachmentDirectory(name).deleteRecursively()
                 changed = true
             }
             if ((deleted[name] ?: 0L) < at) deleted[name] = at

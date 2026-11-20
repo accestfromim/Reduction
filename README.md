@@ -41,6 +41,8 @@ Reduction回答一个问题：我们有可能在生活更轻松的同时、可�
 
 ## 能做什么
 
+[**CARD · Reduction 卡片协议**](docs/html-components.md) 包含组件写法、AI 调用示例、附件与导出约定。
+
 | | |
 | :-- | :-- |
 | **熄屏语音交互** | 说 “Hi Reduction” 唤醒助手，说“完毕”结束录音 |

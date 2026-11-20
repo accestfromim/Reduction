@@ -109,11 +109,14 @@
           <span>名称</span>
           <input id="cardNameInput" placeholder="比如：科研想法/检索（“/”前面是文件夹）" autocomplete="off" maxlength="60" />
         </label>
-        <label class="field">
-          <span>用途（这张卡片收什么）</span>
-          <input id="cardPurposeInput" placeholder="比如：向量检索方向的想法和待验证的假设" autocomplete="off" maxlength="120" />
-        </label>
-        <textarea class="brief-text" id="cardText" placeholder="卡片内容（Markdown）。新卡片可以留空。" spellcheck="false"></textarea>
+        <div class="card-split">
+          <div class="card-pane"><label for="cardText">编辑</label>
+          <textarea class="brief-text" id="cardText" placeholder="卡片内容（Markdown 或 HTML 文档）。新卡片可以留空。" spellcheck="false"></textarea>
+          </div>
+          <section class="card-pane" aria-labelledby="cardRenderLabel"><span id="cardRenderLabel">预览</span>
+            <div class="card-read markdown" id="cardLivePreview"></div>
+          </section>
+        </div>
         <input class="hidden" id="cardMediaInput" type="file" accept="image/*,audio/*,video/*,application/pdf" />
         <small id="cardSaveState" role="status"></small>
       </div>
