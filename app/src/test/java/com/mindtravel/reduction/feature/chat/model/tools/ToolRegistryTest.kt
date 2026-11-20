@@ -1,6 +1,5 @@
 package com.mindtravel.reduction.feature.chat.model.tools
 
-import com.mindtravel.reduction.core.host.ToolApprovalHost
 import com.mindtravel.reduction.hardware.pc.PcProfile
 import com.mindtravel.reduction.model.chat.ToolSpec
 import org.junit.Assert.assertEquals
@@ -16,14 +15,10 @@ class ToolRegistryTest {
         override fun describe(argumentsJson: String) = "重复一句话"
     }
 
-    private val noApproval = object : ToolApprovalHost {
-        override fun requestToolApproval(title: String, message: String, callback: (Boolean) -> Unit) = callback(false)
-    }
-
     private fun agentTool() = RunAgentTool(
         harness = AgentHarness(LocalShell(), PcProfile("host", 22, "user"), "key", "model") { "" },
         runs = AgentRuns(),
-        project = "/p", agentsRoot = "/a", allowWrite = false, approvalHost = noApproval
+        project = "/p", agentsRoot = "/a", allowWrite = false, directories = emptyList()
     )
 
     @Test

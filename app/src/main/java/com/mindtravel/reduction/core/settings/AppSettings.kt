@@ -1,7 +1,12 @@
 package com.mindtravel.reduction.core.settings
 
 import com.mindtravel.reduction.core.stringOrEmpty
+import org.json.JSONArray
 import org.json.JSONObject
+
+data class AgentDirectory(val path: String, val writable: Boolean) {
+    fun toJson(): JSONObject = JSONObject().put("path", path).put("writable", writable)
+}
 
 data class AppSettings(
     val apiKey: String = "",
@@ -19,7 +24,8 @@ data class AppSettings(
     val opencodeEnabled: Boolean = false,
     val opencodeWriteEnabled: Boolean = false,
     val opencodeSessionId: String = "",
-    val pcProject: String = DEFAULT_PROJECT
+    val pcProject: String = DEFAULT_PROJECT,
+    val agentDirectories: List<AgentDirectory> = emptyList()
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("apiKey", apiKey)
@@ -38,6 +44,7 @@ data class AppSettings(
         put("opencodeWriteEnabled", opencodeWriteEnabled)
         put("opencodeSessionId", opencodeSessionId)
         put("pcProject", pcProject)
+        put("agentDirectories", JSONArray(agentDirectories.map { it.toJson() }))
     }
 
     companion object {
@@ -71,6 +78,13 @@ data class AppSettings(
                 opencodeEnabled = json.optBoolean("opencodeEnabled", false),
                 opencodeWriteEnabled = json.optBoolean("opencodeWriteEnabled", false),
                 opencodeSessionId = json.stringOrEmpty("opencodeSessionId").trim(),
+                agentDirectories = json.optJSONArray("agentDirectories")?.let { entries ->
+                    (0 until entries.length()).mapNotNull { index ->
+                        val entry = entries.optJSONObject(index) ?: return@mapNotNull null
+                        val path = entry.stringOrEmpty("path").trim()
+                        if (path.isEmpty()) null else AgentDirectory(path, entry.optBoolean("writable", false))
+                    }
+                }.orEmpty(),
                 pcProject = json.stringOrEmpty("pcProject").trim()
                     .ifBlank { DEFAULT_PROJECT }
                     // A path under some home directory that ends in an earlier default is that earlier default.

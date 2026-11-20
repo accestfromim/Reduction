@@ -20,6 +20,8 @@ if [ "${1:-}" = "--remove" ]; then
   exit 0
 fi
 
+echo "== CARD 渲染依赖"
+npm ci --prefix "$HERE/card/render" --omit=dev --ignore-scripts --prefer-offline --no-audit --no-fund
 echo "== 构建"
 . "$HERE/../tools/env.sh"
 ( cd "$ROOT" && $GRADLE -q :desktop:installDist )
@@ -27,6 +29,12 @@ echo "== 构建"
 # the new one, and fail without a word; it is stopped here and started again at the end.
 pkill -f 'com.mindtravel.reduction.desktop.MainK[t]' || true
 
+echo "== CARD 文件读取器"
+READERS="$DATA/card-readers"
+if [ ! -x "$READERS/usr/bin/catdoc" ] || [ ! -d "$READERS/usr/lib/python3/dist-packages/xlrd" ]; then
+  mkdir -p "$READERS/debs"
+  (cd "$READERS/debs" && apt-get download catdoc python3-xlrd && for pkg in *.deb; do dpkg-deb -x "$pkg" "$READERS"; done)
+fi
 echo "== 音频工具"
 AUDIO="$DATA/audio"
 if command -v pacat >/dev/null 2>&1; then

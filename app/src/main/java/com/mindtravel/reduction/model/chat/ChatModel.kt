@@ -155,7 +155,8 @@ data class ToolParam(
     val name: String,
     val description: String,
     val required: Boolean = true,
-    val choices: List<String> = emptyList()
+    val choices: List<String> = emptyList(),
+    val jsonType: String = "string"
 )
 
 data class ToolSpec(
@@ -177,7 +178,7 @@ data class ToolSpec(
                 put("properties", JSONObject().apply {
                     for (parameter in parameters) {
                         put(parameter.name, JSONObject().apply {
-                            put("type", "string")
+                            put("type", parameter.jsonType)
                             put("description", parameter.description)
                             if (parameter.choices.isNotEmpty()) put("enum", JSONArray(parameter.choices))
                         })

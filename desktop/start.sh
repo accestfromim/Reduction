@@ -16,4 +16,5 @@ running() { curl -s -m 2 -o /dev/null "$URL/icon.png"; }
 running && exit 0
 # Right after login the sound system may not be up yet; the service looks for it once, at its start.
 for _ in $(seq 1 60); do [ -S /mnt/wslg/PulseServer ] && break; sleep 0.5; done
+export REDUCTION_ROOT="$ROOT"
 exec "$HERE/build/install/reduction/bin/reduction" "$PORT" >> "$DATA/desktop.log" 2>&1

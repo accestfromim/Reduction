@@ -1,3 +1,5 @@
+import { mountHtml } from '../../components/html/index.js';
+import { htmlFields } from './html-fields.js';
 import { base64Of, shrunk } from '../../core/pictures.js';
 import { callBridge } from '../../core/bridge.js';
 import { state } from '../../core/state.js';
@@ -196,17 +198,16 @@ function show(next) {
   const locked = open.locked === true;
   // A prompt is a card the user has read through and locked: it stays as it is until the user unlocks it.
   const prompt = open.prompt === true;
-  ui.els.cardEdit.classList.toggle('hidden', mode !== 'read' || locked || prompt);
   ui.els.cardLock.classList.toggle('hidden', mode !== 'read' || locked);
   ui.els.cardLock.textContent = prompt ? '解锁' : '审核并锁定';
   setTitle(mode === 'new' ? '' : state.cardName, mode === 'new' ? '新卡片' : '', prompt);
   ui.els.cardFloat.classList.toggle('hidden', mode !== 'read');
   ui.els.cardFloat.textContent = callBridge('floatingCard') === state.cardName ? '取消悬浮' : '悬浮';
-  ui.els.cardCopyAll.classList.toggle('hidden', mode !== 'read');
+  ui.els.cardAttach.classList.toggle('hidden', locked || prompt || asArticle);
   // The name can be changed while editing: that is also how a card is moved into a folder.
   ui.els.cardNameField.classList.toggle('hidden', !editing);
-  ui.els.cardCopy.classList.toggle('hidden', mode === 'new');
-  ui.els.cardDelete.classList.toggle('hidden', mode === 'new');
+  ui.els.cardCopy.classList.remove('hidden');
+  ui.els.cardDelete.classList.toggle('hidden', mode === 'new' || locked || prompt);
 }
 
 function renderOpenCard() {
@@ -218,9 +219,67 @@ function renderOpenCard() {
   ui.els.cardPlan.classList.add('hidden');
   ui.els.cardBody.classList.remove('hidden');
   const text = String(callBridge('readCard', state.cardName) || '').trim();
+  renderCardInto(ui.els.cardBody, text);
+  ui.els.cardBody.scrollTop = 0;
+  if (asArticle) drawArticle();
+}
+
+const livePane = document.getElementById('cardLivePreview');
+const sourcePane = document.getElementById('cardText');
+let htmlEditor = null;
+const expectedScroll = new WeakMap();
+function previewScrollBox() {
+  const frame = livePane.querySelector('iframe');
+  return frame?.contentDocument?.scrollingElement || livePane;
+}
+function syncScroll(from, to) {
+  const range = from.scrollHeight - from.clientHeight;
+  if (range <= 0 || !to) return;
+  const offset = from.scrollTop / range * Math.max(0, to.scrollHeight - to.clientHeight);
+  if (Math.abs(offset - to.scrollTop) <= 1) return;
+  to.scrollTop = offset;
+  expectedScroll.set(to, to.scrollTop);
+}
+function followScroll(from, to) {
+  const expected = expectedScroll.get(from);
+  expectedScroll.delete(from);
+  if (expected !== undefined && Math.abs(from.scrollTop - expected) <= 1) return;
+  syncScroll(from, to);
+}
+sourcePane.addEventListener('scroll', () => followScroll(sourcePane, previewScrollBox()));
+livePane.addEventListener('scroll', () => followScroll(livePane, sourcePane));
+
+function renderHtmlCard(target, text) {
+  mountHtml(target, text, doc => {
+    doc.addEventListener('keydown', browseAdjacentCard);
+    doc.addEventListener('click', event => {
+      const link = event.target.closest('a');
+      if (link) {
+        event.preventDefault();
+        if (link.hasAttribute('data-path')) {
+          if (event.isTrusted && !callBridge('revealCardPath', link.dataset.path)) window.alert('此设备无法定位该路径');
+          return;
+        }
+        if (event.isTrusted && /^https:\/\//i.test(link.getAttribute('href') || '')) window.open(link.href, '_blank', 'noopener,noreferrer');
+      } else if (event.target.closest('audio,video,img')) return;
+      else if (target === ui.els.cardBody && !doc.getSelection()?.toString()) editCard();
+    });
+    if (target === livePane && doc.scrollingElement) {
+      if (htmlEditor) { htmlEditor.bind(doc); return; }
+      syncScroll(sourcePane, doc.scrollingElement);
+      doc.addEventListener('scroll', () => followScroll(doc.scrollingElement, sourcePane));
+    }
+  });
+}
+
+function renderCardInto(target, text) {
+  if (/^\s*(?:<!doctype\s+html\b|<html\b)/i.test(text) && window.DOMPurify) {
+    renderHtmlCard(target, text);
+    return;
+  }
   // A picture or a recording is written as ![说明](media:编号); it is fetched from the app by that id.
-  ui.els.cardBody.innerHTML = text ? renderMarkdown(text.replace(/\]\(media:(m[0-9a-f]{12}\.[a-z0-9]{2,5})\)/g, '](/card-media/$1)')) : '';
-  for (const image of ui.els.cardBody.querySelectorAll('img')) {
+  target.innerHTML = text ? renderMarkdown(text.replace(/\]\(media:(m[0-9a-f]{12}\.[a-z0-9]{2,5})\)/g, '](/card-media/$1)')) : '';
+  for (const image of target.querySelectorAll('img')) {
     const source = image.getAttribute('src') || '';
     const pdf = (source.match(/^\/card-media\/(m[0-9a-f]{12}\.pdf)$/) || [])[1];
     if (pdf) {
@@ -244,8 +303,7 @@ function renderOpenCard() {
     player.title = image.getAttribute('alt') || '';
     image.replaceWith(player);
   }
-  ui.els.cardBody.scrollTop = 0;
-  if (asArticle) drawArticle();
+
 }
 
 /** The other view of the open card: the article it is published as. The card's text is read and nothing more. */
@@ -265,6 +323,7 @@ async function drawArticle() {
     const article = await import('../article/article.js');
     const { height, problem } = await article.show(frame, String(callBridge('readCard', name) || ''));
     if (name !== state.cardName || !asArticle) return;
+    frame.contentDocument?.addEventListener('keydown', browseAdjacentCard);
     if (problem) ui.toast(problem);
     // The page is laid out at its own width, the one it is published at, and scaled as a whole: what is
     // seen is the published picture, smaller or larger, never a different layout.
@@ -392,8 +451,8 @@ export function loadCards() {
   renderList();
 }
 
-/** The app changed a card; `name` is the one it touched last, if any. */
-export function onChanged(name) {
+/** Refreshes the list and the card already being read. */
+export function onChanged() {
   load();
   renderList();
   if (mode === 'read') {
@@ -401,7 +460,20 @@ export function onChanged(name) {
     else show('closed');
   }
   if (mode !== 'closed') show(mode);
-  if (name) ui.toast('卡片“' + name + '”已更新');
+}
+
+export function openForReview(name) {
+  if (mode === 'edit' || mode === 'new') {
+    ui.toast('请先退出当前编辑，再打开卡片');
+    return;
+  }
+  load();
+  if (!exists(name)) {
+    ui.toast('找不到这张卡片');
+    return;
+  }
+  if (mode !== 'read' || state.cardName !== name) openCard(name);
+  ui.showPage('cards');
 }
 
 /** Opens a card, to be read: as its text. The article view is asked for each time. */
@@ -411,13 +483,161 @@ export function openCard(name) {
   state.cardName = name;
   renderOpenCard();
   show('read');
+  if (document.documentElement.classList.contains('desktop-client') && name.startsWith('个人知识库/')) {
+    editCard();
+  }
 }
 
+function browseAdjacentCard(event) {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
+  if (state.page !== 'cards' || (mode !== 'read' && mode !== 'edit')) return;
+  if (event.defaultPrevented || event.isComposing || event.repeat ||
+      event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  if (event.target.isContentEditable || event.target.closest?.('input, textarea, select, video, audio, [role="slider"]') ||
+      document.querySelector('.backdrop:not(.hidden), dialog[open]')) return;
+  const rows = Array.from(ui.els.cardList.querySelectorAll('.card-row'));
+  const index = rows.findIndex(row => row.dataset.name === state.cardName);
+  const next = rows[index + (event.key === 'ArrowRight' ? 1 : -1)];
+  if (index < 0 || !next) return;
+  event.preventDefault();
+  if (mode === 'edit') {
+    autoSave();
+    if (localStorage.getItem(draftKey())) return;
+  }
+  openCard(next.dataset.name);
+}
+document.addEventListener('keydown', browseAdjacentCard);
+
+let saveTimer;
+let original = { text: '' };
+const editing = () => mode === 'edit' || mode === 'new';
+const draftKey = () => 'reduction.card.draft:' + state.cardName;
+const saveStatus = (message) => { document.getElementById('cardSaveState').textContent = message; };
+
+let previewFrame = 0;
+let renderedDraft = null;
+function refreshDraftPreview() {
+  cancelAnimationFrame(previewFrame);
+  if (renderedDraft === ui.els.cardText.value) return;
+  renderedDraft = ui.els.cardText.value;
+  const html = /^\s*(?:<!doctype\s+html\b|<html\b)/i.test(renderedDraft);
+  sourcePane.classList.toggle('hidden',html);
+  sourcePane.closest('.card-split').classList.toggle('inline-html', html);
+  htmlEditor = html ? htmlFields(renderedDraft, value => {
+    sourcePane.value=value;
+    renderedDraft=value;
+    recordInput();
+  }) : null;
+  renderCardInto(livePane, htmlEditor?.html ?? renderedDraft);
+  if (!livePane.querySelector('iframe')) syncScroll(sourcePane, livePane);
+}
+function beginEditing() {
+  clearTimeout(saveTimer);
+  original = { text: ui.els.cardText.value };
+  saveStatus('');
+  renderedDraft = null;
+  document.getElementById('cardLivePreview').scrollTop = 0;
+  const stored = localStorage.getItem(draftKey());
+  if (!stored) { resetUndo(); refreshDraftPreview(); return; }
+  const draft = JSON.parse(stored);
+  original = { text: draft.original.text };
+  ui.els.cardNameInput.value = draft.name;
+  ui.els.cardText.value = draft.text;
+  resetUndo();
+  refreshDraftPreview();
+  saveStatus('已恢复本机草稿');
+}
+
+function autoSave() {
+  clearTimeout(saveTimer);
+  if (!editing()) return;
+  const creating = mode === 'new';
+  const name = ui.els.cardNameInput.value.trim().replace(/\s*\/\s*/g, '/');
+  const text = ui.els.cardText.value;
+  if (!name) return;
+  const key = draftKey();
+  if (!localStorage.getItem(key)) return;
+  const result = callBridge('autosaveCard', creating ? name : state.cardName, '', text, creating, '', original.text);
+  if (result !== 'saved') {
+    saveStatus(result === 'conflict' ? '卡片有其他修改，本机草稿已保留' :
+      result === 'limit' ? '内容超过卡片上限，本机草稿已保留' : '写入失败，本机草稿已保留');
+    return;
+  }
+  original = { text };
+  if (!creating && name !== state.cardName && callBridge('renameCard', state.cardName, name) !== true) {
+    localStorage.setItem(key, JSON.stringify({ ...fields(), original }));
+    saveStatus('名称不可用，正文已保存');
+    return;
+  }
+  localStorage.removeItem(key);
+  if (creating || name !== state.cardName) {
+    state.cardName = name;
+    load();
+    renderList();
+    show('edit');
+  }
+  saveStatus('已自动保存');
+}
+
+let previousFields;
+const undoStack = [];
+function fields() {
+  return { name: ui.els.cardNameInput.value, text: ui.els.cardText.value };
+}
+function resetUndo() {
+  previousFields = fields();
+  undoStack.length = 0;
+}
+export function undoEdit() {
+  const previous = undoStack.pop();
+  if (!previous || !editing()) return;
+  ui.els.cardNameInput.value = previous.name;
+  ui.els.cardText.value = previous.text;
+  recordInput(false);
+  autoSave();
+}
+function recordInput(remember = true) {
+  if (!editing()) return;
+  clearTimeout(saveTimer);
+  if (remember && previousFields) {
+    undoStack.push(previousFields);
+    if (undoStack.length > 100) undoStack.shift();
+  }
+  previousFields = fields();
+  if (document.documentElement.classList.contains('desktop-client') && mode === 'edit') {
+    callBridge('cardDraftSnapshot', state.cardName, original.text, previousFields.text);
+  }
+  cancelAnimationFrame(previewFrame);
+  previewFrame = requestAnimationFrame(refreshDraftPreview);
+  const draft = { original, ...previousFields };
+  try {
+    localStorage.setItem(draftKey(), JSON.stringify(draft));
+  } catch (_) {
+    saveStatus('本机草稿保存失败，请复制当前内容');
+    return;
+  }
+  saveStatus('已保存本机草稿');
+  saveTimer = setTimeout(autoSave, 700);
+}
+
+document.getElementById('cardEditor').addEventListener('input', recordInput);
+// Capture the completed click so a tap that opens the editor cannot immediately close it.
+document.addEventListener('click', (event) => {
+  if (!editing() || state.page !== 'cards') return;
+  if (event.target.closest('#cardEditor label, #cardEditor input, #cardText, #cardLivePreview, #cardTools button')) return;
+  if (ui.els.cardEditor.contains(document.activeElement)) document.activeElement.blur();
+  back();
+}, true);
+
+window.addEventListener('pagehide', autoSave);
+document.addEventListener('visibilitychange', () => { if (document.hidden) autoSave(); });
+
 export function editCard() {
-  if (mode !== 'read') return;
+  const card = state.cards.find((item) => item.name === state.cardName);
+  if (mode !== 'read' || !card || card.locked || card.prompt) return;
   ui.els.cardNameInput.value = state.cardName;
-  ui.els.cardPurposeInput.value = String(callBridge('cardPurpose', state.cardName) || '');
   ui.els.cardText.value = String(callBridge('readCard', state.cardName) || '');
+  beginEditing();
   show('edit');
 }
 
@@ -425,8 +645,8 @@ export function newCard() {
   state.cardName = '';
   setTitle('', '新卡片');
   ui.els.cardNameInput.value = '';
-  ui.els.cardPurposeInput.value = '';
   ui.els.cardText.value = '';
+  beginEditing();
   show('new');
 }
 
@@ -443,6 +663,7 @@ export function onPage() {
 /** One step back: from editing to reading, from reading to the list. False when no card is open. */
 export function back() {
   if (mode === 'closed') return false;
+  if (editing()) autoSave();
   if (mode === 'edit') {
     renderOpenCard();
     show('read');
@@ -450,40 +671,6 @@ export function back() {
     show('closed');
   }
   return true;
-}
-
-export function saveCard() {
-  const creating = mode === 'new';
-  const name = ui.els.cardNameInput.value.trim().replace(/\s*\/\s*/g, '/');
-  const renamed = !creating && name !== state.cardName;
-  const purpose = ui.els.cardPurposeInput.value.trim();
-  const text = ui.els.cardText.value.trim();
-  if (!name) {
-    ui.toast('先给卡片起个名字');
-    return;
-  }
-  if ((creating || renamed) && exists(name)) {
-    ui.toast('已经有一张叫“' + name + '”的卡片');
-    return;
-  }
-  if (creating && !purpose) {
-    ui.toast('写一句用途，助手靠它判断什么该记到这里');
-    return;
-  }
-  if (renamed && callBridge('renameCard', state.cardName, name) !== true) {
-    ui.toast('改不了名：名称最长 60 字，“/”两边不能是空的');
-    return;
-  }
-  if (callBridge('saveCard', name, purpose, text) !== true) {
-    ui.toast('保存失败：名称最长 60 字，“/”两边不能是空的');
-    return;
-  }
-  load();
-  renderList();
-  state.cardName = name;
-  renderOpenCard();
-  show('read');
-  ui.toast('卡片已保存');
 }
 
 /** The user has read the card through: one tap locks it as a prompt. Another tap takes the lock off. */
@@ -565,6 +752,7 @@ function insertIntoText(text) {
   const line = (before && !before.endsWith('\n') ? '\n' : '') + text + '\n';
   box.value = before + line + box.value.slice(box.selectionEnd ?? at);
   box.selectionStart = box.selectionEnd = at + line.length;
+  recordInput();
 }
 
 /**
@@ -596,18 +784,21 @@ export async function attachMedia(event) {
       const count = await keepPages(id, kept.buffer.slice(0), (page, total) => ui.setStatus('PDF 第 ' + page + '/' + total + ' 页'));
       ui.setStatus('');
       insertIntoText('![' + label + '](media:' + id + ')');
-      ui.toast('PDF 已放进卡片，共 ' + count + ' 页，保存后生效');
+      ui.toast('PDF 已放进卡片，共 ' + count + ' 页');
       return;
     }
     insertIntoText('![' + label + '](media:' + id + ')');
-    ui.toast((file.type.startsWith('audio/') ? '录音' : file.type.startsWith('video/') ? '视频' : '图片') + '已放进卡片，保存后生效');
+    ui.toast((file.type.startsWith('audio/') ? '录音' : file.type.startsWith('video/') ? '视频' : '图片') + '已放进卡片');
   } catch (error) {
     ui.toast('放不进去：' + (error && error.message ? error.message : '读不了这个文件'));
   }
 }
 
 export function copyCard() {
-  const text = String(callBridge('readCard', state.cardName) || '').trim();
+  const raw = editing() ? ui.els.cardText.value : String(callBridge('readCard', state.cardName) || '').trim();
+  const doc = /^\s*(?:<!doctype\s+html\b|<html\b)/i.test(raw) ? new DOMParser().parseFromString(raw, 'text/html') : null;
+  doc?.querySelectorAll('style,script,template,[hidden]').forEach(el => el.remove());
+  const text = doc ? doc.body.textContent.trim() : raw;
   if (!text) {
     ui.toast('卡片是空的');
     return;

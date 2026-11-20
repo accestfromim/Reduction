@@ -32,7 +32,7 @@ class PlanReadOnlyTest {
         script = harness
 
         home = Files.createTempDirectory("reduction-plan-test").toFile().canonicalFile
-        folder = File(home, "research").apply { mkdirs() }
+        folder = File(home, "reduction-agents/research").apply { mkdirs() }
 
         // Both are looked up by the harness: bwrap through PATH, opencode under $HOME.
         val bin = File(home, "bin").apply { mkdirs() }

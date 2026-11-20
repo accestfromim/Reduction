@@ -6,8 +6,8 @@
 
 日常开发和发布使用本地 `main` 和远端 `origin/main`。远端是 [accestfromim/Reduction](https://github.com/accestfromim/Reduction)，原始仓库是 [mindtravel/Reduction](https://github.com/mindtravel/Reduction)。
 
-- 收到同步要求时，将远端 `ref` 快进到 `upstream/main`。维护者指定的改动才进入 `main`。
-- 向原始仓库贡献时，从 `ref` 新建分支，只移入维护者选定的功能，再向原始仓库发 PR。
+- 收到同步要求时，将本地和远端的 `ref/main` 同步到 `upstream/main`，原始仓库的其它分支同步到同名的 `ref/<分支名>`。维护者指定的改动才进入 `main`。
+- 向原始仓库贡献时，从 `ref/main` 新建分支，只移入维护者选定的功能，再向原始仓库发 PR。
 - 本机实验依照维护者的要求保留在工作区。
 - 推送前在本地验证。远端 CI 的失败邮件由维护者跟进。
 

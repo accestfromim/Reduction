@@ -16,7 +16,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   opencodeEnabled: false,
   opencodeWriteEnabled: false,
   opencodeSessionId: '',
-  pcProject: '~/Reduction-iterate'
+  pcProject: '~/Reduction-iterate',
+  agentDirectories: []
 });
 
 function string(value, fallback = '') {
@@ -40,7 +41,10 @@ export function normalizeSettings(raw) {
     opencodeEnabled: raw?.opencodeEnabled === true,
     opencodeWriteEnabled: raw?.opencodeWriteEnabled === true,
     opencodeSessionId: string(raw?.opencodeSessionId).trim(),
-    pcProject: string(raw?.pcProject, '~/Reduction-iterate').trim() || '~/Reduction-iterate'
+    pcProject: string(raw?.pcProject, '~/Reduction-iterate').trim() || '~/Reduction-iterate',
+    agentDirectories: Array.isArray(raw?.agentDirectories) ? raw.agentDirectories
+      .filter((entry) => typeof entry?.path === 'string' && entry.path.trim())
+      .map((entry) => ({ path: entry.path.trim(), writable: entry.writable === true })) : []
   };
 }
 

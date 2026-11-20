@@ -90,8 +90,12 @@ window.Native = {
     ui.setUpdateState(state, version, progress);
   },
 
-  onCardsChanged(name) {
-    cards.onChanged(name);
+  onCardsChanged() {
+    cards.onChanged();
+  },
+
+  onOpenCard(name) {
+    cards.openForReview(name);
   },
 
   // The conversation took in lines from the user's other device: drawn again, unless a reply is being written.
@@ -161,6 +165,20 @@ ui.els.sendBtn.addEventListener('click', () => {
   chat.sendText(text);
 });
 
+ui.els.messages.addEventListener('click', (event) => {
+  const link = event.target.closest('.assistant .bubble a[href^="#card="]');
+  if (!link) return;
+  event.preventDefault();
+  let name;
+  try {
+    name = decodeURIComponent(link.getAttribute('href').slice('#card='.length));
+  } catch (_) {
+    ui.toast('卡片链接无效');
+    return;
+  }
+  cards.openForReview(name);
+});
+
 ui.els.textInput.addEventListener('input', ui.updateControls);
 ui.els.textInput.addEventListener('keydown', (event) => {
   if (event.key === 'Enter' && !event.isComposing) {
@@ -218,11 +236,18 @@ ui.whenPageShown(cards.onPage);
 ui.els.cardNew.addEventListener('click', cards.newCard);
 ui.els.cardLock.addEventListener('click', cards.toggleLock);
 ui.els.cardFloat.addEventListener('click', cards.toggleFloat);
-ui.els.cardCopyAll.addEventListener('click', cards.copyCard);
 document.getElementById('cardPreview').addEventListener('click', cards.togglePreview);
-ui.els.cardEdit.addEventListener('click', cards.editCard);
-ui.els.cardSave.addEventListener('click', cards.saveCard);
-ui.els.cardAttach.addEventListener('click', () => ui.els.cardMediaInput.click());
+ui.els.cardBody.addEventListener('click', (event) => {
+  if (event.target.closest('a, button, input, img, video, audio, .pdf-pages') || window.getSelection()?.toString()) return;
+  cards.editCard();
+});
+ui.els.cardEditor.addEventListener('keydown', (event) => {
+  if (event.ctrlKey && !event.altKey && !event.shiftKey && !event.isComposing && event.key.toLowerCase() === 'z') {
+    event.preventDefault();
+    cards.undoEdit();
+  }
+});
+ui.els.cardAttach.addEventListener('click', () => { cards.editCard(); ui.els.cardMediaInput.click(); });
 ui.els.cardMediaInput.addEventListener('change', cards.attachMedia);
 ui.els.cardCopy.addEventListener('click', cards.copyCard);
 ui.els.cardDelete.addEventListener('click', cards.deleteCard);

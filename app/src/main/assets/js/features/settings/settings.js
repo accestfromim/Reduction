@@ -8,6 +8,51 @@ import * as ui from '../../ui/ui.js';
 let clearArmed = false;
 let clearTimer = null;
 
+const directoryList = document.getElementById('agentDirectories');
+
+function addDirectory({ path = '', writable = false } = {}) {
+  const row = document.createElement('div');
+  row.className = 'agent-directory';
+  const input = document.createElement('input');
+  input.value = path;
+  input.placeholder = '~/projects/example';
+  input.setAttribute('aria-label', '目录路径');
+  input.autocomplete = 'off';
+
+  const access = document.createElement('select');
+  access.setAttribute('aria-label', '目录权限');
+  access.add(new Option('只读', 'read'));
+  access.add(new Option('读写', 'write'));
+  access.value = writable ? 'write' : 'read';
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'secondary-btn';
+  remove.textContent = '移除';
+  remove.addEventListener('click', () => row.remove());
+
+  row.append(input, access, remove);
+  directoryList.append(row);
+  return input;
+}
+
+document.getElementById('addAgentDirectory').addEventListener('click', () => addDirectory().focus());
+
+function directoriesFromForm() {
+  const entries = Array.from(directoryList.children, (row) => ({
+    path: row.querySelector('input').value.trim().replace(/\/+$/, ''),
+    writable: row.querySelector('select').value === 'write'
+  })).filter((entry) => entry.path);
+  const paths = entries.map((entry) => entry.path);
+  if (paths.some((path) => !/^(\/|~\/)/.test(path) || /[\x00-\x1f\x7f]/.test(path) ||
+      path.split('/').slice(1).some((part) => !part || part === '.' || part === '..')) ||
+      new Set(paths).size !== paths.length) {
+    ui.toast('请填写不同的实际目录路径，如 ~/projects/example');
+    return null;
+  }
+  return entries;
+}
+
 export function openSettings() {
   ui.els.apiKeyInput.value = state.settings.apiKey || '';
   ui.els.modelSelect.value = state.settings.model;
@@ -22,6 +67,8 @@ export function openSettings() {
   ui.els.opencodeWriteInput.checked = state.settings.opencodeWriteEnabled === true;
   ui.els.opencodeSessionInput.value = state.settings.opencodeSessionId || '';
   ui.els.pcProjectInput.value = state.settings.pcProject || '~/Reduction-iterate';
+  directoryList.replaceChildren();
+  state.settings.agentDirectories.forEach(addDirectory);
 
   const raw = callBridge('getAppInfo');
   if (typeof raw === 'string' && raw) {
@@ -45,7 +92,10 @@ export function openSettings() {
 }
 
 function currentSettingsFromForm() {
+  const agentDirectories = directoriesFromForm();
+  if (!agentDirectories) return null;
   return {
+    agentDirectories,
     apiKey: ui.els.apiKeyInput.value.trim(),
     model: ui.els.modelSelect.value,
     voice: ui.els.voiceSelect.value,
@@ -67,6 +117,7 @@ function currentSettingsFromForm() {
 
 export function saveSettingsForm() {
   const next = currentSettingsFromForm();
+  if (!next) return;
   const result = persistSettings(next);
   if (!result.ok) {
     ui.toast('保存失败');
@@ -82,6 +133,7 @@ export function saveSettingsForm() {
 
 export function testTts() {
   const next = currentSettingsFromForm();
+  if (!next) return;
   const result = persistSettings(next);
   if (!result.ok) {
     ui.toast('保存失败');

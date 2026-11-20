@@ -282,10 +282,10 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         assetBytes = { path -> javaClass.classLoader.getResourceAsStream(path)!!.use { it.readBytes() } },
         card = { cards.read(it) }
     )
+    private val cardFiles = CardFiles(cards, File(data, "exports"))
     private val toolFactory = ChatToolFactory(
         searchGateway = models.searchGateway,
         pcGateway = LocalShell(),
-        approvalHost = this,
         emitter = page,
         cards = cards,
         memos = memos,
@@ -293,6 +293,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         sessionStatusScript = { resourceText("harness/session-status.py") },
         agentRuns = agentRuns,
         articles = articles,
+        hostTools = { listOf(CardTool(cards, cardFiles, it)) },
         renderArticleScript = { resourceText("harness/render-article.sh") }
     )
     private val chat = ChatController(
@@ -520,6 +521,22 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         "submitPictures" -> conversation.submitWithPictures(args.getString(0), args.getString(1))
         "listCards" -> cards.directoryJson()
         "readCard" -> cards.read(args.getString(0)).orEmpty()
+    private fun revealCardPath(path: String): Boolean {
+        if (path.any { it.code < 32 } || path.startsWith("//")) return false
+        val local = when {
+            path.startsWith("/") -> File(path)
+            Regex("""^[A-Za-z]:[\\/].*""").matches(path) ->
+                File("/mnt/" + path[0].lowercaseChar() + "/" + path.substring(3).replace('\\', '/'))
+            else -> return false
+        }
+        if (!local.exists()) return false
+        val convert = ProcessBuilder("wslpath", "-w", local.canonicalPath).start()
+        val winPath = convert.inputStream.bufferedReader().readText().trimEnd()
+        if (convert.waitFor() != 0 || winPath.isBlank()) return false
+        ProcessBuilder("/mnt/c/Windows/explorer.exe", "/select,", winPath).start()
+        return true
+    }
+
         "cardPurpose" -> cards.purpose(args.getString(0))
         "saveCard" -> cards.save(args.getString(0), args.getString(2), args.getString(1))
         "deleteCard" -> cards.delete(args.getString(0))
@@ -531,9 +548,12 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         "saveCardPage" -> runCatching { cards.savePage(args.getString(0), args.getInt(1), Base64.getDecoder().decode(args.getString(2))) }.getOrDefault(false)
         "cardPages" -> cards.pages(args.getString(0)).size
         "speak" -> speech.speak(args.getString(0), args.getString(1))
+        "cardDraftSnapshot" -> cardFiles.draft(args)
+        "revealCardPath" -> revealCardPath(args.getString(0))
         "stopSpeaking" -> speech.stop(notify = true)
         "clearAudioCache" -> speech.clearCache()
         "getAppInfo" -> "Reduction 电脑端 · 朗读缓存 %.1f MB".format(speech.cacheSizeMb())
+        "autosaveCard" -> cards.autosave(args.getString(0), args.getString(1), args.getString(2), args.getBoolean(3), args.getString(4), args.getString(5)).also { if (it == "saved") cardFiles.clearDraft(args.getString(0)) }
         // Sound and microphone belong to this machine when it has them; the page asks before using its own.
         "nativeAudio" -> audio != null
         "requestMicPermission" -> page.emit("onMicPermission", true)
@@ -587,6 +607,16 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         if (bytes == null) return reply(exchange, 404, "")
         val content = if (name == "index.html") {
             // The phone's page, with the computer's stand-in for the app loaded ahead of it.
+        if (path.startsWith("/card-media/file/")) {
+            val (blob, meta) = cardFiles.attachedFile(path.substringAfterLast('/')) ?: return reply(exchange, 404, "")
+            exchange.responseHeaders.add("Content-Security-Policy", "sandbox; default-src 'none'")
+            exchange.responseHeaders.add("X-Content-Type-Options", "nosniff")
+            exchange.responseHeaders.add("Content-Type", meta.getString("type"))
+            exchange.responseHeaders.add("Content-Disposition", "attachment")
+            exchange.sendResponseHeaders(200, blob.length())
+            exchange.responseBody.use { out -> blob.inputStream().use { it.copyTo(out) } }
+            return
+        }
             String(bytes, Charsets.UTF_8).replace(
                 "</head>", "<link rel=\"icon\" href=\"./icon.png\" />\n<link rel=\"stylesheet\" href=\"./desktop.css\" />\n<script src=\"./desktop.js\"></script>\n</head>"
             ).toByteArray(Charsets.UTF_8)
