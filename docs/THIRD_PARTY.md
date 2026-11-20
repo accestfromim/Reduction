@@ -4,6 +4,7 @@
 
 | 组件 | 用在哪 | 上游 | 许可证 |
 | --- | --- | --- | --- |
+| DeepSeek V4 分词表（`deepseek/v4.bpe.gz`） | 手机和电脑在发送前计算文本 token。`tools/models/prepare-tokenizer.py` 从官方压缩包重建词表 | [DeepSeek 离线分词器](https://api-docs.deepseek.com/zh-cn/quick_start/token_usage/) | [MIT](../app/src/main/resources/deepseek/LICENSE.txt) |
 | sherpa-onnx（`app/libs/sherpa-onnx-arm64.aar`，不入库，`tools/models/fetch-models.sh` 取） | 本地唤醒词、结束词、人声检测和 VITS 朗读的运行库 | k2-fsa/sherpa-onnx v2.0.1 | Apache-2.0 |
 | 关键词模型（`assets/kws`、`assets/kws-en`，不入库，同上） | 认“完毕”和“Hi Reduction” | sherpa-onnx 发布的 zipformer KWS 模型（wenetspeech mobile、gigaspeech） | Apache-2.0 |
 | AISHELL-3 VITS（低采样率普通话多说话人模型） | 手机、电脑离线朗读 | [icefall 模型](https://huggingface.co/csukuangfj/icefall-tts-aishell3-vits-low-2024-04-06) · [AISHELL-3 语料](https://www.openslr.org/93) | Apache-2.0，随应用附带许可证 |

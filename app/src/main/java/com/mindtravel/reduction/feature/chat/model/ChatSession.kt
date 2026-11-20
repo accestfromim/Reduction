@@ -41,7 +41,7 @@ class ChatSession(
         val messages = request.messages.toMutableList()
         val cancellation = request.cancellation
 
-        repeat(maxToolRounds) {
+        repeat(maxToolRounds) { round ->
             cancellation.ensureActive()
             val content = StringBuilder()
             var toolCalls = ToolCallAccumulator()
@@ -107,6 +107,8 @@ class ChatSession(
                 callbacks.onFailed(t.message ?: "工具调用格式错误")
                 return
             }
+
+            if (round == 0 && (calls.isNotEmpty() || content.isNotBlank())) callbacks.onInitialInputAccepted()
 
             if (calls.isEmpty()) {
                 val text = content.toString()
