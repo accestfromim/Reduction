@@ -10,11 +10,14 @@ import java.util.concurrent.ScheduledFuture
 import java.util.concurrent.TimeUnit
 
 /**
- * The computer's own loudspeakers and microphone, reached through the PulseAudio client
- * tool `pacat`: one process that plays whatever PCM it is fed, and one, while recording,
- * that hands back what the microphone hears. No browser is involved in either.
+ * The computer's own loudspeakers and microphone. macOS uses the bundled AVFoundation
+ * executable and Linux uses `pacat`. Both take PCM on stdin and return captured PCM on stdout.
  */
-class SystemAudio private constructor(private val pacat: File, private val libraries: String) {
+class SystemAudio private constructor(
+    private val executable: File,
+    private val nativeMac: Boolean = false,
+    private val libraries: String = ""
+) {
 
     private val timer = Executors.newSingleThreadScheduledExecutor { Thread(it, "reduction-audio").apply { isDaemon = true } }
 
@@ -31,7 +34,8 @@ class SystemAudio private constructor(private val pacat: File, private val libra
     fun play(pcm: ByteArray) {
         if (pcm.isEmpty()) return
         try {
-            val out = line ?: start(listOf("--playback", "--rate=$PLAY_RATE", "--latency-msec=80")).let { process ->
+            if (player?.isAlive == false) silence()
+            val out = line ?: start(recording = false).let { process ->
                 player = process
                 process.outputStream.also { line = it }
             }
@@ -127,7 +131,7 @@ class SystemAudio private constructor(private val pacat: File, private val libra
         cancelRecording()
         return try {
             // Asked for in small pieces: otherwise the first half second of what is said is lost while the first large one fills.
-            val process = start(listOf("--record", "--rate=$RECORD_RATE", "--latency-msec=20", "--process-time-msec=10"))
+            val process = start(recording = true)
             val buffer = ByteArrayOutputStream()
             val awake = java.util.concurrent.CountDownLatch(1)
             recorder = process
@@ -144,8 +148,11 @@ class SystemAudio private constructor(private val pacat: File, private val libra
                 }
                 awake.countDown()
             }, "reduction-microphone").apply { isDaemon = true }.start()
-            awake.await(WAKE_LIMIT_MS, TimeUnit.MILLISECONDS) && process.isAlive
+            val active = awake.await(WAKE_LIMIT_MS, TimeUnit.MILLISECONDS) && process.isAlive
+            if (!active) cancelRecording()
+            active
         } catch (t: Throwable) {
+            cancelRecording()
             Logs.add("Microphone failed: ${t.message}")
             false
         }
@@ -167,9 +174,16 @@ class SystemAudio private constructor(private val pacat: File, private val libra
         heard = null
     }
 
-    private fun start(mode: List<String>): Process {
-        val command = listOf(pacat.path) + mode + listOf("--raw", "--format=s16le", "--channels=1", "--client-name=Reduction")
-        return ProcessBuilder(command).redirectError(ProcessBuilder.Redirect.DISCARD).apply {
+    private fun start(recording: Boolean): Process {
+        val mode = when {
+            nativeMac -> listOf(if (recording) "--audio-record" else "--audio-play")
+            recording -> listOf("--record", "--rate=$RECORD_RATE", "--latency-msec=20", "--process-time-msec=10")
+            else -> listOf("--playback", "--rate=$PLAY_RATE", "--latency-msec=80")
+        }
+        val pulseOptions = listOf("--raw", "--format=s16le", "--channels=1", "--client-name=Reduction")
+        val command = listOf(executable.path) + mode + if (nativeMac) emptyList() else pulseOptions
+        val errors = if (nativeMac) ProcessBuilder.Redirect.INHERIT else ProcessBuilder.Redirect.DISCARD
+        return ProcessBuilder(command).redirectError(errors).apply {
             if (libraries.isNotEmpty()) environment()["LD_LIBRARY_PATH"] = libraries
         }.start()
     }
@@ -199,6 +213,11 @@ class SystemAudio private constructor(private val pacat: File, private val libra
          * in the browser has to do the sounding and listening.
          */
         fun find(dataDir: File): SystemAudio? {
+            System.getenv("REDUCTION_MAC_AUDIO")?.let { path ->
+                val executable = File(path)
+                check(executable.canExecute()) { "macOS 音频程序无法执行：$path" }
+                return SystemAudio(executable, nativeMac = true)
+            }
             val own = File(System.getenv("REDUCTION_AUDIO_DIR") ?: File(dataDir, "audio").path)
             val bundled = File(own, "usr/bin/pacat")
             val lib = File(own, "usr/lib/x86_64-linux-gnu")
@@ -206,9 +225,9 @@ class SystemAudio private constructor(private val pacat: File, private val libra
                 System.getenv("PATH").orEmpty().split(':').map { File(it, "pacat") to "" }
             for ((tool, libraries) in candidates) {
                 if (!tool.canExecute()) continue
-                val audio = SystemAudio(tool, libraries)
+                val audio = SystemAudio(tool, libraries = libraries)
                 // A tool that cannot reach the sound server leaves at once.
-                val probe = runCatching { audio.start(listOf("--playback", "--rate=$PLAY_RATE")) }.getOrNull() ?: continue
+                val probe = runCatching { audio.start(recording = false) }.getOrNull() ?: continue
                 Thread.sleep(400)
                 val alive = probe.isAlive
                 probe.destroyForcibly()

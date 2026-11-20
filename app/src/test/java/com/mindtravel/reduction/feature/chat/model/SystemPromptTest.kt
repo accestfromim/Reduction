@@ -9,7 +9,8 @@ import org.junit.Test
 class SystemPromptTest {
 
     private fun reference(name: String): String =
-        javaClass.classLoader!!.getResourceAsStream("system-prompt-$name.txt")!!.bufferedReader().readText()
+        javaClass.classLoader!!.getResourceAsStream("system-prompt-$name.txt")!!
+            .bufferedReader().use { it.readLines().joinToString("\n") }
 
     private fun settings(web: Boolean, calc: Boolean, read: Boolean, write: Boolean, project: String) = AppSettings(
         webSearchEnabled = web, calculatorEnabled = calc, opencodeEnabled = read, opencodeWriteEnabled = write, pcProject = project

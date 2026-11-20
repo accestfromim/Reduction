@@ -93,6 +93,15 @@ try {
   // A typed question: answered, shown, and spoken through the browser.
   await page.click('#micBtn');
   const playedBefore = await page.evaluate(() => window.__played);
+  const compositionHeld = await page.evaluate(() => {
+    const input = document.getElementById('textInput');
+    input.value = '选词中';
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', keyCode: 229, bubbles: true, cancelable: true }));
+    const held = input.value === '选词中' && !document.querySelector('.msg-row.user');
+    input.value = '';
+    return held;
+  });
+  check('confirming an IME candidate keeps the draft', compositionHeld && asked.chat.length === 0);
   await page.type('#textInput', '你好');
   await page.keyboard.press('Enter');
   await page.waitForFunction((before) => window.__played > before, {}, playedBefore);
@@ -117,7 +126,11 @@ try {
   check('the card from the tool round is kept on this computer', fs.readdirSync(cardDir)
     .some((f) => f.endsWith('.md') && fs.readFileSync(path.join(cardDir, f), 'utf8').includes('买电池')));
   await page.evaluate(() => Array.from(document.querySelectorAll('#cardList .card-row')).find((r) => r.textContent === 'sub agent 任务').click());
-  check('the task ledger cannot be edited', await page.evaluate(() => document.getElementById('cardEdit').classList.contains('hidden') && document.getElementById('cardBody').textContent.includes('程序直接写入')));
+  check('the task ledger cannot be edited', await page.evaluate(() => {
+    const body = document.getElementById('cardBody');
+    body.click();
+    return document.getElementById('cardEditor').classList.contains('hidden') && body.textContent.includes('程序直接写入');
+  }));
   await page.click('#cardCrumbs button.crumb');
   // A picture and a recording: kept by the app, shown and playable in the card, on the computer too.
   const media = await page.evaluate(async () => {

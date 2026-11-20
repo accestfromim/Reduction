@@ -181,13 +181,13 @@ ui.els.messages.addEventListener('click', (event) => {
 
 ui.els.textInput.addEventListener('input', ui.updateControls);
 ui.els.textInput.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && !event.isComposing) {
-    event.preventDefault();
-    const text = ui.els.textInput.value;
-    ui.els.textInput.value = '';
-    ui.updateControls();
-    chat.sendText(text);
-  }
+  // WebKit 可能先结束输入法组合，再用键码 229 派发确认候选词的回车。
+  if (event.key !== 'Enter' || event.isComposing || event.keyCode === 229) return;
+  event.preventDefault();
+  const text = ui.els.textInput.value;
+  ui.els.textInput.value = '';
+  ui.updateControls();
+  chat.sendText(text);
 });
 
 ui.els.micBtn.addEventListener('pointerdown', voice.onMicDown);

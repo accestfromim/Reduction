@@ -9,6 +9,7 @@
     const request = new XMLHttpRequest();
     request.open('POST', '/bridge/' + method, false);
     request.setRequestHeader('X-Reduction', '1');
+    if (window.reductionMicrophoneToken) request.setRequestHeader('X-Reduction-Microphone', window.reductionMicrophoneToken);
     request.send(JSON.stringify(args));
     if (request.status !== 200) return undefined;
     const result = JSON.parse(request.responseText).result;
@@ -154,6 +155,7 @@
   // ── what this browser does itself, instead of asking the server ─────────
   // When the computer has its own loudspeakers and microphone in hand, they are the server's business.
   const ownAudio = call('nativeAudio', []) !== true;
+  const mac = window.webkit?.messageHandlers?.reduction;
   const here = {
     ...(ownAudio ? {
       requestMicPermission: () => setTimeout(() => native('onMicPermission', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)), 0),
@@ -166,7 +168,11 @@
       cancelRecording: () => { endRecording(); },
       stopSpeaking: () => { stopSound(); call('stopSpeaking', []); }
     } : {}),
-    copyText: (text) => { if (navigator.clipboard) navigator.clipboard.writeText(String(text)); },
+    ...(mac ? { requestMicPermission: () => mac.postMessage({ action: 'microphone' }) } : {}),
+    copyText: (text) => {
+      if (mac) mac.postMessage({ action: 'copy', text: String(text) });
+      else if (navigator.clipboard) navigator.clipboard.writeText(String(text));
+    },
     vibrate: () => {},
     requestBluetoothPermission: () => {},
     shareDiagnostics: () => {},

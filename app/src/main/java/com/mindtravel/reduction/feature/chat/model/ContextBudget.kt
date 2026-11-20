@@ -3,6 +3,7 @@ package com.mindtravel.reduction.feature.chat.model
 import com.mindtravel.reduction.core.ApiException
 import com.mindtravel.reduction.core.CancelSignal
 import com.mindtravel.reduction.core.Logs
+import com.mindtravel.reduction.core.time.RelativeDates
 import com.mindtravel.reduction.model.chat.ChatImage
 import com.mindtravel.reduction.model.chat.ChatMessage
 import com.mindtravel.reduction.model.chat.DeepSeekTokenizer
@@ -17,10 +18,11 @@ import org.json.JSONObject
 /** A persisted conversation line. Tool calls and their results live only in ChatSession. */
 internal data class ContextLine(
     val id: String, val role: Role, val content: String, val at: Long,
-    val images: List<ChatImage> = emptyList()
+    val images: List<ChatImage> = emptyList(), val referenceDate: String? = null
 ) {
+    val modelContent: String by lazy { RelativeDates.context(content, RelativeDates.messageDay(referenceDate, at)) }
     @Volatile private var encoded: IntArray? = null
-    fun textTokens(signal: CancelSignal) = encoded ?: DeepSeekTokenizer.encode(content, signal::ensureActive).also { encoded = it }
+    fun textTokens(signal: CancelSignal) = encoded ?: DeepSeekTokenizer.encode(modelContent, signal::ensureActive).also { encoded = it }
 
     // Image bytes are never text-tokenized or saved in the previous prompt. A changed image breaks the prefix.
     val imageTokens by lazy {
@@ -125,7 +127,7 @@ internal class ContextBudget(private val maxInput: Int = MODEL_CONTEXT) {
                 val first = i
                 while (i < history.lastIndex && i !in visible && history[i + 1].role == Role.USER) i++
                 val words = if (first == i) line.textTokens(signal) else {
-                    val joined = history.subList(first, i + 1).joinToString("\n\n") { it.content }
+                    val joined = history.subList(first, i + 1).joinToString("\n\n") { it.modelContent }
                     DeepSeekTokenizer.encode(joined, signal::ensureActive)
                 }
                 out.addAll(words)
@@ -176,7 +178,7 @@ internal class ContextBudget(private val maxInput: Int = MODEL_CONTEXT) {
             add(ChatMessage(Role.SYSTEM, system))
             for (i in from until history.size) {
                 val line = history[i]
-                add(ChatMessage(line.role, line.content, images = if (i in visible) line.images else emptyList()))
+                add(ChatMessage(line.role, line.modelContent, images = if (i in visible) line.images else emptyList()))
             }
         }
         val chosenPrefix = if (useRecent) shortPrefix else fullPrefix

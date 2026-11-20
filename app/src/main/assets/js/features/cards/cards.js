@@ -379,8 +379,10 @@ function renderPlan() {
   const blocks = [
     ['今天', data.today],
     ['未来', data.future],
-    ['没日期', data.undated],
   ];
+  if (Array.isArray(data.undated) && data.undated.length > 0) {
+    blocks.push(['没日期', data.undated]);
+  }
   for (const [title, items] of blocks) {
     const head = document.createElement('div');
     head.className = 'plan-head';

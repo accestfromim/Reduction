@@ -62,6 +62,7 @@ val prepareTts by tasks.registering(Exec::class) {
 dependencies {
     implementation(files(localTts.map { it.file("sherpa-onnx-jvm.jar") }).builtBy(prepareTts))
     runtimeOnly(files(localTts.map { it.file("sherpa-onnx-native.jar") }).builtBy(prepareTts))
+    implementation(project(":shared"))
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     implementation("org.json:json:20240303")

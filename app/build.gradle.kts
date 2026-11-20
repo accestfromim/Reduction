@@ -100,6 +100,7 @@ val prepareSpeechAssets by tasks.registering(Exec::class) {
 tasks.named("preBuild") { dependsOn(prepareSpeechAssets) }
 
 dependencies {
+    implementation(project(":shared"))
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.webkit:webkit:1.12.1")

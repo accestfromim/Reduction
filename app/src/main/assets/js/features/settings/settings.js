@@ -52,6 +52,11 @@ function directoriesFromForm() {
   }
   return entries;
 }
+function updateAgentSettings() {
+  ui.els.opencodeSessionInput.closest('label').classList.toggle('hidden', ui.els.agentEngineSelect.value !== 'opencode');
+}
+
+ui.els.agentEngineSelect.addEventListener('change', updateAgentSettings);
 
 export function openSettings() {
   ui.els.apiKeyInput.value = state.settings.apiKey || '';
@@ -63,12 +68,14 @@ export function openSettings() {
   ui.els.wakeWordInput.checked = !!state.settings.wakeWordEnabled;
   ui.els.bargeInInput.checked = state.settings.bargeInEnabled !== false;
   ui.els.headsetMicInput.checked = state.settings.headsetMicEnabled === true;
+  ui.els.agentEngineSelect.value = state.settings.agentEngine;
   ui.els.opencodeEnabledInput.checked = state.settings.opencodeEnabled === true;
   ui.els.opencodeWriteInput.checked = state.settings.opencodeWriteEnabled === true;
   ui.els.opencodeSessionInput.value = state.settings.opencodeSessionId || '';
   ui.els.pcProjectInput.value = state.settings.pcProject || '~/Reduction-iterate';
   directoryList.replaceChildren();
   state.settings.agentDirectories.forEach(addDirectory);
+  updateAgentSettings();
 
   const raw = callBridge('getAppInfo');
   if (typeof raw === 'string' && raw) {
@@ -105,6 +112,7 @@ function currentSettingsFromForm() {
     wakeWordEnabled: ui.els.wakeWordInput.checked,
     bargeInEnabled: ui.els.bargeInInput.checked,
     headsetMicEnabled: ui.els.headsetMicInput.checked,
+    agentEngine: ui.els.agentEngineSelect.value,
     opencodeEnabled: ui.els.opencodeEnabledInput.checked,
     opencodeWriteEnabled: ui.els.opencodeWriteInput.checked,
     opencodeSessionId: ui.els.opencodeSessionInput.value.trim(),

@@ -9,7 +9,9 @@ for await (const chunk of process.stdin) chunks.push(chunk);
 const task = JSON.parse(Buffer.concat(chunks));
 const assets = fileURLToPath(new URL('../../../app/src/main/assets', import.meta.url));
 const modules = new Set(['/vendor/purify.min.js', '/js/components/html/index.js', '/js/components/html/chart-table.js']);
-const browser = await puppeteer.launch({executablePath:'/usr/bin/google-chrome', args:['--disable-dev-shm-usage']});
+const executablePath = process.env.CHROME_PATH || (process.platform === 'darwin'
+  ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : '/usr/bin/google-chrome');
+const browser = await puppeteer.launch({executablePath, args:['--disable-dev-shm-usage']});
 try {
   const page = await browser.newPage();
   await page.setViewport({width:1000,height:800,deviceScaleFactor:1});

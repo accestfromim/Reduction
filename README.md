@@ -54,6 +54,8 @@ Reduction回答一个问题：我们有可能在生活更轻松的同时、可�
 
 对话、整段语音转写和联网搜索使用 DeepSeek API Key。手机朗读优先使用系统已安装的中文离线音色，系统音色不可用时使用随应用安装的普通话模型。两种朗读方式都可以断网使用。在手机设置中搜索「文字转语音」可试听或安装音色，在应用设置中点「测试朗读」可试听实际效果。 [DeepSeek 开放平台](https://platform.deepseek.com/)
 
+[四端构建和跨日测试](shared/README.md)
+
 ### 蓝牙耳机
 
 拥有麦克风功能
@@ -70,7 +72,22 @@ tools/models/fetch-models.sh       # 取语音运行库、唤醒词和本地朗�
 
 需要授予录音机常驻、悬浮窗等较高权限
 
-### 电脑（Windows + WSL，或任何能跑 JVM 的 Linux）
+### 手机（iPhone 和 iPad，iOS 17.4 及以上）
+
+用 Xcode 打开 `ios/Reduction.xcodeproj`，选择 `Reduction` 方案后运行。iOS 版支持 DeepSeek 对话和发图、按住录音松开识别、流式朗读、卡片和附件、待办提醒。填入电脑的 SSH 信息后可以同步数据和查询电脑任务。 [iOS 使用说明](ios/README.md) · [iOS TODO](ios/TODO.md)
+
+### 电脑（macOS、Windows + WSL、Linux）
+
+macOS 14.4 及以上可以直接运行 `dist/Reduction.app`。从源码构建需要 Xcode 和 JDK 17，应用包内含运行时。
+
+```bash
+./desktop/install.sh
+open dist/Reduction.app
+```
+
+菜单栏可以打开对话和卡片、显示桌宠和设置登录时启动。按住 `Control + Shift + 空格` 说话，按住 `Control + Option + Shift + 空格` 听写，松开后把整理好的文字放入剪贴板。
+
+Windows + WSL 和 Linux 可以这样启动：
 
 ```bash
 desktop/install.sh     # 装成应用：桌宠、开机自启、桌面图标
@@ -81,14 +98,14 @@ desktop/install.sh     # 装成应用：桌宠、开机自启、桌面图标
 
 ### 让手机调度电脑上的 agent
 
-电脑上要有 SSH 服务、`bwrap` 和 [opencode](https://opencode.ai/)。在 App 里点电脑图标，复制公钥加到电脑的 `~/.ssh/authorized_keys`，填上地址即可。sub agent 用的是你手机里那个 DeepSeek Key。
+在电脑上开启 SSH 服务，在手机 App 里点电脑图标，复制公钥加到电脑的 `~/.ssh/authorized_keys`，再填入电脑地址。在「设置 → 子代理执行器」选择 OpenCode 或 Codex。Linux 和 WSL 需要 `bwrap`，macOS 需要 Python 3 和 Anthropic Sandbox Runtime。[执行器登录和依赖](docs/DEVELOPMENT.md#子代理执行器)
 
 ## 你的数据在哪
 
 | | |
 | :-- | :-- |
-| **API Key** | 只存在你的设备上（手机上加密保存，电脑上是只有本人可读的文件），只发给 DeepSeek。 |
-| **对话、卡片、图片和录音** | 存在本机。手机和电脑各存各的，不同步，也没有任何云端。 |
+| **API Key** | 手机上加密保存，电脑上是只有本人可读的文件。连接 DeepSeek 时用于认证，派发子代理时会交给你配置的电脑。 |
+| **对话、卡片和待办** | 手机与电脑各保留一份，连上电脑后通过 SSH 双向同步。 |
 | **发给 DeepSeek 的** | 提交识别的录音、对话内容、联网搜索请求。朗读在本机完成。 |
 | **发给你自己电脑的** | 仅在你配置了电脑连接之后：运行日志和你每一轮说话的录音，用于排查问题和改进唤醒。不想留就不要配置电脑连接。 |
 

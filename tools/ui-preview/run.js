@@ -59,7 +59,7 @@ await page.evaluateOnNewDocument(() => {
   window.__replies = 0;
   window.__cards = {};
   window.Android = {
-    loadSettings: () => JSON.stringify({
+    loadSettings: () => JSON.stringify(window.__savedSettings || {
       apiKey: 'preview-key',
       model: 'deepseek-flash',
       voice: 'aishell3-0',
@@ -79,8 +79,9 @@ await page.evaluateOnNewDocument(() => {
     cardPurpose: (name) => (window.__cards[name] || {}).purpose || '',
     autosaveCard: (name, purpose, text, creating, oldPurpose, oldText) => {
       const card = window.__cards[name];
-      if (creating ? !!card : !card || card.purpose !== oldPurpose || card.text !== oldText) return 'conflict';
-      window.__cards[name] = { ...card, purpose, text };
+      const changingPurpose = purpose !== oldPurpose;
+      if (creating ? !!card : !card || card.text !== oldText || (changingPurpose && card.purpose !== oldPurpose)) return 'conflict';
+      window.__cards[name] = { ...card, purpose: changingPurpose ? purpose : card?.purpose || purpose, text };
       return 'saved';
     },
     saveCard: (name, purpose, text) => { window.__cards[name] = { purpose, text }; return true; },
@@ -321,7 +322,7 @@ const cardsEdited = await page.evaluate(async () => {
   document.getElementById('cardNew').click();
   const nameShown = !hidden('cardNameField') && hidden('cardDelete');
   document.getElementById('cardNameInput').value = '科研想法·评测';
-  document.getElementById('cardPurposeInput').value = '评测方法与指标';
+  document.getElementById('cardText').value = '评测方法与指标';
   document.getElementById('cardText').dispatchEvent(new Event('input', { bubbles: true }));
   window.onAndroidBack();
   const after = names().slice().sort();
@@ -751,7 +752,6 @@ const autoSaved = await page.evaluate(async () => {
   const cards = await import('/js/features/cards/cards.js');
   cards.newCard();
   document.getElementById('cardNameInput').value = '自动保存验收';
-  document.getElementById('cardPurposeInput').value = '界面测试';
   const box = document.getElementById('cardText');
   function type(value) {
     box.value = value;

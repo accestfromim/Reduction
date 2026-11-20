@@ -21,6 +21,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 
 /** Told when a reply begins and when it is completely over (generated and spoken). */
 interface ReplyObserver {
@@ -62,11 +63,12 @@ class ChatController(
     internal fun send(
         requestId: String,
         settings: AppSettings,
+        referenceDate: LocalDate,
         prepare: (List<ToolSpec>, CancelSignal) -> ContextBudget.Choice,
         onAccepted: (ContextBudget.Snapshot) -> Unit,
         onCompleted: (String) -> Unit
     ) {
-        val registry = toolFactory.create(settings)
+        val registry = toolFactory.create(settings, referenceDate)
         val tools = registry.specs()
         val reply = Reply(requestId)
 

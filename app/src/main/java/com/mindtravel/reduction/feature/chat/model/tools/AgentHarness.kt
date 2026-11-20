@@ -16,10 +16,12 @@ import java.util.Base64
 class AgentHarness(
     private val pcGateway: PcGateway,
     private val profile: PcProfile,
-    /** The model key and name the agents run on: the same ones the phone itself uses. */
+    /** OpenCode 使用 Reduction 的 DeepSeek 设置。 */
     private val apiKey: String,
     private val model: String,
     private val directories: List<AgentDirectory> = emptyList(),
+    private val macLauncherScript: (() -> String)? = null,
+    private val defaultEngine: Engine = Engine.OPENCODE,
     private val launcherScript: () -> String
 ) {
     enum class Agent(val wire: String) {
@@ -33,6 +35,7 @@ class AgentHarness(
     /** Who does the work. */
     enum class Engine(val wire: String, val timeoutSeconds: Int) {
         OPENCODE("opencode", 900),
+        CODEX("codex", 900),
 
         /** Claude Code, on the computer's own login. Given two hours. */
         CLAUDE("claude", 7_200)
@@ -74,8 +77,8 @@ class AgentHarness(
     val isConfigured: Boolean get() = profile.host.isNotBlank() && profile.user.isNotBlank()
 
     /** Starts a run and returns its id. Throws [IllegalStateException] with the launcher's message when it cannot start. */
-    fun start(agent: Agent, folder: String, prompt: String, engine: Engine = Engine.OPENCODE): String {
-        val output = launcher("start", agent.wire, folder, prompt, withModel = true, engine = engine).trim()
+    fun start(agent: Agent, folder: String, prompt: String, engine: Engine = defaultEngine): String {
+        val output = launcher("start", agent.wire, folder, prompt, engine = engine).trim()
         val id = output.lineSequence().firstOrNull { it.startsWith("RUN ") }?.removePrefix("RUN ")?.trim()
         return id?.takeIf { it.isNotBlank() } ?: throw IllegalStateException(output.ifBlank { "harness 没有响应" })
     }
@@ -107,15 +110,23 @@ class AgentHarness(
         return pcGateway.send(profile, command, input)
     }
 
-    private fun launcher(vararg args: String, withModel: Boolean = false, engine: Engine = Engine.OPENCODE): String {
-        val environment = if (withModel) {
-            val rules = JSONArray(directories.map { it.toJson() }).toString()
-            "AGENT_DIRECTORIES=${quote(rules)} AGENT_KEY=${quote(apiKey)} AGENT_MODEL=${quote("deepseek/$model")} " +
-                "AGENT_ENGINE=${engine.wire} AGENT_TIMEOUT=${engine.timeoutSeconds} "
-        } else {
-            ""
+    private fun launcher(vararg args: String, engine: Engine? = null): String {
+        val environment = buildString {
+            if (engine != null) {
+                val rules = JSONArray(directories.map { it.toJson() }).toString()
+                append("AGENT_DIRECTORIES=${quote(rules)} AGENT_ENGINE=${engine.wire} AGENT_TIMEOUT=${engine.timeoutSeconds} ")
+            }
+            if (engine == Engine.OPENCODE) {
+                append("AGENT_KEY=${quote(apiKey)} AGENT_MODEL=${quote("deepseek/$model")} ")
+            }
         }
-        return runScript("sh -s --", launcherScript(), *args, environment = environment)
+        val shell = launcherScript()
+        val mac = if (engine != null) macLauncherScript?.invoke() else null
+        val script = if (mac.isNullOrEmpty()) shell else {
+            val encoded = Base64.getEncoder().encodeToString(mac.toByteArray(Charsets.UTF_8))
+            "REDUCTION_MAC_AGENT_SCRIPT=${quote(encoded)}\n$shell"
+        }
+        return runScript("sh -s --", script, *args, environment = environment)
     }
 
     companion object {
@@ -135,7 +146,7 @@ class AgentHarness(
 
         fun quote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
-        /** Reads the launcher's status output: a STATE line, then opencode's JSON events. */
+        /** 解析启动脚本的状态行和执行器的 JSON 事件。 */
         fun parse(output: String): Progress {
             // Pictures come last, each under a line of its own; what is before them is as it always was.
             val images = ArrayList<ChatImage>()
@@ -170,15 +181,34 @@ class AgentHarness(
                     if (line.startsWith("harness：")) errors += line
                     continue
                 }
-                if (event.optString("type") == "error") {
+                val type = event.optString("type")
+                if (type == "error" || type == "turn.failed") {
                     val error = event.optJSONObject("error")
                     val message = error?.optJSONObject("data")?.optString("message").orEmpty()
+                        .ifBlank { error?.optString("message").orEmpty() }
                         .ifBlank { error?.optString("name").orEmpty() }
-                    errors += message.ifBlank { "未知错误" }
+                        .ifBlank { event.optString("message") }
+                    if (type == "turn.failed" || error != null || exitCode != 0) {
+                        errors += message.ifBlank { "未知错误" }
+                    }
                     continue
                 }
                 // Claude Code: each turn is a message of blocks, and the last event carries what it returns.
-                when (event.optString("type")) {
+                when (type) {
+                    "item.started", "item.updated", "item.completed" -> {
+                        val item = event.optJSONObject("item") ?: continue
+                        when (item.optString("type")) {
+                            "agent_message" -> if (type == "item.completed") {
+                                item.optString("text").takeIf { it.isNotBlank() }?.let { said += it; returned = it }
+                            }
+                            "command_execution" -> {
+                                val command = item.optString("command").replace('\n', ' ').take(120)
+                                steps[item.optString("id")] = "命令：$command（${item.optString("status")}）"
+                            }
+                            "file_change" -> steps[item.optString("id")] = "文件修改（${item.optString("status")}）"
+                        }
+                        continue
+                    }
                     "assistant" -> {
                         val blocks = event.optJSONObject("message")?.optJSONArray("content") ?: continue
                         for (i in 0 until blocks.length()) {
@@ -220,7 +250,7 @@ class AgentHarness(
                     }
                 }
             }
-            return Progress(state, exitCode, said.joinToString("\n"), steps.values.toList(), errors, returned, resultFile, images, skipped)
+            return Progress(state, exitCode, said.joinToString("\n"), steps.values.toList(), errors.distinct(), returned, resultFile, images, skipped)
         }
     }
 }

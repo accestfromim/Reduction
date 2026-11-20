@@ -17,8 +17,8 @@ object MemoView {
      * notifications. Without either the reminders are degraded, and the card says so.
      */
     fun json(store: MemoStore, exact: Boolean, notify: Boolean): String {
-        val view = store.view()
         val today = store.today()
+        val view = store.view(today)
         fun block(memos: List<MemoStore.Memo>) = JSONArray().apply {
             for (memo in memos) put(JSONObject().apply {
                 put("id", memo.id)
@@ -27,7 +27,7 @@ object MemoView {
                 put("due", memo.due?.let { DueParser.describe(it, memo.part, today) } ?: DueParser.EMPTY)
                 put("part", memo.part?.label.orEmpty())
                 put("empty", memo.due == null)
-                put("overdue", store.isOverdue(memo))
+                put("overdue", store.isOverdue(memo, today))
             })
         }
         return JSONObject().apply {

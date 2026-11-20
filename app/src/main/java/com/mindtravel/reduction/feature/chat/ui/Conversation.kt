@@ -3,6 +3,8 @@ package com.mindtravel.reduction.feature.chat.ui
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.core.events.EventSink
 import com.mindtravel.reduction.core.settings.SettingsGateway
+import com.mindtravel.reduction.core.stringOrNull
+import com.mindtravel.reduction.core.time.RelativeDates
 import com.mindtravel.reduction.feature.chat.data.CardRepository
 import com.mindtravel.reduction.feature.chat.data.HistoryRepository
 import com.mindtravel.reduction.feature.chat.model.ContextBudget
@@ -12,6 +14,7 @@ import com.mindtravel.reduction.model.chat.ChatImage
 import com.mindtravel.reduction.model.chat.Role
 import org.json.JSONArray
 import org.json.JSONObject
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -26,8 +29,6 @@ class Conversation(
     private val cards: CardRepository,
     private val chat: ChatController,
     private val emitter: EventSink,
-    /** Today's date as yyyy-MM-dd. */
-    private val today: () -> String,
     /** Things about the user's devices worth a sentence in this reply, such as a battery running low. */
     private val deviceNotices: () -> List<String> = { emptyList() },
     /** To-dos without a date: said once a day, when the user first speaks. */
@@ -60,8 +61,11 @@ class Conversation(
                 if (content.isBlank()) continue
                 val id = item.optString("id")
                 if (id.isEmpty() || !item.has("at")) unnamed = true
-                // A line written before lines had names: named now, and dated in the order it stands in.
-                lines += ContextLine(id.ifEmpty { UUID.randomUUID().toString() }, role, content, item.optLong("at", now - (saved.length() - i) * 1000L))
+                val recordedAt = item.optLong("at")
+                val referenceDate = if (recordedAt <= 0) "" else item.stringOrNull("referenceDate")
+                // 没有发送时间的旧消息仍用时间戳排序。日期标注会说明原日期缺失。
+                val at = if (recordedAt > 0) recordedAt else now - (saved.length() - i) * 1000L
+                lines += ContextLine(id.ifEmpty { UUID.randomUUID().toString() }, role, content, at, referenceDate = referenceDate)
             }
             if (unnamed) persist()
         }.onFailure { Logs.add("History unreadable: ${it.message}") }
@@ -95,7 +99,9 @@ class Conversation(
             return false
         }
 
-        lines += ContextLine(UUID.randomUUID().toString(), Role.USER, text, System.currentTimeMillis(), images)
+        val at = System.currentTimeMillis()
+        val referenceDate = RelativeDates.localDay(at)
+        lines += ContextLine(UUID.randomUUID().toString(), Role.USER, text, at, images, referenceDate.toString())
         save()
         val id = UUID.randomUUID().toString()
         emitter.emit("onReplyBegin", id, shown.trim().ifEmpty { text })
@@ -105,17 +111,17 @@ class Conversation(
                 if (cards.isLocked(card.name)) "【用户已审核并锁定的 prompt】" else ""
         }
         val system = SystemPrompt.build(
-            settings, today(), directory,
+            settings, referenceDate.toString(), directory,
             runCatching(deviceNotices).getOrDefault(emptyList()),
             runCatching(todoNotices).getOrDefault(emptyList()), place
         )
         val turn = ++generation
         val reference = previous
         val entries = lines.toList()
-        chat.send(id, settings,
+        chat.send(id, settings, referenceDate,
             prepare = { tools, signal -> budget.choose(reference, system, entries, settings.model, settings.apiKey, tools, signal) },
             onAccepted = { checkpoint -> accept(turn, checkpoint) },
-            onCompleted = { reply -> remember(turn, reply) }
+            onCompleted = { reply -> remember(turn, reply, referenceDate) }
         )
         return true
     }
@@ -153,7 +159,7 @@ class Conversation(
         for (line in entries) {
             put(
                 JSONObject().put("role", if (line.role == Role.USER) "user" else "assistant").put("content", line.content)
-                    .put("id", line.id).put("at", line.at)
+                    .put("id", line.id).put("at", line.at).put("referenceDate", line.referenceDate)
             )
         }
     }.toString()
@@ -180,14 +186,14 @@ class Conversation(
      */
     @Synchronized
     fun merge(remote: JSONObject): Boolean {
-        val before = lines.map { it.id }
+        val before = lines.toList()
         val cleared = maxOf(history.clearedAt, remote.optLong("clearedAt"))
         if (cleared > history.clearedAt) {
             resetContext()
             history.clearedAt = cleared
         }
         lines.removeAll { it.at <= cleared }
-        val known = lines.mapTo(HashSet()) { it.id }
+        val indices = lines.withIndex().associate { (index, line) -> line.id to index }.toMutableMap()
         val theirs = remote.optJSONArray("lines") ?: JSONArray()
         for (i in 0 until theirs.length()) {
             val item = theirs.optJSONObject(i) ?: continue
@@ -199,21 +205,29 @@ class Conversation(
                 else -> continue
             }
             val content = item.optString("content")
-            if (id.isEmpty() || content.isBlank() || at <= cleared || !known.add(id)) continue
-            lines += ContextLine(id, role, content, at)
+            if (id.isEmpty() || content.isBlank() || at <= cleared) continue
+            val referenceDate = item.stringOrNull("referenceDate")
+            val index = indices[id]
+            if (index == null) {
+                indices[id] = lines.size
+                lines += ContextLine(id, role, content, at, referenceDate = referenceDate)
+            } else if (lines[index].referenceDate == null && referenceDate != null) {
+                lines[index] = lines[index].copy(referenceDate = referenceDate)
+            }
         }
         lines.sortBy { it.at }
         trimHistory()
-        if (lines.map { it.id } == before) return false
+        if (lines == before) return false
         persist()
         emitter.emit("onHistoryChanged", "")
         return true
     }
 
     @Synchronized
-    private fun remember(turn: Long, reply: String) {
+    private fun remember(turn: Long, reply: String, referenceDate: LocalDate) {
         if (turn != generation || reply.isBlank()) return
-        lines += ContextLine(UUID.randomUUID().toString(), Role.ASSISTANT, reply, System.currentTimeMillis())
+        lines += ContextLine(UUID.randomUUID().toString(), Role.ASSISTANT, reply, System.currentTimeMillis(),
+            referenceDate = referenceDate.toString())
         save()
     }
 

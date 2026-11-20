@@ -17,7 +17,7 @@ class ContextBudgetTest {
     @get:Rule val dir = TemporaryFolder()
     private val budget = ContextBudget()
     private fun lines(last: Int) = (0..last).map {
-        ContextLine("id-$it", if (it % 2 == 0) Role.USER else Role.ASSISTANT, "第 $it 条消息。", it.toLong())
+        ContextLine("id-$it", if (it % 2 == 0) Role.USER else Role.ASSISTANT, "第 $it 条消息。", it.toLong(), referenceDate = "2026-11-18")
     }
     private fun plan(history: List<ContextLine>, prev: ContextBudget.Snapshot? = null, system: String = "固定系统指令",
         key: String = "test", model: String = "deepseek-flash", tools: List<ToolSpec> = emptyList()) =
@@ -32,16 +32,28 @@ class ContextBudgetTest {
         assertTrue(cold.usedRecent)
         assertEquals(0, cold.recent.hit)
         assertEquals(50L * cold.recent.total, cold.recent.cost)
-        assertEquals(many.takeLast(20).map { it.content }, cold.messages.drop(1).map { it.content })
+        assertEquals(many.takeLast(20).map { it.modelContent }, cold.messages.drop(1).map { it.content })
+    }
+
+    @Test fun datesAreResolvedBeforeCountingAndSendingWhileHistoryKeepsTheOriginalWords() {
+        val user = ContextLine("u", Role.USER, "明天早上归档", 1L, referenceDate = "2026-11-18")
+        val first = plan(listOf(user))
+        assertEquals("［原消息日期 2026-11-18］\n2026-11-19早上归档", first.messages.last().content)
+        val next = plan(listOf(user, user.copy(id = "a", role = Role.ASSISTANT, content = "记下了"),
+            user.copy(id = "v", referenceDate = "2026-11-19")), first.snapshot)
+        assertEquals(first.messages.last(), next.messages[1])
+        assertTrue(next.growing.hit >= first.snapshot.tokens.size)
+        assertEquals("［原消息日期 2026-11-19］\n2026-11-20早上归档", next.messages.last().content)
+        assertEquals("明天早上归档", user.content)
     }
 
     @Test fun plainAndInterruptedTurnsMatchPublishedV4ProTextFraming() {
         // Counts from the official encode_messages(..., "thinking") and tokenizer.json.
         val normal = lines(2)
-        assertEquals(14, plan(normal.take(1), model = "deepseek-v4-pro").growing.total)
-        assertEquals(32, plan(normal, model = "deepseek-v4-pro").growing.total)
+        assertEquals(27, plan(normal.take(1), model = "deepseek-v4-pro").growing.total)
+        assertEquals(71, plan(normal, model = "deepseek-v4-pro").growing.total)
         val interrupted = normal.map { it.copy(role = Role.USER) }
-        assertEquals(28, plan(interrupted, model = "deepseek-v4-pro").growing.total)
+        assertEquals(67, plan(interrupted, model = "deepseek-v4-pro").growing.total)
     }
 
     @Test fun anIntactPrefixKeepsGrowingPastFortyAndOneHundred() {
@@ -57,7 +69,7 @@ class ContextBudgetTest {
 
     @Test fun anExpensiveCachedOpeningIsDroppedAndGrowthRestartsAtTheChosenBoundary() {
         val history = lines(22).toMutableList()
-        history[0] = history[0].copy(content = "所有历史".repeat(8000))
+        history[0] = history[0].copy(content = "所有历史".repeat(25000))
         val previous = plan(history.take(19))
         val prune = plan(history.take(21), previous.snapshot)
         assertTrue(prune.growing.hit > prune.recent.hit)
@@ -66,7 +78,7 @@ class ContextBudgetTest {
         assertEquals(history[1].id, prune.snapshot.firstId)
         val next = plan(history, prune.snapshot)
         assertFalse(next.usedRecent)
-        assertEquals(history.drop(1).map { it.content }, next.messages.drop(1).map { it.content })
+        assertEquals(history.drop(1).map { it.modelContent }, next.messages.drop(1).map { it.content })
         assertTrue(next.growing.hit >= prune.snapshot.tokens.size)
     }
 

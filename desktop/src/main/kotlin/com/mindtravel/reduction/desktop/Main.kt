@@ -51,12 +51,12 @@ import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermissions
-import java.time.LocalDate
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
+import kotlin.system.exitProcess
 
 /**
  * Reduction on a computer. The conversation — history, prompt, tools, cards, sub agents,
@@ -69,16 +69,18 @@ import java.util.concurrent.atomic.AtomicLong
  */
 fun main(args: Array<String>) {
     val port = args.firstOrNull()?.toIntOrNull() ?: 8780
-    val home = File(System.getProperty("user.home"))
-    val data = File(home, ".local/share/reduction").apply { mkdirs() }
-    val desktop = Desktop(data, File(home, ".config/reduction/settings.json"))
-
+    val managed = System.getenv("REDUCTION_DESKTOP_PARENTED") == "1"
     val server = try {
         HttpServer.create(InetSocketAddress("127.0.0.1", port), 0)
     } catch (e: java.net.BindException) {
         System.err.println("端口 $port 已被占用。换一个端口启动，比如：./desktop.sh ${port + 1}")
+        if (managed) exitProcess(1)
         return
     }
+    val home = File(System.getProperty("user.home"))
+    val data = File(home, ".local/share/reduction").apply { mkdirs() }
+    val desktop = Desktop(data, File(home, ".config/reduction/settings.json"))
+
     server.executor = Executors.newCachedThreadPool { Thread(it).apply { isDaemon = true } }
     server.createContext("/") { exchange ->
         runCatching { desktop.handle(exchange) }.onFailure {
@@ -88,8 +90,16 @@ fun main(args: Array<String>) {
         }
     }
     server.start()
-    println("Reduction 已启动：http://localhost:$port")
-    println(if (desktop.usesSystemAudio) "声音和麦克风：这台电脑自己的设备" else "声音和麦克风：没找到系统音频工具，由打开页面的浏览器代劳（运行 desktop/install.sh 可装上）")
+    if (managed) {
+        Thread({
+            // 应用关闭或崩溃时，父进程持有的管道关闭，本地服务随之退出。
+            while (System.`in`.read() != -1) { }
+            server.stop(0)
+            exitProcess(0)
+        }, "reduction-parent").start()
+    }
+    println("Reduction 已启动：http://localhost:${server.address.port}")
+    println(if (desktop.usesSystemAudio) "声音和麦克风：这台电脑自己的设备" else "声音和麦克风：由打开页面的浏览器负责")
     println("数据在 ${data.path}，设置在 ${desktop.settingsFile.path}")
     Thread.currentThread().join()
 }
@@ -263,6 +273,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
 
     /** The machine's own loudspeakers and microphone; null when they cannot be reached, and the page stands in. */
     private val audio = SystemAudio.find(data)
+    private val microphoneToken = System.getenv("REDUCTION_MAC_MIC_TOKEN")
     val usesSystemAudio: Boolean get() = audio != null
     private val pageSpeech = PageSpeech(page, onMain)
     private val speech = SpeechController(
@@ -294,7 +305,8 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         agentRuns = agentRuns,
         articles = articles,
         hostTools = { listOf(CardTool(cards, cardFiles, it)) },
-        renderArticleScript = { resourceText("harness/render-article.sh") }
+        renderArticleScript = { resourceText("harness/render-article.sh") },
+        macAgentLauncherScript = { resourceText("harness/macos-agent.py") }
     )
     private val chat = ChatController(
         settingsRepository = settings,
@@ -311,7 +323,6 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         cards = cards,
         chat = chat,
         emitter = page,
-        today = { LocalDate.now().toString() },
         place = "电脑"
     )
 
@@ -321,37 +332,39 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     // ── the pet: the small figure on the desktop that stands for all this ────
     @Volatile private var petSpeaking = false
     @Volatile private var petListening = false
-    @Volatile private var petLine = ""
-    @Volatile private var petLineId = 0L
-
-    @Volatile private var petKind = "say"
+    private data class PetLine(val text: String = "", val id: Long = 0, val kind: String = "say")
+    @Volatile private var petLine = PetLine()
 
     /** [kind] is "say" for something to read, "dictation" for text the pet is to put on the clipboard. */
+    @Synchronized
     private fun petSays(line: String, kind: String = "say") {
-        petLine = line.trim()
-        petKind = kind
-        petLineId++
+        petLine = PetLine(line.trim(), petLine.id + 1, kind)
     }
 
     /** What the pet should look like now, and the last thing worth a speech bubble. */
-    private fun petState(): String = JSONObject()
-        .put("state", when {
-            petListening -> "listening"
-            petSpeaking -> "speaking"
-            chat.isBusy() -> "thinking"
-            else -> "idle"
-        })
-        .put("line", petLine).put("lineId", petLineId).put("kind", petKind)
-        .put("ready", settings.load().apiKey.isNotBlank())
-        .toString()
+    private fun petState(): String {
+        val line = petLine
+        return JSONObject()
+            .put("state", when {
+                petListening -> "listening"
+                petSpeaking -> "speaking"
+                chat.isBusy() -> "thinking"
+                else -> "idle"
+            })
+            .put("line", line.text).put("lineId", line.id).put("kind", line.kind)
+            .put("ready", settings.load().apiKey.isNotBlank())
+            .toString()
+    }
 
     /** Talking to the pet directly: hold the space bar, speak, let go. No page is needed. */
     private fun petTalk(action: String, dictate: Boolean = false) {
         val mic = audio ?: return petSays("这台电脑上用不了麦克风")
         when (action) {
             "start" -> {
+                if (settings.load().apiKey.isBlank()) return petSays("请先在设置里填写 DeepSeek API Key")
                 speech.stop(notify = false)
                 petListening = mic.startRecording()
+                if (!petListening) petSays("用不了麦克风，请检查系统权限和输入设备")
             }
             "cancel" -> {
                 petListening = false
@@ -464,11 +477,16 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
 
     fun handle(exchange: HttpExchange) {
         val path = exchange.requestURI.path
+        val host = exchange.requestHeaders.getFirst("Host")?.substringBefore(':')?.lowercase()
+        if (host != "127.0.0.1" && host != "localhost") return reply(exchange, 403, "{}")
         if (exchange.requestMethod == "GET" && path == "/events") return page.serve(exchange)
         if (exchange.requestMethod == "GET" && path == "/pet") return reply(exchange, 200, petState())
         if (exchange.requestMethod == "GET") return serveFile(exchange, path)
         // Only this page may give orders: a request from any other site cannot carry this header.
         if (exchange.requestHeaders.getFirst("X-Reduction") != "1") return reply(exchange, 403, "{}")
+        val canUseMic = microphoneToken == null || exchange.requestHeaders.getFirst("X-Reduction-Microphone") == microphoneToken
+        if (!canUseMic && path in MIC_ENDPOINTS) return reply(exchange, 403, "{}")
+        if (!canUseMic && path == "/bridge/nativeAudio") return reply(exchange, 200, "{\"result\":false}")
         val body = exchange.requestBody.readBytes()
         val query = exchange.requestURI.query.orEmpty()
         when {
@@ -508,6 +526,26 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         }
     }
 
+    private fun revealCardPath(path: String): Boolean {
+        if (path.any { it.code < 32 } || path.startsWith("//")) return false
+        val local = when {
+            path.startsWith("/") -> File(path)
+            Regex("""^[A-Za-z]:[\\/].*""").matches(path) ->
+                File("/mnt/" + path[0].lowercaseChar() + "/" + path.substring(3).replace('\\', '/'))
+            else -> return false
+        }
+        if (!local.exists()) return false
+        if (System.getProperty("os.name").startsWith("Mac")) {
+            ProcessBuilder("/usr/bin/open", "-R", local.canonicalPath).start()
+            return true
+        }
+        val convert = ProcessBuilder("wslpath", "-w", local.canonicalPath).start()
+        val winPath = convert.inputStream.bufferedReader().readText().trimEnd()
+        if (convert.waitFor() != 0 || winPath.isBlank()) return false
+        ProcessBuilder("/mnt/c/Windows/explorer.exe", "/select,", winPath).start()
+        return true
+    }
+
     /** The calls the phone's page makes to its app, answered here. */
     private fun bridge(method: String, args: JSONArray): Any? = when (method) {
         "loadSettings" -> settings.load().toJson().toString()
@@ -521,21 +559,6 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         "submitPictures" -> conversation.submitWithPictures(args.getString(0), args.getString(1))
         "listCards" -> cards.directoryJson()
         "readCard" -> cards.read(args.getString(0)).orEmpty()
-    private fun revealCardPath(path: String): Boolean {
-        if (path.any { it.code < 32 } || path.startsWith("//")) return false
-        val local = when {
-            path.startsWith("/") -> File(path)
-            Regex("""^[A-Za-z]:[\\/].*""").matches(path) ->
-                File("/mnt/" + path[0].lowercaseChar() + "/" + path.substring(3).replace('\\', '/'))
-            else -> return false
-        }
-        if (!local.exists()) return false
-        val convert = ProcessBuilder("wslpath", "-w", local.canonicalPath).start()
-        val winPath = convert.inputStream.bufferedReader().readText().trimEnd()
-        if (convert.waitFor() != 0 || winPath.isBlank()) return false
-        ProcessBuilder("/mnt/c/Windows/explorer.exe", "/select,", winPath).start()
-        return true
-    }
 
         "cardPurpose" -> cards.purpose(args.getString(0))
         "saveCard" -> cards.save(args.getString(0), args.getString(2), args.getString(1))
@@ -594,6 +617,16 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     }
 
     private fun serveFile(exchange: HttpExchange, path: String) {
+        if (path.startsWith("/card-media/file/")) {
+            val (blob, meta) = cardFiles.attachedFile(path.substringAfterLast('/')) ?: return reply(exchange, 404, "")
+            exchange.responseHeaders.add("Content-Security-Policy", "sandbox; default-src 'none'")
+            exchange.responseHeaders.add("X-Content-Type-Options", "nosniff")
+            exchange.responseHeaders.add("Content-Type", meta.getString("type"))
+            exchange.responseHeaders.add("Content-Disposition", "attachment")
+            exchange.sendResponseHeaders(200, blob.length())
+            exchange.responseBody.use { out -> blob.inputStream().use { it.copyTo(out) } }
+            return
+        }
         if (path.startsWith("/card-media/")) {
             // Pictures and sound kept with the cards, by their id.
             val file = cards.heldFile(path.removePrefix("/card-media/")) ?: return reply(exchange, 404, "")
@@ -607,16 +640,6 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         if (bytes == null) return reply(exchange, 404, "")
         val content = if (name == "index.html") {
             // The phone's page, with the computer's stand-in for the app loaded ahead of it.
-        if (path.startsWith("/card-media/file/")) {
-            val (blob, meta) = cardFiles.attachedFile(path.substringAfterLast('/')) ?: return reply(exchange, 404, "")
-            exchange.responseHeaders.add("Content-Security-Policy", "sandbox; default-src 'none'")
-            exchange.responseHeaders.add("X-Content-Type-Options", "nosniff")
-            exchange.responseHeaders.add("Content-Type", meta.getString("type"))
-            exchange.responseHeaders.add("Content-Disposition", "attachment")
-            exchange.sendResponseHeaders(200, blob.length())
-            exchange.responseBody.use { out -> blob.inputStream().use { it.copyTo(out) } }
-            return
-        }
             String(bytes, Charsets.UTF_8).replace(
                 "</head>", "<link rel=\"icon\" href=\"./icon.png\" />\n<link rel=\"stylesheet\" href=\"./desktop.css\" />\n<script src=\"./desktop.js\"></script>\n</head>"
             ).toByteArray(Charsets.UTF_8)
@@ -643,6 +666,8 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         WavPcm.parse(javaClass.classLoader.getResourceAsStream(name)!!.use { it.readBytes() }).data
 
     private companion object {
+        val MIC_ENDPOINTS = setOf("/pet/talk", "/bridge/startRecording", "/bridge/stopAndTranscribe", "/bridge/cancelRecording")
+
         /** What the model is asked to do with a dictation. */
         const val DICTATION = "你是语音输入法。用户发来的是一段口述的语音识别结果，把它整理成可以直接发出去的书面文字：" +
             "理顺语序，去掉口头语、语气词、重复和说到一半又改口的部分，改正明显的识别错字，补上标点。" +

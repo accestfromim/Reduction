@@ -18,5 +18,8 @@
 | JSch（mwiede 分支） | SSH | mwiede/jsch | BSD |
 | Apache Commons Compress | 解更新包 | apache/commons-compress | Apache-2.0 |
 | org.json、kotlinx.coroutines、AndroidX | 基础库 | 各自上游 | 见各自上游 |
+| FlyingFox | iOS 本机网页资源和桥接接口 | swhitty/FlyingFox | MIT |
+| Citadel | iOS SSH 和 SFTP | orlandos-nl/Citadel | MIT |
+| Expression | iOS 本地数学表达式求值 | nicklockwood/Expression | MIT |
 
 随包自带的提示音里，“好的”和几句失败提示是用开源中文语音模型（piper 的 huayan）合成的备用录音；乐音是程序生成的。

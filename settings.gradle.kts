@@ -25,3 +25,4 @@ dependencyResolutionManagement {
 rootProject.name = "Reduction"
 include(":app")
 include(":desktop")
+include(":shared")
