@@ -1,5 +1,7 @@
 package com.mindtravel.reduction.app
 
+import com.mindtravel.reduction.core.VoiceTrace
+
 import android.app.Application
 
 /**
@@ -10,6 +12,7 @@ import android.app.Application
 class ReductionApp : Application() {
     override fun onCreate() {
         super.onCreate()
+        VoiceTrace.directory = filesDir
         AppCore.get(this)
     }
 }

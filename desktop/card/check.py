@@ -53,8 +53,8 @@ def check(tmp):
             assert hashlib.sha256(z.read(entry["path"])).hexdigest() == entry["sha256"]
         assert z.read("card.html").decode() == req["text"]
     req["text"] = '<html><body>' + '<p>tall</p>' * 320 + '</body></html>'
-    with ZipFile(call("export",format="png")) as z:
-        assert len(z.namelist()) >= 2
+    with Image.open(call("export",format="png")) as image:
+        assert image.format == "PNG" and image.height > 8000
     (Path(req["dir"])/key/"original").unlink()
     try:
         call("export",format="zip")

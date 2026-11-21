@@ -1,5 +1,7 @@
 package com.mindtravel.reduction.feature.chat.ui
 
+import com.mindtravel.reduction.core.VoiceTrace
+
 import com.mindtravel.reduction.core.ApiException
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.core.events.EventSink
@@ -125,6 +127,7 @@ class ChatController(
     private fun callbacksFor(reply: Reply, onCompleted: (String) -> Unit) = object : ChatCallbacks {
         override fun onToken(text: String) {
             if (!isCurrent(reply)) return
+            if (text.isNotEmpty()) VoiceTrace.mark(reply.id, "token")
             emitter.emit("onChatToken", reply.id, text)
             speech.push(reply.id, text)
         }
@@ -169,6 +172,7 @@ class ChatController(
 
     private fun fail(reply: Reply, message: String, cue: Cue = Cue.FAILED) {
         if (!isCurrent(reply)) return
+        VoiceTrace.mark(reply.id, "modelfailed")
         emitter.emit("onChatError", reply.id, message)
         settle(reply, ok = false)
         speech.stop(notify = false)

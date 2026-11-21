@@ -5,12 +5,17 @@ from urllib.parse import quote, urlsplit
 from bs4 import BeautifulSoup
 
 
-def convert(source, files, is_html, run):
-    if not is_html and not files and "media:" not in source:
-        return source.encode()
-    if not is_html:
-        source = run(["pandoc", "-f", "gfm", "-t", "html5"], input=source.encode()).decode()
+def convert(source, files, run):
     doc = BeautifulSoup(source, "html.parser")
+    for svg in doc.select("figure > svg"):
+        # A fenced SVG keeps the vector source and its labels in a portable text export.
+        if svg.has_attr("viewbox"):
+            svg["viewBox"] = svg.attrs.pop("viewbox")
+        pre = doc.new_tag("pre")
+        code = doc.new_tag("code", attrs={"class":"language-svg"})
+        code.string = str(svg)
+        pre.append(code)
+        svg.replace_with(pre)
     for el in doc.select("head,script,style,iframe,object,template,form,svg,.reduction-chart-output,[hidden]"):
         el.decompose()
     for paragraph in doc.select("blockquote[cite] > p"):
@@ -30,6 +35,8 @@ def convert(source, files, is_html, run):
         return "assets/" + key + "/" + quote(files[key][1]["name"], safe="")
 
     for el in doc.find_all(True):
+        if el.name == "code" and el.get("class") == ["language-svg"]:
+            continue
         if el.name is None:
             continue
         path = el.get("data-path") if el.name == "a" else None

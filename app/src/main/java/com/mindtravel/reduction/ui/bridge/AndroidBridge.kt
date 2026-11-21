@@ -12,6 +12,7 @@ class AndroidBridge(
     private val cards: CardBridge,
     private val pc: PcBridge,
     private val update: UpdateBridge,
+    private val conflictReview: (String,String) -> Unit,
     private val system: SystemBridge,
     private val memos: MemoStore,
     private val alarms: MemoAlarms
@@ -62,13 +63,25 @@ class AndroidBridge(
     fun listCards(): String = cards.list()
 
     @JavascriptInterface
+    fun importCard(source: String): String = com.mindtravel.reduction.feature.chat.data.CardDocument.from(source)
+
+    @JavascriptInterface
     fun readCard(name: String): String = cards.read(name)
+
+    @JavascriptInterface
+    fun canShareCard(name: String) = cards.canShare(name)
 
     @JavascriptInterface
     fun cardPurpose(name: String): String = cards.purpose(name)
 
     @JavascriptInterface
     fun saveCard(name: String, purpose: String, content: String): Boolean = cards.save(name, purpose, content)
+
+    @JavascriptInterface
+    fun reviewCardConflict(id: String, changes: String) = conflictReview(id,changes)
+
+    @JavascriptInterface
+    fun exportCard(name: String, format: String) = cards.export(name,format)
 
     @JavascriptInterface
     fun autosaveCard(name: String, purpose: String, content: String, creating: Boolean, oldPurpose: String, oldText: String) =
@@ -82,6 +95,12 @@ class AndroidBridge(
 
     @JavascriptInterface
     fun lockCard(name: String, locked: Boolean): Boolean = cards.setLocked(name, locked)
+
+    @JavascriptInterface
+    fun attachCardFile(card: String, name: String, base64: String) = cards.attachText(card,name,base64)
+
+    @JavascriptInterface
+    fun attachTextFile(card: String, name: String, base64: String) = cards.attachText(card,name,base64)
 
     @JavascriptInterface
     fun saveCardMedia(base64: String, extension: String): String = cards.saveMedia(base64, extension)
@@ -122,6 +141,9 @@ class AndroidBridge(
 
     @JavascriptInterface
     fun floatCard(name: String): Boolean = cards.float(name)
+
+    @JavascriptInterface
+    fun submitVoice(id: String, text: String, pictures: String) = chat.submitVoice(id, text, pictures)
 
     @JavascriptInterface
     fun submitText(text: String): Boolean = chat.submit(text)

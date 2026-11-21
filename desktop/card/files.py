@@ -13,6 +13,7 @@ import sys
 import tempfile
 import uuid
 from pathlib import Path
+from privacy import project
 from markdown_export import convert as to_markdown
 from zipfile import ZipFile, ZIP_DEFLATED
 from xml.etree import ElementTree as ET
@@ -142,7 +143,7 @@ def read_file(path, meta):
             if document.needs_pass:
                 raise ValueError("PDF 受密码保护")
             return [{"page": i + 1, "text": p.get_text()} for i, p in enumerate(document)]
-    if ext in ("md", "txt", "html", "htm", "json", "xml", "log", "yaml", "yml"):
+    if ext in ("md", "markdown", "txt", "html", "htm", "json", "xml", "log", "yaml", "yml"):
         return text_decode(path.read_bytes())
     return {"original": meta, "status": "保留原件"}
 
@@ -162,20 +163,26 @@ def write_bundle(target, body, filename, files, folder):
 
 def export(req, files):
     fmt = req["format"]
-    if fmt not in ("html", "markdown", "pdf", "png", "zip"):
+    if fmt not in ("html", "markdown", "pdf", "png", "jpg", "zip"):
         raise ValueError("未知导出格式")
     exports = Path(req["exports"])
     exports.mkdir(parents=True, exist_ok=True)
     title = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", req["name"])[:100] or "card"
     with tempfile.TemporaryDirectory(dir=exports, prefix=".partial-") as tmp:
         dest = Path(tmp)
-        body = req["text"]
+        body, redactions = (req["text"], []) if req["action"] == "preview" and req.get("author") else project(req["text"])
+        if redactions:
+            files = {key: item for key, item in files.items()
+                     if re.search(r"media:" + re.escape(key) + r"(?![a-zA-Z0-9_.-])", body)}
+            title = "card"
         is_html = bool(re.match(r"\s*(?:<!doctype\s+html|<html\b)", body, re.I))
+        if not is_html:
+            raise ValueError("导出需要 CARD 文档")
         if fmt == "zip":
             artifact = dest / (title + ".zip")
-            write_bundle(artifact, body, "card." + ("html" if is_html else "md"), files, "attachments")
+            write_bundle(artifact, body, "card.html", files, "attachments")
         elif fmt == "markdown":
-            md = to_markdown(body, files, is_html, run)
+            md = to_markdown(body, files, run)
             if files:
                 artifact = dest / "output.zip"
                 write_bundle(artifact, md, "card.md", files, "assets")
@@ -183,16 +190,32 @@ def export(req, files):
                 artifact = dest / "output.md"
                 artifact.write_bytes(md)
         else:
-            html = body if is_html else run(["pandoc", "-f", "gfm", "-t", "html5"], input=body.encode()).decode()
-            task = {"html": html, "files": {k: [str(p), m] for k, (p, m) in files.items()},
+            task = {"name": req["name"], "html": body, "files": {k: [str(p), m] for k, (p, m) in files.items()},
                     "dir": tmp, "format": fmt}
             run(["node", str(Path(__file__).with_name("render") / "export.mjs")], input=dump(task).encode())
             artifact = dest / ("output." + fmt)
-            if fmt == "png" and not artifact.exists():
-                artifact = dest / "output.zip"
-                with ZipFile(artifact, "w") as archive:
-                    for part in sorted(dest.glob("part-*.png")):
-                        archive.write(part, part.name)
+            if fmt in ("png", "jpg") and not artifact.exists():
+                from PIL import Image
+                parts = sorted(dest.glob("part-*.png"))
+                if not parts:
+                    raise ValueError("渲染器没有生成 PNG")
+                sizes = []
+                for part in parts:
+                    with Image.open(part) as tile:
+                        sizes.append(tile.size)
+                width = sizes[0][0]
+                if any(w != width for w, h in sizes):
+                    raise ValueError("分段图片宽度不一致")
+                with Image.new("RGB", (width, sum(h for w, h in sizes))) as joined:
+                    y = 0
+                    for part in parts:
+                        with Image.open(part) as tile:
+                            joined.paste(tile, (0, y))
+                            y += tile.height
+                    if fmt == "jpg":
+                        joined.save(artifact, quality=96, subsampling=0)
+                    else:
+                        joined.save(artifact)
         final = exports / (title + "-" + uuid.uuid4().hex[:12] + artifact.suffix)
         artifact.rename(final)
         return str(final)
@@ -208,7 +231,7 @@ def main(req):
         if req["id"] not in files:
             raise ValueError("卡片没有这个附件")
         return read_file(*files[req["id"]])
-    if req["action"] == "export":
+    if req["action"] in ("export", "preview"):
         return export(req, files)
     raise ValueError("未知操作")
 

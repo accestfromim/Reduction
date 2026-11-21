@@ -4,11 +4,34 @@ const mediaPath = location.origin + '/card-media/';
 const policy = "default-src 'none'; style-src 'unsafe-inline'; img-src data: " + mediaPath +
   "; media-src " + mediaPath + "; base-uri 'none'; form-action 'none'";
 const styles = `
+  .card-text-format:not([hidden]) { display:flex; position:fixed; z-index:5; padding:2px; border:0; border-radius:4px; background:#111; color:#fff; }
+  .card-text-format button { background:transparent; color:inherit; border:0; width:26px; height:25px; padding:0; cursor:pointer; }
+  .card-text-format button:first-child { font-weight:700; }
+  .card-text-format button:last-child { font:italic 16px Georgia,serif; }
+  .card-text-format button[aria-pressed="true"] { background:#494949; }
+
+  .card-picture-selected { outline: 2px solid #548bc9; outline-offset: 2px; }
+  .card-caption-add { display:block; border:0; background:transparent; color:inherit; opacity:.7; cursor:pointer; font:inherit; font-size:.85em; }
+  figcaption { font-size: .875em; text-align: center; }
+  figcaption[contenteditable]:focus { outline:none; min-height:1.5em; }
+  :is([data-card-privacy], card-private) { border-bottom: 1px dashed currentColor; background: #333; }
+  [data-reduction-field][contenteditable]:focus { outline: none; }
   a { color: inherit; }
   body { margin: 0 auto; max-width: 48rem; padding: 1rem; }
+  figure.card-paper img, figure.card-paper svg { background: white; }
   img.card-monochrome-logo { background: white; filter: invert(1); }
   html { color-scheme: dark; background: #000; color: #fff; print-color-adjust: exact; }
   body { font: 15px/1.65 system-ui,sans-serif; overflow-wrap: anywhere }
+  html[data-card-template="wechat"] { color-scheme: light; background: #fff; color: #222; }
+  html[data-card-template="wechat"] :is([data-card-privacy], card-private) { background: #eee; }
+  html[data-card-template="wechat"] img.card-monochrome-logo { filter: none; }
+  html[data-card-template="wechat"] body { box-sizing: border-box; max-width: 540px; padding: 44px 32px 40px; font-size: 17px; line-height: 1.8; }
+  html[data-card-template="wechat"] h1 { font-size: 27px; line-height: 1.4; margin: 0 0 24px; }
+  html[data-card-template="wechat"] body > h1:first-of-type::after { content: ""; display: block; width: 36px; height: 2px; margin-top: 14px; background: #222; }
+  html[data-card-template="wechat"] p { margin: 0 0 20px; white-space: pre-line; }
+  html[data-card-template="wechat"] figure { margin: 24px 0; }
+  html[data-card-template="wechat"] figure svg { width: 100%; height: auto; display: block; }
+  aside[data-card-routine] { box-sizing: border-box; margin: 0 0 24px; padding: 12px 16px; background: #f4f4f3; color: #555; border-radius: 4px; font-size: 14px; line-height: 1.65; white-space: pre-line; overflow-wrap: anywhere; }
   :where(table) { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums }
   :where(caption) { text-align: start; font-weight: 650; margin-bottom: .4em }
   :where(td, th) { text-align: start; padding: .25em; border-bottom: 1px solid #8886 }
@@ -25,12 +48,13 @@ const styles = `
 
 function clean(html, wholeDocument) {
   const fragment = window.DOMPurify.sanitize(html, {
+    ADD_TAGS: ['card-private', 'card-date'],
     WHOLE_DOCUMENT: wholeDocument,
     RETURN_DOM: true,
     USE_PROFILES: { html: true, svg: true },
     FORBID_TAGS: ['meta', 'base', 'link', 'iframe', 'form', 'foreignObject', 'style']
   });
-  for (const el of [fragment, ...fragment.querySelectorAll('*')]) {
+  for (const el of [fragment, ...fragment.querySelectorAll('[style],[bgcolor],[background],[color],[text],[link],[vlink],[alink],[face]')]) {
     // Preserve intrinsic media presentation while keeping the document theme host-owned.
     const logo = el.tagName === 'IMG' && el.style?.filter === 'invert(1)';
     const width = el.tagName === 'IMG' ? el.style?.width : '';
@@ -64,7 +88,7 @@ export function updateHtmlBlock(block, html) {
   if (table) drawChart(table);
 }
 
-export function mountHtml(target, html, ready) {
+export function mountHtml(target, html, ready, cardName = '') {
   const frame = document.createElement('iframe');
   frame.title = 'HTML 卡片';
   frame.className = 'card-html-frame';
@@ -72,6 +96,9 @@ export function mountHtml(target, html, ready) {
   frame.onload = () => {
     const doc = frame.contentDocument;
     if (!doc || !frame.isConnected) return;
+    if (/^Reduction\/公众号文章\/(原文|CARD|模板)(\/|$)/.test(cardName)) {
+      doc.documentElement.dataset.cardTemplate = 'wechat';
+    }
     renderContents(doc);
     ready?.(doc);
   };

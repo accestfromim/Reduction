@@ -23,6 +23,7 @@ class ReplyStreamer(
 ) {
     /** Delivered on the thread of the scope this was given. Exactly one of onDone / onError ends a session that is not stopped. */
     interface Events {
+        fun onFirstAudio() {}
         fun onStart()
         fun onDone()
         fun onError(message: String)
@@ -63,6 +64,7 @@ class ReplyStreamer(
                     if (current != session) return@launch
                     val queueStart = System.currentTimeMillis()
                     if (current != session || !player.send(pcm)) return@launch
+                    if (index == 0) events.onFirstAudio()
                     val audioMs = pcm.size / 48L
                     Logs.add(
                         "TTS piece ${index++} chars=${text.length} synth=${synthMs}ms " +

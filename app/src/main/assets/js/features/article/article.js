@@ -1,3 +1,4 @@
+import { project } from '../../../article/privacy.js';
 import { callBridge } from '../../core/bridge.js';
 
 // An article in the app: the card's text set by article/build.js in the template in use, and shown.
@@ -21,18 +22,28 @@ async function formulaStyle() {
   return katexStyle;
 }
 
+const text = async (name) => { const got = await fetch(BUNDLED + name); if (!got.ok) throw new Error('取不到 ' + name); return got.text(); };
+
 /** The template and stylesheet in use: the user's own cards when there are any, the bundled ones otherwise. */
 async function inUse() {
   try {
     const told = JSON.parse(callBridge('articleTemplate') || 'null');
     if (told && told.template && told.style) return told;
   } catch (_) { /* the bundled ones, below */ }
-  const text = async (name) => { const got = await fetch(BUNDLED + name); if (!got.ok) throw new Error('取不到 ' + name); return got.text(); };
   return { template: await text('template.html'), style: await text('article.css'), problem: null };
+}
+
+export async function publicSource(source) {
+  if (/data-card-privacy|<\/?card-private/i.test(source)) {
+    const rule = JSON.parse(await text('privacy.json'));
+    return project(source, rule);
+  }
+  return source;
 }
 
 /** The whole page of an article. [media] turns the id of something attached into an address to show it from. */
 export async function page(source, media = (id) => new URL('/card-media/' + id, location.href).href) {
+  source = await publicSource(source);
   const { template, style, problem } = await inUse();
   return { html: window.ArticleBuild.page(source, { template, style, katexStyle: await formulaStyle(), media }), problem };
 }

@@ -16,6 +16,7 @@ import os
 import re
 import sqlite3
 import sys
+import subprocess
 import time
 
 HOME = os.path.expanduser("~")
@@ -252,12 +253,28 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--hours", type=float, default=24.0, help="only sessions that moved this recently")
     parser.add_argument("--limit", type=int, default=8, help="how many sessions to report")
+    parser.add_argument("--host", choices=("local", "windows"), default="local")
     args = parser.parse_args()
+    sources = SOURCES
+    if args.host == "windows" and os.name != "nt":
+        try:
+            value = subprocess.check_output(
+                ["cmd.exe", "/d", "/u", "/c", "echo", "%USERPROFILE%"],
+                stderr=subprocess.DEVNULL, timeout=8
+            ).decode("utf-16-le").strip()
+            home = subprocess.check_output(["wslpath", "-u", value], text=True, timeout=5).strip()
+            if not os.path.isdir(home):
+                raise ValueError("Windows 用户目录不可访问")
+        except (OSError, ValueError, subprocess.SubprocessError):
+            print("查询失败：无法定位当前 Windows 用户目录。")
+            return
+        sources = [(kind, os.path.join(home, os.path.relpath(path, HOME)), reader)
+                   for kind, path, reader in SOURCES]
 
     now = time.time()
     since = now - max(0.1, min(args.hours, 24 * 30)) * 3600
     sessions, notes = [], []
-    for kind, path, reader in SOURCES:
+    for kind, path, reader in sources:
         if not os.path.exists(path):
             continue
         try:

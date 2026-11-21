@@ -26,7 +26,11 @@ const source = args[0];
 if (!source) { console.error('usage: render.mjs <article.md|.html> [-o out.png] [--media <dir>] [--html out.html] [--template t.html] [--style s.css]'); process.exit(2); }
 const target = path.resolve(out || source.replace(/\.[^.]*$/, '') + '.png');
 const asset = (name) => fs.readFileSync(path.join(assets, name), 'utf-8');
-const text = fs.readFileSync(source, 'utf-8');
+let text = fs.readFileSync(source, 'utf-8');
+if (/data-card-privacy|<\/?card-private/i.test(text)) {
+  const {project} = await import('data:text/javascript;base64,' + Buffer.from(asset('article/privacy.js')).toString('base64'));
+  text = project(text, JSON.parse(asset('article/privacy.json')));
+}
 
 // The same filling-in the app does (feature/article/ArticleBuilder.kt).
 const script = (code) => code.replace(/<\/script/gi, '<\\/script');

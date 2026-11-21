@@ -35,9 +35,10 @@ class ChatToolFactory(
     fun create(settings: AppSettings): ToolRegistry {
         val harness = harness(settings)
         val tools = buildList {
-            add(PatchCardsTool(cards, emitter))
+            val host = hostTools(settings)
+            if (host.none { it.spec.name == "card" }) add(LocalCardTool(cards, emitter))
             add(ReadCardTool(cards))
-            addAll(hostTools(settings))
+            addAll(host)
             add(OpenCardTool(cards, emitter))
             add(SearchCardsTool(cards))
             add(MemoTool(memos, emitter))

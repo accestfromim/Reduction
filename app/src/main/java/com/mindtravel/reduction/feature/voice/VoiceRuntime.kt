@@ -1,5 +1,6 @@
 package com.mindtravel.reduction.feature.voice
 
+import com.mindtravel.reduction.core.VoiceTrace
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.core.events.EventSink
 import com.mindtravel.reduction.core.host.PermissionHost
@@ -34,7 +35,7 @@ class VoiceRuntime(
     private val capture: TurnCapture,
     private val isPushToTalkActive: () -> Boolean,
     /** Sends what was said to the assistant. False when it could not be sent. */
-    private val submit: (String) -> Boolean,
+    private val submit: (String, String) -> Boolean,
     private val abortReply: () -> Unit,
     private val emitter: EventSink,
     private val scope: CoroutineScope
@@ -149,7 +150,12 @@ class VoiceRuntime(
         capture.prepare(headsetMic || settings.headsetMicEnabled) { dispatch(Event.MicReady(turn)) }
     }
 
+    private val tracePrefix = java.util.UUID.randomUUID().toString()
+    private fun trace(turn: Int) = "$tracePrefix-$turn"
+
     private fun record(turn: Int) {
+        val id = trace(turn)
+        VoiceTrace.start(id)
         val recording = CompletableDeferred<TurnListener.Turn>()
         recordings.clear()
         recordings[turn] = recording
@@ -170,7 +176,10 @@ class VoiceRuntime(
 
             // Reported the moment the turn is over, before the microphone is closed, so
             // that "好的" does not wait for it. The audio follows in onTurnEnd.
-            override fun onTurnEnding(heard: Boolean) = dispatch(Event.TurnSpoken(turn))
+            override fun onTurnEnding(heard: Boolean) {
+                VoiceTrace.mark(id, "release")
+                dispatch(Event.TurnSpoken(turn))
+            }
 
             override fun onTurnEnd(turn: TurnListener.Turn) {
                 recording.complete(turn)
@@ -188,13 +197,22 @@ class VoiceRuntime(
     private fun transcribe(turn: Int) {
         val recording = recordings[turn]
         scope.launch {
-            val text = if (recording == null) "" else capture.transcribe(recording.await())
+            val audio = recording?.await()
+            val id = trace(turn)
+            VoiceTrace.mark(id, "asrstart")
+            val text = try {
+                if (audio == null) "" else capture.transcribe(audio)
+            } catch (e: Exception) {
+                VoiceTrace.mark(id, "asrfailed")
+                throw e
+            }
+            VoiceTrace.mark(id, if (text.isBlank()) "asrfailed" else "asrend")
             dispatch(Event.Transcribed(turn, text))
         }
     }
 
     private fun send(turn: Int, text: String) {
-        if (!submit(text)) {
+        if (!submit(trace(turn), text)) {
             dispatch(Event.ReplyOverdue(turn))
             return
         }

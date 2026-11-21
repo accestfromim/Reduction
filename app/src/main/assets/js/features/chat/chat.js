@@ -24,17 +24,19 @@ function scheduleAssistantRender() {
 }
 
 /** Hands what the user typed, or said into push-to-talk, to the app. The app answers with onReplyBegin. */
-export function sendText(raw) {
+export function sendText(raw, voiceId) {
   const text = String(raw || '').trim();
   const going = pictures.take();
   if (!text && !going.length) return;
   if (!going.length) {
-    if (callBridge('submitText', text) !== true && state.settings.apiKey) ui.toast('消息发送失败');
+    const accepted = voiceId ? callBridge('submitVoice', voiceId, text, '[]') : callBridge('submitText', text);
+    if (accepted !== true && state.settings.apiKey) ui.toast('消息发送失败');
     return;
   }
   // Shown in the bubble of the message they go with, once the app says it has begun.
   state.sentPictures = going.map((picture) => picture.url);
-  const sent = callBridge('submitPictures', text, JSON.stringify(going.map(({ name, mediaType, base64 }) => ({ name, mediaType, base64 }))));
+  const payload = JSON.stringify(going.map(({ name, mediaType, base64 }) => ({ name, mediaType, base64 })));
+  const sent = voiceId ? callBridge('submitVoice', voiceId, text, payload) : callBridge('submitPictures', text, payload);
   if (sent !== true) {
     state.sentPictures = null;
     if (state.settings.apiKey) ui.toast('消息发送失败');

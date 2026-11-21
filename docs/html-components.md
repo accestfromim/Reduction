@@ -1,11 +1,25 @@
 # CARD · Reduction 卡片协议
+  
+## 协议的三个部分
 
-CARD 固定黑底白字，与 Reduction 背景一致。渲染器移除卡片自带的样式表、主题色与行内布局，统一使用官方模板。颜色和时间轴节点样式由共享渲染器提供。HTML、PDF、PNG 使用此固定主题，Markdown 遵循阅读器主题。
+1. **协议内容**定义官方组件、字段和写法。下方的组件表与示例是共享约定。
+2. **卡片 CARD 纯文本**是每张卡唯一的正文来源。它包含完整 HTML、原生 SVG 和附件引用。组件目录只是从源码生成的索引。
+3. **卡片最终渲染结果**是正式渲染器根据正文和附件生成的画面。作者视图保留私人标注，对外导出应用隐私过滤。
+
+手机和桌面调试共用 `card` 工具。只传卡名即返回完整正文和版本号。传 `do: {"blocks":true}` 获取桌面编辑位置。传 `do: {"render":true,"revision":"读取得到的版本号"}` 查看该正文版本的对外 PNG；revision 可省略以使用当前版本，view 传 author 可检查含私人标注的作者画面，可用 `page` 选择画面。版本号标识正文，不包含附件字节。AI 的写入仍使用下述结构化组件。
+
+
+CARD 默认黑底白字。公众号模板在 html 根元素声明 `data-card-template="wechat"`，共享渲染器使用白底深色文字、标题下短黑线和居中图注。渲染器移除卡片自带的样式表、主题色与行内布局，统一使用官方模板。颜色和时间轴节点样式由共享渲染器提供。HTML、PDF、PNG 使用此固定主题，Markdown 遵循阅读器主题。
+
+Markdown 仅用于导入和导出。旧正文经共享 CardDocument 转成 CARD HTML，再进入组件目录、渲染器和编辑器。首次实际编辑将 CARD 保存，打开旧卡无需批量改写。内部 AI 通过 card 工具写入结构化组件，文字字段按字面保存。
 
 卡片保存标准 HTML。组件使用原生元素和少量 data 属性。正文和表格在页面原位编辑。卡片源码保存内容、单位和来源，图形在预览文档中生成。
 
+选择组件时看信息承担的作用。原有截图、插画和流程图作为一张图片，原件和图注放在同一个 figure；音视频同理。结构化数值用表格或图表，按时间排列的事件用时间轴，带出处的原话用引用，普通观点用段落。003 的两张矢量图使用原生 SVG 组件，保留形状、坐标及 text 标签。正文、标题与说明分别使用文本组件。来自白纸版式的透明配图可以使用 figure.card-paper。
+
 | 组件 | 源码约定 | 编辑方式 |
 | --- | --- | --- |
+| 原生矢量图 | figure 内嵌 svg；AI 写入字段为 svg，标签使用 text 或 tspan | 整图按原样展示；通过 CARD 源码更新图中文字 |
 | 本地文件链接 | `<a data-path="/home/mindtravel/Reduction/docs/HANDOFF.md">交接文档</a>` | 桌面端点击后在资源管理器中定位文件。也支持 Windows 盘符绝对路径，含空格或中文可原样填写。 |
 | 数据表 | table；caption 写报告期和单位，th 写列名或行名，td 写数值 | 直接编辑标题或单元格 |
 | 占比图 | table data-chart="share" | 改第二列，重新计算各项占总量的比例 |
@@ -82,3 +96,35 @@ CARD 固定黑底白字，与 Reduction 背景一致。渲染器移除卡片自�
 桌面生产实现位于 `desktop/card/`。blocks.py 将结构化字段写回 HTML，files.py 处理附件和交付文件，render/export.mjs 负责浏览器渲染。渲染器使用本目录自己的 package-lock.json 安装运行依赖。编辑器的图表校验和浏览器绘图共用 chart-table.js 中的 chartData。Kotlin 宿主通过 CardWorker.kt 启动相应工作进程。运行 `python3 -B desktop/card/check.py` 可验证附件与五种导出。
 
 Markdown 的组件转换层位于 `desktop/card/markdown_export.py`。时间轴输出有序列表，图表输出标题和数据表，音视频输出文件链接和图注，附件按清单打包。该路径无需启动浏览器。
+
+## 桌面目录挂载与导入
+
+在 `~/.config/reduction/card-sources.json` 配置“卡片目录名 → WSL 绝对路径”，例如 `{"个人知识库/Knowledge":"/mnt/d/Desktop/VSCODE/Knowledge"}`。磁盘目录须已获读取权限。卡片目录下的「原件」按层列举文件，点文件会在资源管理器定位。
+
+向已有卡导入原件使用 `{"card":"个人知识库/Knowledge/主题卡","do":{"import":"PersonalKB/Economy/07_prediction_journal.md"}}`。默认取目标卡最近的绑定目录；跨目录时在 do 内加 `"source":"个人知识库/Knowledge"`。导入保存文件副本，原文件保留。生成 DS 主题摘要是独立操作。
+
+## 私有标注
+
+作者在原卡里能看到标注，标注文字带灰底和虚线。分享、复制正文及导出时移除标注，其他文字原样保留。HTML 和 Markdown 共用一种行内写法：
+
+```html
+<p>今天完成了首轮测试。<span data-card-privacy="note">下次记得换耳机。</span></p>
+```
+
+给 Reduction 的 subagent 只需传 `{"card":"卡片全名","do":{"note":"下次记得换耳机。"}}`。选择原卡里唯一的一段单行文字，保留原文和标点。使用 `{"share":true}` 生成只读 HTML 分享页。独立运行 `python3 desktop/card/privacy.py 日报.md 分享稿.md 作者复核.json` 也使用同一规则，清单只交给作者。发布由作者手动触发。
+
+导入 Markdown 文件正文使用 `{"card":"目录/新卡","do":{"importMarkdown":"报告.md"}}`。宿主检查挂载目录权限并拒绝覆盖同名卡。
+
+### 行内标注
+
+`<card-date>2026年11月21日</card-date>` 保存日期原文。`<card-private>仅作者可见的一句话</card-private>` 标记单行纯文字，公开出口移除整个标注。旧版 data-card-privacy 标记继续按同一规则过滤。
+
+两端共用 `CardAnnotation.kt` 将 `{"date":"原文"}` 或 `{"note":"原文"}` 写入唯一的正文文字片段。阅读与调试共用 `js/components/html/index.js` 的排版规则。Android 通过 CardPageRenderer 截取指定页，CardExport 负责交付文件。卡片右上角「导出」提供 ZIP、PNG 和 PDF。
+
+公众号标题后用一个 `{text,style:"routine"}` 放置本期 API 开销、开源说明和仓库链接，正文从框后开始。
+
+### 卡片的分享范围
+
+本机卡片库的 `.private-roots.json` 是作者指定的私密路径数组。每项匹配卡片全名和其下所有子路径。私人范围优先于行内标注，公开预览、导出与整卡复制都会检查。可分享卡片沿用行内私人标注。该本机配置独立于卡片正文，跨设备需分别配置。
+
+分享配置以一级目录继承：私密根目录写入 `.private-roots.json`；`.sharing-policy.json` 中 `annotatedRoots` 与 `publicRoots` 是一级目录名数组，`publicCards` 是用户明确放开的完整卡名，仅匹配卡片本身。所有公开输出仍过滤已标注内容。

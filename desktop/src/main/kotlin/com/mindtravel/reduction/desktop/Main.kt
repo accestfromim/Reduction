@@ -5,6 +5,8 @@ import com.mindtravel.reduction.core.events.EventSink
 import com.mindtravel.reduction.core.host.ToolApprovalHost
 import com.mindtravel.reduction.core.settings.AppSettings
 import com.mindtravel.reduction.core.settings.SettingsGateway
+import com.mindtravel.reduction.feature.chat.data.CardDocument
+import com.mindtravel.reduction.feature.chat.data.attachFile
 import com.mindtravel.reduction.feature.chat.data.CardRepository
 import com.mindtravel.reduction.feature.chat.data.HistoryRepository
 import com.mindtravel.reduction.feature.article.ArticleBuilder
@@ -56,6 +58,7 @@ import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
+import com.mindtravel.reduction.core.VoiceTrace
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -71,6 +74,7 @@ fun main(args: Array<String>) {
     val port = args.firstOrNull()?.toIntOrNull() ?: 8780
     val home = File(System.getProperty("user.home"))
     val data = File(home, ".local/share/reduction").apply { mkdirs() }
+    VoiceTrace.directory = data
     val desktop = Desktop(data, File(home, ".config/reduction/settings.json"))
 
     val server = try {
@@ -286,6 +290,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         assetBytes = { path -> javaClass.classLoader.getResourceAsStream(path)!!.use { it.readBytes() } },
         card = { cards.read(it) }
     )
+    private val cardSources = CardSources(File(settingsFile.parentFile, "card-sources.json"))
     private val cardFiles = CardFiles(cards, File(data, "exports"))
     private val toolFactory = ChatToolFactory(
         searchGateway = models.searchGateway,
@@ -297,7 +302,10 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         sessionStatusScript = { resourceText("harness/session-status.py") },
         agentRuns = agentRuns,
         articles = articles,
-        hostTools = { listOf(CardTool(cards, cardFiles, it)) },
+        hostTools = { listOf(CardTool(cards, cardFiles, it, cardSources), CodexSessionTool(data), ReductionDevelopmentTool(), GitHubTool(cards, GitHubWrites(cards, { name ->
+            val job = JSONObject().put("card",name).put("action","export").put("format","html")
+            File(JSONArray("["+cardFiles.tool(it).execute(job.toString())+"]").getString(0))
+        },this))) },
         renderArticleScript = { resourceText("harness/render-article.sh") }
     )
     private val chat = ChatController(
@@ -329,6 +337,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     @Volatile private var petLineId = 0L
 
     @Volatile private var petKind = "say"
+    @Volatile private var petReview: Pair<String, String>? = null
 
     /** [kind] is "say" for something to read, "dictation" for text the pet is to put on the clipboard. */
     private fun petSays(line: String, kind: String = "say") {
@@ -346,15 +355,21 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
             else -> "idle"
         })
         .put("line", petLine).put("lineId", petLineId).put("kind", petKind)
+        .apply {
+            petReview?.let { (id, name) -> put("reviewId", id).put("reviewCard", name) }
+        }
         .put("ready", settings.load().apiKey.isNotBlank())
         .toString()
 
     /** Talking to the pet directly: hold the space bar, speak, let go. No page is needed. */
+    private var petTrace = ""
     private fun petTalk(action: String, dictate: Boolean = false) {
         val mic = audio ?: return petSays("这台电脑上用不了麦克风")
         when (action) {
             "start" -> {
                 speech.stop(notify = false)
+                petTrace = java.util.UUID.randomUUID().toString()
+                if (!dictate) VoiceTrace.start(petTrace)
                 petListening = mic.startRecording()
             }
             "cancel" -> {
@@ -363,14 +378,18 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
             }
             "stop" -> {
                 petListening = false
-                val wav = mic.stopRecording() ?: return petSays("没有录到声音")
+                val id = petTrace
+                VoiceTrace.mark(id, "release")
+                val wav = mic.stopRecording() ?: run { VoiceTrace.mark(id, "asrfailed"); return petSays("没有录到声音") }
                 // Every step says where it is: letting go is always answered by something.
                 petSays("识别中…")
                 scope.launch(Dispatchers.IO) {
                     val key = settings.load().apiKey
+                    VoiceTrace.mark(id, "asrstart")
                     val heard = runCatching { models.audioGateway.transcribe(key, wav) }
                     heard.onFailure { System.err.println("Pet: speech not recognised: $it") }
                     val text = heard.getOrDefault("").let { (EndWords.strip(it) ?: it).trim() }
+                    VoiceTrace.mark(id, if (text.isBlank() || heard.isFailure) "asrfailed" else "asrend")
                     when {
                         heard.isFailure -> petSays("识别失败：" + (heard.exceptionOrNull()?.message ?: "网络不通"))
                         text.isBlank() -> petSays("没听清，再说一遍？")
@@ -383,7 +402,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
                         }
                         else -> {
                             petSays("“$text”")
-                            scope.launch { conversation.submit(text) }
+                            scope.launch { conversation.submitVoice(id, text, "[]") }
                         }
                     }
                 }
@@ -419,19 +438,23 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     private val approvalIds = AtomicLong()
 
     init {
-        val writeLedger = { cards.writeProgramCard(AgentLedger.CARD, AgentLedger.render(agentRuns.all()), AgentLedger.PURPOSE) }
+        val writeLedger = { cards.writeProgramCard(AgentLedger.CARD, com.mindtravel.reduction.feature.chat.data.CardDocument.from(AgentLedger.render(agentRuns.all())), AgentLedger.PURPOSE) }
         agentRuns.onChange = { writeLedger() }
         writeLedger()
         // The review card for to-dos, written from the store as the phone writes it.
-        val writeMemos = { cards.writeProgramCard(MemoCard.CARD, MemoCard.render(memos), MemoCard.PURPOSE) }
+        val writeMemos = { cards.writeProgramCard(MemoCard.CARD, com.mindtravel.reduction.feature.chat.data.CardDocument.from(MemoCard.render(memos)), MemoCard.PURPOSE) }
         memos.onChange = {
             writeMemos()
             page.emit("onMemosChanged", "")
         }
         writeMemos()
-        cards.onChange = { page.emit("onCardsChanged", "") }
+        cards.onChange = { name -> page.emit("onCardsChanged", name) }
         page.onEvent = { function, args ->
             when (function) {
+                "onOpenCard" -> {
+                    val name = args.firstOrNull() as? String
+                    if (name != null) petReview = java.util.UUID.randomUUID().toString() to name
+                }
                 "onTtsStart" -> petSpeaking = true
                 "onTtsDone", "onTtsStopped", "onTtsError", "onChatAborted" -> petSpeaking = false
                 "onChatDone" -> petSays(args.getOrNull(1)?.toString().orEmpty())
@@ -483,6 +506,11 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
                     .onFailure { Logs.add("bridge ${path.removePrefix("/bridge/")} failed: ${it.message}") }.getOrNull()
                 reply(exchange, 200, JSONObject().put("result", result ?: JSONObject.NULL).toString())
             }
+            path == "/pet/interrupt" -> {
+                chat.cancel()
+                speech.stop(notify = true)
+                reply(exchange, 200, petState())
+            }
             path == "/pet/talk" -> {
                 val asked = query.split('&').associate { it.substringBefore('=') to it.substringAfter('=', "") }
                 petTalk(asked["action"].orEmpty(), dictate = asked["mode"] == "dictate")
@@ -514,19 +542,6 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     }
 
     /** The calls the phone's page makes to its app, answered here. */
-    private fun bridge(method: String, args: JSONArray): Any? = when (method) {
-        "loadSettings" -> settings.load().toJson().toString()
-        "saveSettings" -> {
-            settings.save(AppSettings.fromJson(args.getString(0)))
-            cues.prepare()
-            true
-        }
-        "loadHistory" -> conversation.historyJson()
-        "clearHistory" -> conversation.clear()
-        "submitText" -> conversation.submit(args.getString(0))
-        "submitPictures" -> conversation.submitWithPictures(args.getString(0), args.getString(1))
-        "listCards" -> cards.directoryJson()
-        "readCard" -> cards.read(args.getString(0)).orEmpty()
     private fun revealCardPath(path: String): Boolean {
         if (path.any { it.code < 32 } || path.startsWith("//")) return false
         val local = when {
@@ -543,33 +558,79 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         return true
     }
 
+    private fun bridge(method: String, args: JSONArray): Any? = when (method) {
+        "loadSettings" -> settings.load().toJson().toString()
+        "saveSettings" -> {
+            settings.save(AppSettings.fromJson(args.getString(0)))
+            cues.prepare()
+            true
+        }
+        "loadHistory" -> conversation.historyJson()
+        "clearHistory" -> conversation.clear()
+        "voiceStart" -> VoiceTrace.start(args.getString(0))
+        "voiceRelease" -> VoiceTrace.mark(args.getString(0), "release")
+        "voiceAsrFailed" -> VoiceTrace.mark(args.getString(0), "asrfailed")
+        "submitVoice" -> conversation.submitVoice(args.getString(0), args.getString(1), args.getString(2))
+        "submitText" -> conversation.submit(args.getString(0))
+        "submitPictures" -> conversation.submitWithPictures(args.getString(0), args.getString(1))
+        "cardDraftSnapshot" -> cardFiles.draft(args)
+        "reviewCardConflict" -> {
+            val id = args.getString(0)
+            val changes = args.getString(1)
+            scope.launch(Dispatchers.IO) {
+                val result = runCatching { com.mindtravel.reduction.feature.chat.model.reviewCardConflict(models.chatGateway,settings.load(),changes) }
+                page.emit("onCardConflictReview",id,result.getOrDefault("AI 暂不可用，请直接对照原文。"))
+            }
+            true
+        }
+        "exportCard" -> {
+            val format = args.getString(1)
+            require(format in setOf("zip","png","jpg","pdf"))
+            val request = JSONObject().put("card",args.getString(0)).put("action","export").put("format",format)
+            val path = JSONArray("[" + cardFiles.tool(settings.load()).execute(request.toString()) + "]").getString(0)
+            if (format in setOf("png","jpg","pdf") && copyCardExport(File(path))) {
+                "已复制到剪贴板：" + path
+            } else if (format in setOf("png","jpg","pdf")) "剪贴板写入失败，文件已导出到 " + path
+            else "已导出到 " + path
+        }
+        "revealCardPath" -> revealCardPath(args.getString(0))
+        "cardSourceShortcuts" -> cardSources.shortcuts()
+        "cardSourceFolders" -> cardSources.folders()
+        "listCardSource" -> cardSources.list(args.getString(0), args.getString(1), settings.load())
+        "showCardSource" -> revealCardPath(cardSources.resolve(args.getString(0), args.getString(1), settings.load()).path)
+        "canShareCard" -> !cards.privateForSharing(args.getString(0))
+        "listCards" -> cards.directoryJson()
+        "importCard" -> CardDocument.from(args.getString(0))
+        "readCard" -> cards.document(args.getString(0)).orEmpty()
         "cardPurpose" -> cards.purpose(args.getString(0))
-        "saveCard" -> cards.save(args.getString(0), args.getString(2), args.getString(1))
+        "autosaveCard" -> cards.autosave(args.getString(0), args.getString(1), CardDocument.from(args.getString(2)), args.getBoolean(3), args.getString(4), args.getString(5)).also { if (it == "saved") cardFiles.clearDraft(args.getString(0)) }
+        "saveCard" -> cards.save(args.getString(0), CardDocument.from(args.getString(2)), args.getString(1))
         "deleteCard" -> cards.delete(args.getString(0))
         "renameCard" -> cards.rename(args.getString(0), args.getString(1))
         "lockCard" -> cards.setLocked(args.getString(0), args.getBoolean(1))
+        "attachCardFile", "attachTextFile" -> { cards.attachFile(args.getString(0),args.getString(1),Base64.getDecoder().decode(args.getString(2))); true }
         "saveCardMedia" -> runCatching { cards.saveMedia(Base64.getDecoder().decode(args.getString(0)), args.getString(1)) }.getOrNull().orEmpty()
         "articleTemplate" -> JSONObject().put("template", articles.template()).put("style", articles.style())
             .put("problem", articles.templateProblem() ?: JSONObject.NULL).toString()
         "saveCardPage" -> runCatching { cards.savePage(args.getString(0), args.getInt(1), Base64.getDecoder().decode(args.getString(2))) }.getOrDefault(false)
         "cardPages" -> cards.pages(args.getString(0)).size
         "speak" -> speech.speak(args.getString(0), args.getString(1))
-        "cardDraftSnapshot" -> cardFiles.draft(args)
-        "revealCardPath" -> revealCardPath(args.getString(0))
         "stopSpeaking" -> speech.stop(notify = true)
         "clearAudioCache" -> speech.clearCache()
         "getAppInfo" -> "Reduction 电脑端 · 朗读缓存 %.1f MB".format(speech.cacheSizeMb())
-        "autosaveCard" -> cards.autosave(args.getString(0), args.getString(1), args.getString(2), args.getBoolean(3), args.getString(4), args.getString(5)).also { if (it == "saved") cardFiles.clearDraft(args.getString(0)) }
         // Sound and microphone belong to this machine when it has them; the page asks before using its own.
         "nativeAudio" -> audio != null
         "requestMicPermission" -> page.emit("onMicPermission", true)
         "startRecording" -> {
             val id = args.getString(0)
+            VoiceTrace.start(id)
             if (audio?.startRecording() == true) page.emit("onRecordingStart", id) else page.emit("onAsrResult", id, false, "用不了麦克风")
         }
         "stopAndTranscribe" -> {
             val id = args.getString(0)
+            VoiceTrace.mark(id, "release")
             val wav = audio?.stopRecording()
+            if (wav == null) VoiceTrace.mark(id, "asrfailed")
             if (wav == null) page.emit("onAsrResult", id, false, "没有录到声音，请再试一次") else scope.launch(Dispatchers.IO) { transcribe(id, wav) }
         }
         "cancelRecording" -> audio?.cancelRecording()
@@ -587,19 +648,33 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
 
     /** A push-to-talk recording from the page: turned into words and handed back as the phone does. */
     private fun transcribe(id: String, wav: ByteArray) {
+        VoiceTrace.mark(id, "asrstart")
         val key = settings.load().apiKey
+        if (key.isBlank()) VoiceTrace.mark(id, "asrfailed")
         if (key.isBlank()) return page.emit("onAsrResult", id, false, "请先在设置里填写 API Key")
         page.emit("onStatus", id, "识别中")
         try {
             val raw = models.audioGateway.transcribe(key, wav)
             val text = (EndWords.strip(raw) ?: raw).trim()
+            VoiceTrace.mark(id, if (text.isBlank()) "asrfailed" else "asrend")
             if (text.isBlank()) page.emit("onAsrResult", id, false, "没有识别到内容，请重说") else page.emit("onAsrResult", id, true, text)
         } catch (t: Throwable) {
+            VoiceTrace.mark(id, "asrfailed")
             page.emit("onAsrResult", id, false, t.message ?: "识别失败")
         }
     }
 
     private fun serveFile(exchange: HttpExchange, path: String) {
+        if (path.startsWith("/card-media/file/")) {
+            val (blob, meta) = cardFiles.attachedFile(path.substringAfterLast('/')) ?: return reply(exchange, 404, "")
+            exchange.responseHeaders.add("Content-Security-Policy", "sandbox; default-src 'none'")
+            exchange.responseHeaders.add("X-Content-Type-Options", "nosniff")
+            exchange.responseHeaders.add("Content-Type", meta.getString("type"))
+            exchange.responseHeaders.add("Content-Disposition", "attachment")
+            exchange.sendResponseHeaders(200, blob.length())
+            exchange.responseBody.use { out -> blob.inputStream().use { it.copyTo(out) } }
+            return
+        }
         if (path.startsWith("/card-media/")) {
             // Pictures and sound kept with the cards, by their id.
             val file = cards.heldFile(path.removePrefix("/card-media/")) ?: return reply(exchange, 404, "")
@@ -613,16 +688,6 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         if (bytes == null) return reply(exchange, 404, "")
         val content = if (name == "index.html") {
             // The phone's page, with the computer's stand-in for the app loaded ahead of it.
-        if (path.startsWith("/card-media/file/")) {
-            val (blob, meta) = cardFiles.attachedFile(path.substringAfterLast('/')) ?: return reply(exchange, 404, "")
-            exchange.responseHeaders.add("Content-Security-Policy", "sandbox; default-src 'none'")
-            exchange.responseHeaders.add("X-Content-Type-Options", "nosniff")
-            exchange.responseHeaders.add("Content-Type", meta.getString("type"))
-            exchange.responseHeaders.add("Content-Disposition", "attachment")
-            exchange.sendResponseHeaders(200, blob.length())
-            exchange.responseBody.use { out -> blob.inputStream().use { it.copyTo(out) } }
-            return
-        }
             String(bytes, Charsets.UTF_8).replace(
                 "</head>", "<link rel=\"icon\" href=\"./icon.png\" />\n<link rel=\"stylesheet\" href=\"./desktop.css\" />\n<script src=\"./desktop.js\"></script>\n</head>"
             ).toByteArray(Charsets.UTF_8)

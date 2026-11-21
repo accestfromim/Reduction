@@ -16,6 +16,8 @@ import com.mindtravel.reduction.ui.bridge.SettingsBridge
 import com.mindtravel.reduction.ui.bridge.SystemBridge
 import com.mindtravel.reduction.ui.bridge.UpdateBridge
 import com.mindtravel.reduction.ui.bridge.VoiceBridge
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CoroutineScope
 
 /**
@@ -46,8 +48,15 @@ class AppGraph(
         settings = SettingsBridge(core.settingsRepository, core.conversation),
         voice = voiceBridge,
         chat = ChatBridge(core.conversation),
-        cards = CardBridge(core.cardRepository, core.cardOverlay, { activity.askToAllowOverlay() }, core.articles),
+        cards = CardBridge(core.cardRepository, core.cardOverlay, { activity.askToAllowOverlay() }, { name, format ->
+            scope.launch(Dispatchers.IO) {
+                val result = runCatching { com.mindtravel.reduction.hardware.web.CardExport(activity,core.cardRepository,core.articles).save(name,format) }
+                emitter.emit("onCardExport",result.fold({ "已导出到 $it" },{ "导出失败 "+it.message }))
+            }
+            "正在导出"
+        }, core.articles),
         pc = PcBridge(core.pc),
+        conflictReview = core::reviewCardConflict,
         update = UpdateBridge(updateController),
         system = SystemBridge(activity, core.settingsRepository, voiceBridge),
         memos = core.memoStore,

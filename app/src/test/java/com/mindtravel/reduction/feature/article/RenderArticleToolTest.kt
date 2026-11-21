@@ -107,7 +107,7 @@ class RenderArticleToolTest {
         // What went to the computer: the card's own name for the file, and the page with the article and its picture in it.
         assertTrue(computer.command, computer.command.contains("'原文'"))
         val data = JSONObject(text(computer.page, "article-data"))
-        assertEquals(text, data.getString("source"))
+        assertEquals(cards.document("产品/公众号文章/原文"), data.getString("source"))
         assertEquals("data:image/png;base64,AQID", data.getJSONObject("media").getString(picture))
         // The card is as it was.
         assertEquals(text, cards.read("产品/公众号文章/原文"))

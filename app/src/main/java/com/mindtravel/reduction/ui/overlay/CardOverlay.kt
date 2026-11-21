@@ -16,7 +16,15 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.LinearLayout
-import android.widget.ScrollView
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.MimeTypeMap
+import androidx.webkit.WebViewAssetLoader
+import com.mindtravel.reduction.hardware.web.HotAssetPathHandler
+import org.json.JSONObject
+import java.io.File
 import android.widget.TextView
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.feature.chat.data.CardRepository
@@ -40,8 +48,10 @@ class CardOverlay(private val context: Context, private val cards: CardRepositor
 
     private var root: LinearLayout? = null
     private var title: TextView? = null
-    private var body: TextView? = null
-    private var scroll: View? = null
+    private var body: WebView? = null
+    private var ready = false
+    private var renderedName = ""
+    private var renderedSource: String? = null
     private var params: WindowManager.LayoutParams? = null
     private var open = false
     private var appInFront = false
@@ -73,13 +83,13 @@ class CardOverlay(private val context: Context, private val cards: CardRepositor
 
     /** A card was written or deleted. */
     fun onCardChanged(name: String) {
-        if (name == pinned()) main.post { sync() }
+        if (name.isEmpty() || name == pinned()) main.post { sync() }
     }
 
     /** Brings what is on screen in line with what should be. Main thread only. */
     private fun sync() {
         val name = pinned()
-        val text = if (name.isEmpty()) null else cards.read(name)
+        val text = if (name.isEmpty()) null else cards.document(name)
         if (text == null || appInFront || !allowed()) {
             hide()
             return
@@ -87,8 +97,12 @@ class CardOverlay(private val context: Context, private val cards: CardRepositor
         try {
             if (root == null) show()
             title?.text = name
-            body?.text = text.trim().ifEmpty { "（空）" }
-            scroll?.visibility = if (open) View.VISIBLE else View.GONE
+            body?.visibility = if (open) View.VISIBLE else View.GONE
+            if (open && ready && (name != renderedName || text != renderedSource)) {
+                renderedName = name
+                renderedSource = text
+                body?.evaluateJavascript("window.showOverlayCard(" + JSONObject.quote(name) + "," + JSONObject.quote(text) + ")", null)
+            }
         } catch (t: Throwable) {
             Logs.add("Card overlay failed: ${t.message}")
             hide()
@@ -100,8 +114,10 @@ class CardOverlay(private val context: Context, private val cards: CardRepositor
         runCatching { windows.removeView(view) }
         root = null
         title = null
+        body?.let { view.removeView(it); it.destroy() }
         body = null
-        scroll = null
+        ready = false
+        renderedSource = null
     }
 
     @SuppressLint("ClickableViewAccessibility")
@@ -130,18 +146,34 @@ class CardOverlay(private val context: Context, private val cards: CardRepositor
             addView(name)
             addView(close)
         }
-        val text = TextView(context).apply {
-            setTextColor(Color.argb(235, 255, 255, 255))
-            setTextSize(TypedValue.COMPLEX_UNIT_SP, 13.5f)
-            setLineSpacing(0f, 1.3f)
-            setPadding(dp(14), 0, dp(14), dp(12))
-        }
-        val maxBody = (screen.heightPixels * 0.45f).toInt()
-        val scroller = object : ScrollView(context) {
-            override fun onMeasure(widthSpec: Int, heightSpec: Int) {
-                super.onMeasure(widthSpec, MeasureSpec.makeMeasureSpec(maxBody, MeasureSpec.AT_MOST))
+        val assetLoader = WebViewAssetLoader.Builder()
+            .addPathHandler("/assets/", HotAssetPathHandler(context, WebViewAssetLoader.AssetsPathHandler(context)))
+            .addPathHandler("/card-media/") { path ->
+                val file = if (path.matches(Regex("file/[0-9a-f]{32}")) && pinned().isNotBlank()) {
+                    File(File(cards.attachmentDirectory(pinned()), path.substringAfter('/')), "original").takeIf { it.isFile }
+                } else cards.heldFile(path)
+                file?.let {
+                    val stream = it.inputStream().buffered()
+                    val mime = MimeTypeMap.getSingleton().getMimeTypeFromExtension(it.extension)
+                        ?: java.net.URLConnection.guessContentTypeFromStream(stream)
+                    WebResourceResponse(mime, null, stream)
+                }
+            }.build()
+        val cardView = WebView(context).apply {
+            settings.javaScriptEnabled = true
+            settings.allowFileAccess = false
+            settings.allowContentAccess = false
+            visibility = View.GONE
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (screen.heightPixels * 0.45f).toInt())
+            webViewClient = object : WebViewClient() {
+                override fun shouldInterceptRequest(v: WebView, r: WebResourceRequest): WebResourceResponse =
+                    assetLoader.shouldInterceptRequest(r.url) ?: WebResourceResponse("text/plain", "utf-8", null)
+                override fun shouldOverrideUrlLoading(v: WebView, r: WebResourceRequest) = true
+                override fun onPageFinished(v: WebView, url: String) {
+                    if (body === v) { ready = true; sync() }
+                }
             }
-        }.apply { addView(text) }
+        }
 
         val view = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -151,7 +183,7 @@ class CardOverlay(private val context: Context, private val cards: CardRepositor
                 setStroke(dp(1), Color.argb(60, 255, 255, 255))
             }
             addView(head)
-            addView(scroller)
+            addView(cardView)
         }
 
         val layout = WindowManager.LayoutParams(
@@ -204,8 +236,8 @@ class CardOverlay(private val context: Context, private val cards: CardRepositor
         windows.addView(view, layout)
         root = view
         title = name
-        body = text
-        scroll = scroller
+        body = cardView
+        cardView.loadUrl("https://appassets.androidplatform.net/assets/card-render.html")
         params = layout
         Logs.add("Card overlay shown")
     }

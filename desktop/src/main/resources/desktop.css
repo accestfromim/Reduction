@@ -21,8 +21,7 @@ label:has(#opencodeSessionInput), #shareDiagnostics { display: none; }
   .topbar { padding: 8px 14px 4px; }
   .logo { width: 28px; height: 28px; border-radius: 8px; }
   .logo .glyph { width: 19px; height: 12.9px; }
-  .app-title { font-size: 14px; }
-  .tabs { padding: 0 16px 2px; gap: 18px; }
+  .tabs { gap: 18px; }
   .tab { padding: 4px 0; font-size: 14px; }
   .crumbs { font-size: 13px; }
   .crumb { padding: 4px 0; }

@@ -26,7 +26,7 @@ class ToolRegistry(
         val answer = runCatching { tool.execute(argumentsJson) }
             .getOrElse { "工具执行失败：${it.message ?: "未知错误"}" }
         // A long answer is handed over a piece at a time and kept whole; the tool that fetches pieces is not itself cut.
-        return if (long == null || tool is ReadMoreTool) answer else long.first(name, answer)
+        return if (long == null || name == "card" || tool is ReadMoreTool) answer else long.first(name, answer)
     }
 
     /** The pictures that go with the answer the named tool has just given. */

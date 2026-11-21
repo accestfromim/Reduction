@@ -55,7 +55,7 @@ class CardAttachmentsTest {
 
         val said = read(tool, "name" to "报告")
         // The card's own text comes first, word for word; what is attached is told of after it.
-        assertTrue(said, said.startsWith(text + "\n\n———\n以上是卡片原文。"))
+        assertTrue(said, said.startsWith(cards.document("报告") + "\n\n———\n以上是卡片原文。"))
         assertEquals(text, cards.read("报告"))
         assertTrue(said, said.contains("- 图片「现场」：画面随后给出"))
         assertTrue(said, said.contains("- PDF「季报」：共 6 页，第 1–4 页的画面随后给出；要看后面的页，再读一次并填 pages=5-6"))
@@ -89,7 +89,7 @@ class CardAttachmentsTest {
     fun aCardWithNothingAttachedReadsExactlyAsBefore() {
         cards.save("备忘", "买花\n周末去爬山")
         val tool = ReadCardTool(cards)
-        assertEquals("买花\n周末去爬山", read(tool, "name" to "备忘"))
+        assertEquals(cards.document("备忘"), read(tool, "name" to "备忘"))
         assertTrue(tool.pictures().isEmpty())
         assertTrue(read(tool, "name" to "没有").startsWith("没有名为“没有”的卡片"))
     }
@@ -107,20 +107,18 @@ class CardAttachmentsTest {
     fun aPictureIsPutIntoACardByTheIdTheProgramGaveItAndAMadeUpIdIsRefused() {
         val picture = cards.saveMedia(byteArrayOf(7, 7), "jpg")!!
         cards.save("稿子", "第一段\n\n第二段\n\n配图说明：助手先搜昨天\n\n第三段")
-        val tool = PatchCardsTool(cards, object : com.mindtravel.reduction.core.events.EventSink {
+        val tool = LocalCardTool(cards, object : com.mindtravel.reduction.core.events.EventSink {
             override fun emit(function: String, vararg args: Any?) {}
         })
-        fun patch(text: String) = tool.execute(JSONObject().put("patch", text).toString())
-
-        val made = patch("*** Update Card: 稿子\n 配图说明：助手先搜昨天\n+![搜索过程截图](media:m00000000dead.png)")
-        assertTrue(made, made.startsWith("补丁没有生效。没有这些附件：m00000000dead.png"))
+        fun append(id: String) = tool.execute(JSONObject().put("card","稿子")
+            .put("do",JSONObject().put("media",id).put("caption","截图")).toString())
+        assertTrue(runCatching { append("m00000000dead.png") }.isFailure)
         assertFalse(cards.read("稿子")!!.contains("media:"))
-
-        val done = patch("*** Update Card: 稿子\n 配图说明：助手先搜昨天\n+![搜索过程截图](media:$picture)")
-        assertTrue(done, done.startsWith("已生效"))
-        assertEquals("第一段\n\n第二段\n\n配图说明：助手先搜昨天\n![搜索过程截图](media:$picture)\n\n第三段", cards.read("稿子")!!.trimEnd())
-        // A line that keeps a picture already there is no new claim, and is let through.
-        assertTrue(patch("*** Update Card: 稿子\n ![搜索过程截图](media:$picture)\n+图注").startsWith("已生效"))
+        assertEquals("已保存",append(picture))
+        val doc = org.jsoup.Jsoup.parse(cards.read("稿子")!!)
+        assertEquals("media:$picture",doc.selectFirst("figure img")!!.attr("data-attachment"))
+        assertEquals("第一段", doc.selectFirst("p")!!.text())
+        assertEquals("截图", doc.selectFirst("figcaption")!!.text())
     }
 
     /** Answers a first request with a call to read_card, and a second with words; keeps what it was sent. */

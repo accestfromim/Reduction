@@ -321,7 +321,6 @@ const cardsEdited = await page.evaluate(async () => {
   document.getElementById('cardNew').click();
   const nameShown = !hidden('cardNameField') && hidden('cardDelete');
   document.getElementById('cardNameInput').value = '科研想法·评测';
-  document.getElementById('cardPurposeInput').value = '评测方法与指标';
   document.getElementById('cardText').dispatchEvent(new Event('input', { bubbles: true }));
   window.onAndroidBack();
   const after = names().slice().sort();
@@ -361,38 +360,13 @@ if (sentPicture.waiting !== 1 || !sentPicture.stripShown || !sentPicture.canSend
     sentPicture.name !== '截图' || sentPicture.size.join() !== '1600,800' || sentPicture.after !== 0 || sentPicture.bubbles !== 1) {
   throw new Error('a picture in the input box did not behave: ' + JSON.stringify(sentPicture));
 }
-// The other view of a card: the article it is published as. Asked for each time; the card's text is left alone.
-const articleView = await page.evaluate(async () => {
-  const hidden = (id) => document.getElementById(id).classList.contains('hidden');
-  window.__cards['文章'] = { purpose: '稿子', text: '# 标题在这里\n\n第一段，**重点**。\n\n## 小节\n\n- 一\n- 二' };
-  window.Native.onCardsChanged('');
-  document.getElementById('tabCards').click();
-  Array.from(document.querySelectorAll('#cardList .card-row')).find((row) => row.dataset.name === '文章').click();
-  const asText = !hidden('cardBody') && hidden('cardArticle') && document.getElementById('cardPreview').textContent === '预览';
-  document.getElementById('cardPreview').click();
-  const frame = document.getElementById('cardArticleFrame');
-  for (let i = 0; i < 100 && !(frame.contentDocument && frame.contentDocument.querySelector('.article-title') && frame.style.height); i++) await new Promise((r) => setTimeout(r, 50));
-  const doc = frame.contentDocument;
-  const shown = { title: doc.querySelector('.article-title').textContent, h2: doc.querySelector('.article-body h2').textContent, width: frame.style.width,
-                  inPreview: hidden('cardBody') && !hidden('cardArticle') && document.getElementById('cardPreview').textContent === '原文' };
-  const untouched = window.__cards['文章'].text.startsWith('# 标题在这里');
-  document.getElementById('cardPreview').click();
-  const back = !hidden('cardBody') && hidden('cardArticle');
-  // Opened again, a card is its text.
-  document.getElementById('cardPreview').click();
-  document.querySelector('#cardCrumbs button.crumb').click();
-  Array.from(document.querySelectorAll('#cardList .card-row')).find((row) => row.dataset.name === '文章').click();
-  const reopened = !hidden('cardBody') && hidden('cardArticle');
-  document.querySelector('#cardCrumbs button.crumb').click();
-  delete window.__cards['文章'];
-  window.Native.onCardsChanged('');
-  return { asText, shown, untouched, back, reopened };
+const headerAndCards = await page.evaluate(() => {
+  const logo = document.querySelector('.topbar .logo').getBoundingClientRect();
+  const stream = document.getElementById('tabStream').getBoundingClientRect();
+  return logo.right <= stream.left && Math.abs(logo.top + logo.height / 2 - stream.top - stream.height / 2) < 3 &&
+    !document.querySelector('#cardPreview, #cardArticleFrame');
 });
-console.log('article view:', JSON.stringify(articleView));
-if (!articleView.asText || articleView.shown.title !== '标题在这里' || articleView.shown.h2 !== '小节' || articleView.shown.width !== '540px' ||
-    !articleView.shown.inPreview || !articleView.untouched || !articleView.back || !articleView.reopened) {
-  throw new Error('the article view did not behave: ' + JSON.stringify(articleView));
-}
+if (!headerAndCards) throw new Error('Logo alignment or retired card preview');
 // Folders: a card renamed to "文件夹/名称" moves under that folder, which can be closed and opened.
 const folders = await page.evaluate(async () => {
   const hidden = (id) => document.getElementById(id).classList.contains('hidden');
@@ -752,7 +726,6 @@ const autoSaved = await page.evaluate(async () => {
   const cards = await import('/js/features/cards/cards.js');
   cards.newCard();
   document.getElementById('cardNameInput').value = '自动保存验收';
-  document.getElementById('cardPurposeInput').value = '界面测试';
   const box = document.getElementById('cardText');
   function type(value) {
     box.value = value;
@@ -764,8 +737,16 @@ const autoSaved = await page.evaluate(async () => {
   type('待撤销');
   box.dispatchEvent(new KeyboardEvent('keydown', { key: 'z', ctrlKey: true, bubbles: true, cancelable: true }));
   if (box.value !== '  保留缩进  ' || document.getElementById('cardSave') || document.getElementById('cardEdit')) return false;
-  type('返回前最后一个字');
-  cards.back();
+  document.getElementById('tabCards').click();
+  cards.openCard('自动保存验收');
+  cards.editCard();
+  type('点空白前最后一个字');
+  box.click();
+  document.getElementById('cardCopy').click();
+  if (document.getElementById('cardEditor').classList.contains('hidden') || window.__copied !== box.value) return false;
+  document.getElementById('cardTools').click();
+  if (!document.getElementById('cardEditor').classList.contains('hidden') ||
+      !document.getElementById('cardBody').textContent.includes('点空白前最后一个字')) return false;
   const flushed = window.__cards['自动保存验收']?.text === box.value;
   cards.editCard();
   type('我的草稿');

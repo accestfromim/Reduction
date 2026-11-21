@@ -52,7 +52,7 @@ class SystemPromptTest {
     fun toolsThatAreOffAreNotMentioned() {
         val bare = SystemPrompt.build(settings(false, false, false, false, "/x"), "2026-01-02", emptyList())
         assertFalse(bare.contains("web_search") || bare.contains("calculator") || bare.contains("run_agent"))
-        assertTrue(bare.contains("patch_cards") && bare.contains("（还没有卡片）"))
+        assertTrue(!bare.contains("patch_cards") && bare.contains("使用 card 工具") && bare.contains("（还没有卡片）"))
     }
 
     @Test

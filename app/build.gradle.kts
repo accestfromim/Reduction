@@ -12,8 +12,8 @@ val keystoreProps = Properties().apply {
     }
 }
 
-val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 101
-val appVersionName = (project.findProperty("appVersionName") as String?) ?: "1.0.70"
+val appVersionCode = (project.findProperty("appVersionCode") as String?)?.toInt() ?: 107
+val appVersionName = (project.findProperty("appVersionName") as String?) ?: "1.0.76"
 
 android {
     namespace = "com.mindtravel.reduction"
@@ -23,6 +23,7 @@ android {
         // The installed app's identity. Changing it would make Android treat this as a different app:
         // no update in place, settings and cards left behind.
         applicationId = "com.mindtravel.deepseekassistant"
+        testInstrumentationRunner = "com.mindtravel.reduction.CardRenderInstrumentation"
         minSdk = 26
         targetSdk = 35
         versionCode = appVersionCode
@@ -87,6 +88,7 @@ android {
 }
 
 dependencies {
+    implementation(fileTree("libs/card") { include("*.jar") })
     implementation("androidx.core:core-ktx:1.15.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("androidx.webkit:webkit:1.12.1")

@@ -1,9 +1,10 @@
+import { planMerge } from './merge.js';
+import { chooseCard } from './folder-menu.js';
 import { mountHtml } from '../../components/html/index.js';
 import { htmlFields } from './html-fields.js';
 import { base64Of, shrunk } from '../../core/pictures.js';
 import { callBridge } from '../../core/bridge.js';
 import { state } from '../../core/state.js';
-import { renderMarkdown } from '../../ui/markdown.js';
 import * as ui from '../../ui/ui.js';
 
 // Memo cards: each is a text collecting one kind of information over time. The app keeps
@@ -17,9 +18,16 @@ const PLAN_CARD = '计划';
 
 /** What the open card page is doing: 'closed', 'read', 'edit' or 'new'. */
 let mode = 'closed';
+const OPEN_CARD_KEY = 'reduction.openCard';
+const PAGE_KEY = 'reduction.lastPage';
 
-/** Whether the open card is shown as the article it is published as, rather than as its text. */
-let asArticle = false;
+export function restoreView() {
+  const name = localStorage.getItem(OPEN_CARD_KEY);
+  if (name && exists(name)) openCard(name);
+  else localStorage.removeItem(OPEN_CARD_KEY);
+  if (localStorage.getItem(PAGE_KEY) === 'cards') ui.showPage('cards');
+}
+
 
 function load() {
   try {
@@ -47,21 +55,21 @@ function placeOf(name) {
 }
 
 /** The cards as a tree of folders: each folder holds its own cards and the folders inside it. */
-function folderTree(cards) {
+function folderTree(cards, mounts) {
   const root = { path: '', name: '', cards: [], folders: new Map(), count: 0 };
-  for (const card of cards) {
+  for (const card of [...cards, ...mounts.map(folder => ({name: folder + '/', mount: true}))]) {
     const parts = card.name.split('/');
     const leaf = parts.pop();
     let at = root;
-    at.count += 1;
+    if (!card.mount) at.count += 1;
     for (const part of parts) {
       if (!at.folders.has(part)) {
         at.folders.set(part, { path: at.path ? at.path + '/' + part : part, name: part, cards: [], folders: new Map(), count: 0 });
       }
       at = at.folders.get(part);
-      at.count += 1;
+      if (!card.mount) at.count += 1;
     }
-    at.cards.push({ card, leaf });
+    if (card.mount) at.mount = true; else at.cards.push({ card, leaf });
   }
   return root;
 }
@@ -76,20 +84,33 @@ function setTitle(name, instead = '', locked = false) {
   const crumbs = document.getElementById('cardCrumbs');
   crumbs.innerHTML = '';
   crumbs.title = name || '';
-  const mark = () => {
-    const sign = document.createElement('span');
-    sign.className = 'crumb-mark';
+  const mark = (folder) => {
+    const sign = document.createElement('button');
+    sign.setAttribute('aria-label', '选择' + (folder || '全部') + '下的卡片');
+    sign.addEventListener('click', () => browse(sign, folder));
+    sign.className = 'crumb crumb-mark';
     sign.textContent = '›';
     return sign;
   };
+  function browse(anchor, folder) {
+    if (listDirty) load();
+    chooseCard(anchor, folder, state.cards.map(card => card.name), name => {
+      if (name === state.cardName) return;
+      if (editing()) {
+        autoSave();
+        if (mode === 'new' && localStorage.getItem(draftKey())) return;
+      }
+      openCard(name);
+    });
+  }
   const parts = instead ? [] : (name || '').split('/');
   const leaf = instead || (locked ? '🔒 ' : '') + (parts.pop() || '');
   // The first step is the list itself: the tabs do not close a card, this does.
   const all = document.createElement('button');
   all.className = 'crumb';
   all.textContent = '全部';
-  all.addEventListener('click', () => backToFolder(''));
-  crumbs.append(mark(), all);
+  all.addEventListener('click', () => browse(all, ''));
+  crumbs.append(mark(''), all);
   let path = '';
   for (const part of parts) {
     path = path ? path + '/' + part : part;
@@ -97,20 +118,50 @@ function setTitle(name, instead = '', locked = false) {
     const step = document.createElement('button');
     step.className = 'crumb';
     step.textContent = part;
-    step.addEventListener('click', () => backToFolder(here));
-    crumbs.append(mark(), step);
+    step.addEventListener('click', () => browse(step, here));
+    crumbs.append(mark(here), step);
   }
-  const last = document.createElement('span');
+  const card = state.cards.find(item => item.name === name);
+  const canRename = card && !card.locked && !card.prompt && name !== PLAN_CARD && !instead;
+  const last = document.createElement(canRename ? 'button' : 'span');
+  if (canRename) {
+    last.title = '编辑卡片路径';
+    last.addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.className = 'crumb-rename';
+      input.setAttribute('aria-label', '卡片路径');
+      input.maxLength = ui.els.cardNameInput.maxLength;
+      input.value = name;
+      last.replaceWith(input);
+      input.focus();
+      input.setSelectionRange(name.lastIndexOf('/') + 1, name.length);
+      input.addEventListener('keydown', event => {
+        if (event.isComposing) return;
+        if (event.key === 'Escape') input.value = name;
+        if (event.key === 'Enter' || event.key === 'Escape') input.blur();
+      });
+      input.addEventListener('blur', () => {
+        const value = input.value.trim();
+        input.replaceWith(last);
+        if (!value || value === name || state.cardName !== name) return;
+        editCard();
+        if (mode !== 'edit') return;
+        ui.els.cardNameInput.value = value;
+        recordInput();
+        autoSave();
+      }, {once:true});
+    });
+  }
   last.className = 'crumb here';
   last.textContent = leaf;
-  crumbs.append(mark(), last);
+  crumbs.append(mark(path), last);
   // The end of a path is what tells one card from another: when it does not all fit, that end is what shows.
   crumbs.scrollLeft = crumbs.scrollWidth;
 }
 
 /** Back to the list, with [folder] and the folders it lies in open and in view; a blank [folder] is the list as it stands. */
 function backToFolder(folder) {
-  if (mode === 'edit' || mode === 'new') return;
+  if (mode === 'new' || (mode === 'edit' && localStorage.getItem(draftKey()))) return;
   const closed = closedFolders();
   let path = '';
   for (const part of folder.split('/').filter(Boolean)) {
@@ -124,10 +175,50 @@ function backToFolder(folder) {
   if (head) head.scrollIntoView({ block: 'start' });
 }
 
+function sourceDirectory(folder, relative, label, depth) {
+  const box = document.createElement('details');
+  box.style.paddingInlineStart = depth * 18 + 'px';
+  const head = document.createElement('summary');
+  head.textContent = label;
+  box.append(head);
+  box.addEventListener('toggle', () => {
+    if (!box.open) return;
+    const raw = callBridge('listCardSource', folder, relative);
+    box.replaceChildren(head);
+    let entries;
+    try { entries = JSON.parse(raw); } catch (_) { entries = null; }
+    if (!Array.isArray(entries)) { box.append('目录不可读'); return; }
+    if (!entries.length) box.append('空目录');
+    for (const entry of entries) {
+      const path = relative ? relative + '/' + entry.name : entry.name;
+      if (entry.directory) { box.append(sourceDirectory(folder, path, entry.name, 1)); continue; }
+      const file = document.createElement('button');
+      file.className = 'card-row inside';
+      file.textContent = entry.name;
+      file.onclick = () => callBridge('showCardSource', folder, path);
+      box.append(file);
+    }
+  });
+  return box;
+}
+
+let listDirty = false;
+function refreshListIfNeeded() {
+  if (!listDirty) return;
+  load();
+  renderList();
+}
+
 function renderList() {
+  listDirty = false;
   const list = ui.els.cardList;
   list.innerHTML = '';
-  if (!state.cards.length) {
+  const shortcuts = JSON.parse(callBridge("cardSourceShortcuts") || "[]");
+  const mounts = shortcuts.map(entry => entry.folder);
+  for (const {folder, label} of shortcuts) {
+    list.append(sourceDirectory(folder, '', label, 0));
+  }
+  if (!state.cards.length && !mounts.length) {
     const empty = document.createElement('div');
     empty.className = 'card-empty';
     empty.textContent = '还没有卡片。新建几张，比如“科研想法/某方向”“备忘”，之后口述就会记进去。';
@@ -147,6 +238,7 @@ function renderList() {
   const closed = closedFolders();
   // In each folder its own cards first, then the folders inside it, each with what it holds under it.
   const draw = (folder, depth) => {
+    if (folder.mount) list.append(sourceDirectory(folder.path, '', '原件', depth));
     for (const item of folder.cards) list.appendChild(row(item.card, item.leaf, depth));
     const names = Array.from(folder.folders.keys()).sort((a, b) => a.localeCompare(b, 'zh'));
     for (const name of names) {
@@ -163,20 +255,20 @@ function renderList() {
       count.textContent = String(inner.count);
       head.append(label, count);
       head.addEventListener('click', () => {
-        const now = closedFolders();
-        if (now.has(inner.path)) now.delete(inner.path); else now.add(inner.path);
-        localStorage.setItem(CLOSED_KEY, JSON.stringify(Array.from(now)));
-        renderList();
+        chooseCard(head, inner.path, state.cards.map(card => card.name), openForReview);
       });
       list.appendChild(head);
       if (!shut) draw(inner, depth + 1);
     }
   };
-  draw(folderTree(state.cards), 0);
+  draw(folderTree(state.cards, mounts), 0);
 }
 
 function show(next) {
   mode = next;
+  if (next === 'closed' && state.page === 'cards') refreshListIfNeeded();
+  if (next === 'closed' || next === 'new') localStorage.removeItem(OPEN_CARD_KEY);
+  else if (state.cardName) localStorage.setItem(OPEN_CARD_KEY, state.cardName);
   const editing = mode === 'edit' || mode === 'new';
   // An open card takes the place of the list under the tabs; the tabs, and the way back to speech, stay.
   const open_ = mode !== 'closed';
@@ -186,26 +278,22 @@ function show(next) {
   if (open_) document.getElementById('cardCrumbs').scrollLeft = 1e6;
   const plan = state.cardName === PLAN_CARD && mode === 'read';
   ui.els.cardPlan.classList.toggle('hidden', !plan);
-  if (mode !== 'read' || plan) asArticle = false;
-  ui.els.cardBody.classList.toggle('hidden', editing || plan || asArticle);
-  document.getElementById('cardArticle').classList.toggle('hidden', !asArticle);
-  const preview = document.getElementById('cardPreview');
-  preview.classList.toggle('hidden', mode !== 'read' || plan);
-  preview.textContent = asArticle ? '原文' : '预览';
+  ui.els.cardBody.classList.toggle('hidden', editing || plan);
   ui.els.cardEditor.classList.toggle('hidden', !editing);
   // A card the program writes can be read, copied and floated, not edited.
   const open = state.cards.find((card) => card.name === state.cardName) || {};
   const locked = open.locked === true;
   // A prompt is a card the user has read through and locked: it stays as it is until the user unlocks it.
   const prompt = open.prompt === true;
-  ui.els.cardLock.classList.toggle('hidden', mode !== 'read' || locked);
+  ui.els.cardLock.classList.toggle('hidden', mode === 'new' || locked);
   ui.els.cardLock.textContent = prompt ? '解锁' : '审核并锁定';
   setTitle(mode === 'new' ? '' : state.cardName, mode === 'new' ? '新卡片' : '', prompt);
-  ui.els.cardFloat.classList.toggle('hidden', mode !== 'read');
+  ui.els.cardFloat.classList.toggle('hidden', mode === 'new');
   ui.els.cardFloat.textContent = callBridge('floatingCard') === state.cardName ? '取消悬浮' : '悬浮';
-  ui.els.cardAttach.classList.toggle('hidden', locked || prompt || asArticle);
+  ui.els.cardAttach.classList.toggle('hidden', locked || prompt);
   // The name can be changed while editing: that is also how a card is moved into a folder.
-  ui.els.cardNameField.classList.toggle('hidden', !editing);
+  ui.els.cardNameField.classList.toggle('hidden', mode !== 'new');
+  if (mode === 'read') ui.els.cardNameInput.value = state.cardName;
   ui.els.cardCopy.classList.remove('hidden');
   ui.els.cardDelete.classList.toggle('hidden', mode === 'new' || locked || prompt);
 }
@@ -219,39 +307,21 @@ function renderOpenCard() {
   ui.els.cardPlan.classList.add('hidden');
   ui.els.cardBody.classList.remove('hidden');
   const text = String(callBridge('readCard', state.cardName) || '').trim();
-  renderCardInto(ui.els.cardBody, text);
+  renderHtmlCard(ui.els.cardBody, text);
   ui.els.cardBody.scrollTop = 0;
-  if (asArticle) drawArticle();
 }
 
 const livePane = document.getElementById('cardLivePreview');
 const sourcePane = document.getElementById('cardText');
 let htmlEditor = null;
-const expectedScroll = new WeakMap();
-function previewScrollBox() {
-  const frame = livePane.querySelector('iframe');
-  return frame?.contentDocument?.scrollingElement || livePane;
-}
-function syncScroll(from, to) {
-  const range = from.scrollHeight - from.clientHeight;
-  if (range <= 0 || !to) return;
-  const offset = from.scrollTop / range * Math.max(0, to.scrollHeight - to.clientHeight);
-  if (Math.abs(offset - to.scrollTop) <= 1) return;
-  to.scrollTop = offset;
-  expectedScroll.set(to, to.scrollTop);
-}
-function followScroll(from, to) {
-  const expected = expectedScroll.get(from);
-  expectedScroll.delete(from);
-  if (expected !== undefined && Math.abs(from.scrollTop - expected) <= 1) return;
-  syncScroll(from, to);
-}
-sourcePane.addEventListener('scroll', () => followScroll(sourcePane, previewScrollBox()));
-livePane.addEventListener('scroll', () => followScroll(livePane, sourcePane));
-
-function renderHtmlCard(target, text) {
+function renderHtmlCard(target, text, pictureIndex) {
   mountHtml(target, text, doc => {
+    bindFileDrop(doc);
     doc.addEventListener('keydown', browseAdjacentCard);
+    for (const image of doc.querySelectorAll('img[data-attachment]')) {
+      const match = /^media:(m[0-9a-f]{12}\.pdf)$/.exec(image.dataset.attachment);
+      if (match) image.replaceWith(pdfPages(match[1], image.alt || 'PDF'));
+    }
     doc.addEventListener('click', event => {
       const link = event.target.closest('a');
       if (link) {
@@ -264,83 +334,18 @@ function renderHtmlCard(target, text) {
       } else if (event.target.closest('audio,video,img')) return;
       else if (target === ui.els.cardBody && !doc.getSelection()?.toString()) editCard();
     });
-    if (target === livePane && doc.scrollingElement) {
-      if (htmlEditor) { htmlEditor.bind(doc); return; }
-      syncScroll(sourcePane, doc.scrollingElement);
-      doc.addEventListener('scroll', () => followScroll(doc.scrollingElement, sourcePane));
+    if (target === livePane) {
+      htmlEditor.bind(doc);
+      if (pictureIndex && typeof pictureIndex === "object") {
+        doc.scrollingElement.scrollTop = pictureIndex.scroll;
+        doc.defaultView.focus();
+      } else if (pictureIndex !== undefined) {
+        const picture = doc.querySelector('[data-card-picture="' + pictureIndex + '"]');
+        picture?.scrollIntoView({block:'nearest'});
+        picture?.dispatchEvent(new MouseEvent('click',{bubbles:true}));
+      }
     }
-  });
-}
-
-function renderCardInto(target, text) {
-  if (/^\s*(?:<!doctype\s+html\b|<html\b)/i.test(text) && window.DOMPurify) {
-    renderHtmlCard(target, text);
-    return;
-  }
-  // A picture or a recording is written as ![说明](media:编号); it is fetched from the app by that id.
-  target.innerHTML = text ? renderMarkdown(text.replace(/\]\(media:(m[0-9a-f]{12}\.[a-z0-9]{2,5})\)/g, '](/card-media/$1)')) : '';
-  for (const image of target.querySelectorAll('img')) {
-    const source = image.getAttribute('src') || '';
-    const pdf = (source.match(/^\/card-media\/(m[0-9a-f]{12}\.pdf)$/) || [])[1];
-    if (pdf) {
-      image.replaceWith(pdfPages(pdf, image.getAttribute('alt') || 'PDF'));
-      continue;
-    }
-    if (/^\/card-media\/.+\.(mp4|mov)$/.test(source)) {
-      const film = document.createElement('video');
-      film.controls = true;
-      film.preload = 'metadata';
-      film.playsInline = true;
-      film.src = source;
-      image.replaceWith(film);
-      continue;
-    }
-    if (!/^\/card-media\/.+\.(m4a|mp3|wav|ogg|aac|webm|flac)$/.test(source)) continue;
-    const player = document.createElement('audio');
-    player.controls = true;
-    player.preload = 'metadata';
-    player.src = source;
-    player.title = image.getAttribute('alt') || '';
-    image.replaceWith(player);
-  }
-
-}
-
-/** The other view of the open card: the article it is published as. The card's text is read and nothing more. */
-export function togglePreview() {
-  if (mode !== 'read') return;
-  asArticle = !asArticle;
-  show('read');
-  if (asArticle) drawArticle();
-}
-
-/** Sets the open card in the article template and fits the page to the width there is. */
-async function drawArticle() {
-  const name = state.cardName;
-  const box = document.getElementById('cardArticle');
-  const frame = document.getElementById('cardArticleFrame');
-  try {
-    const article = await import('../article/article.js');
-    const { height, problem } = await article.show(frame, String(callBridge('readCard', name) || ''));
-    if (name !== state.cardName || !asArticle) return;
-    frame.contentDocument?.addEventListener('keydown', browseAdjacentCard);
-    if (problem) ui.toast(problem);
-    // The page is laid out at its own width, the one it is published at, and scaled as a whole: what is
-    // seen is the published picture, smaller or larger, never a different layout.
-    const fit = () => {
-      const scale = Math.min(1, (box.clientWidth - 24) / article.WIDTH);
-      frame.style.width = article.WIDTH + 'px';
-      frame.style.height = height + 'px';
-      frame.style.transform = 'scale(' + scale + ')';
-      frame.style.marginBottom = -(height * (1 - scale)) + 'px';
-      frame.style.marginRight = -(article.WIDTH * (1 - scale)) + 'px';
-    };
-    fit();
-    box.scrollTop = 0;
-    window.onresize = () => { if (asArticle) fit(); };
-  } catch (error) {
-    ui.toast('预览不了：' + (error && error.message ? error.message : '渲染失败'));
-  }
+  }, state.cardName);
 }
 
 /**
@@ -452,22 +457,58 @@ export function loadCards() {
 }
 
 /** Refreshes the list and the card already being read. */
-export function onChanged() {
+let changeFrame = 0;
+const pendingChanges = new Set();
+export function onChanged(name = '') {
+  pendingChanges.add(name);
+  listDirty = true;
+  if (changeFrame) return;
+  changeFrame = requestAnimationFrame(() => {
+    changeFrame = 0;
+    const currentChanged = pendingChanges.has('') || pendingChanges.has(state.cardName);
+    pendingChanges.clear();
+    if (mode === 'closed') {
+      if (state.page === 'cards') refreshListIfNeeded();
+    } else if (currentChanged) refreshOpenCard();
+  });
+}
+
+function refreshOpenCard() {
   load();
-  renderList();
+  if (mode === 'edit' && !exists(state.cardName) && !localStorage.getItem(draftKey())) {
+    show('closed');
+    return;
+  }
   if (mode === 'read') {
     if (exists(state.cardName)) renderOpenCard();
     else show('closed');
+  }
+  if (mode === 'edit' && exists(state.cardName)) {
+    const latest = callBridge('readCard', state.cardName);
+    const pending = localStorage.getItem(draftKey());
+    const draftIncluded = pending && ui.els.cardNameInput.value === state.cardName &&
+      typeof latest === 'string' && includesDraftWithFigures(latest, sourcePane.value);
+    if (typeof latest === 'string' && latest !== original.text && (!pending || draftIncluded)) {
+      if (draftIncluded) {
+        localStorage.removeItem(draftKey());
+        activeReview = null;
+        saveStatus('已保存');
+      }
+      ui.els.cardText.value = latest;
+      original = { text: latest };
+      resetUndo();
+      refreshDraftPreview();
+    }
   }
   if (mode !== 'closed') show(mode);
 }
 
 export function openForReview(name) {
-  if (mode === 'edit' || mode === 'new') {
+  if (mode === 'new' || (mode === 'edit' && localStorage.getItem(draftKey()))) {
     ui.toast('请先退出当前编辑，再打开卡片');
     return;
   }
-  load();
+  if (listDirty || !exists(name)) load();
   if (!exists(name)) {
     ui.toast('找不到这张卡片');
     return;
@@ -476,25 +517,33 @@ export function openForReview(name) {
   ui.showPage('cards');
 }
 
-/** Opens a card, to be read: as its text. The article view is asked for each time. */
+/** Opens a card, to be read: as its text. */
 export function openCard(name) {
   if (!exists(name)) return;
-  asArticle = false;
   state.cardName = name;
-  renderOpenCard();
   show('read');
-  if (document.documentElement.classList.contains('desktop-client') && name.startsWith('个人知识库/')) {
-    editCard();
-  }
+  if (name !== PLAN_CARD) editCard();
+  if (mode === 'read') renderOpenCard();
 }
 
 function browseAdjacentCard(event) {
   if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
-  if (state.page !== 'cards' || (mode !== 'read' && mode !== 'edit')) return;
   if (event.defaultPrevented || event.isComposing || event.repeat ||
       event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
   if (event.target.isContentEditable || event.target.closest?.('input, textarea, select, video, audio, [role="slider"]') ||
       document.querySelector('.backdrop:not(.hidden), dialog[open]')) return;
+  const onTab = event.target === ui.els.tabStream || event.target === ui.els.tabCards;
+  if (state.page === 'stream' || mode === 'closed' || onTab) {
+    const page = event.key === 'ArrowRight' ? 'cards' : 'stream';
+    if (state.page !== page) {
+      event.preventDefault();
+      ui.showPage(page);
+      if (onTab) (page === 'cards' ? ui.els.tabCards : ui.els.tabStream).focus();
+    }
+    return;
+  }
+  if (mode !== 'read' && mode !== 'edit') return;
+  refreshListIfNeeded();
   const rows = Array.from(ui.els.cardList.querySelectorAll('.card-row'));
   const index = rows.findIndex(row => row.dataset.name === state.cardName);
   const next = rows[index + (event.key === 'ArrowRight' ? 1 : -1)];
@@ -516,39 +565,172 @@ const saveStatus = (message) => { document.getElementById('cardSaveState').textC
 
 let previewFrame = 0;
 let renderedDraft = null;
-function refreshDraftPreview() {
+function refreshDraftPreview(pictureIndex) {
   cancelAnimationFrame(previewFrame);
   if (renderedDraft === ui.els.cardText.value) return;
   renderedDraft = ui.els.cardText.value;
-  const html = /^\s*(?:<!doctype\s+html\b|<html\b)/i.test(renderedDraft);
-  sourcePane.classList.toggle('hidden',html);
-  sourcePane.closest('.card-split').classList.toggle('inline-html', html);
-  htmlEditor = html ? htmlFields(renderedDraft, value => {
-    sourcePane.value=value;
-    renderedDraft=value;
+  htmlEditor = htmlFields(renderedDraft, (value, pictureIndex) => {
+    renderedDraft = sourcePane.value = value;
     recordInput();
-  }) : null;
-  renderCardInto(livePane, htmlEditor?.html ?? renderedDraft);
-  if (!livePane.querySelector('iframe')) syncScroll(sourcePane, livePane);
+    if (pictureIndex !== undefined) {
+      renderedDraft = null;
+      refreshDraftPreview(pictureIndex);
+    }
+  }, undoEdit);
+  renderHtmlCard(livePane, htmlEditor.html, pictureIndex);
 }
+// A saved document may already contain the entire draft plus newly inserted figures.
+function includesDraftWithFigures(saved, draft) {
+  if (saved === draft) return true;
+  const doc = new DOMParser().parseFromString(saved, 'text/html');
+  const before = new DOMParser().parseFromString(draft, 'text/html');
+  const nodes = [...before.body.childNodes];
+  let index = 0;
+  for (const node of [...doc.body.childNodes]) {
+    if (nodes[index]?.isEqualNode(node)) index++;
+    else if (node.nodeName === 'FIGURE') node.remove();
+    else return false;
+  }
+  return index === nodes.length && doc.documentElement.isEqualNode(before.documentElement);
+}
+
 function beginEditing() {
+  flushSnapshot();
   clearTimeout(saveTimer);
+  activeReview = null;
   original = { text: ui.els.cardText.value };
   saveStatus('');
   renderedDraft = null;
   document.getElementById('cardLivePreview').scrollTop = 0;
+  const storedDocument = original.text;
   const stored = localStorage.getItem(draftKey());
   if (!stored) { resetUndo(); refreshDraftPreview(); return; }
   const draft = JSON.parse(stored);
+  if (draft.name === state.cardName && includesDraftWithFigures(storedDocument, draft.text)) {
+    localStorage.removeItem(draftKey());
+    resetUndo();
+    refreshDraftPreview();
+    return;
+  }
   original = { text: draft.original.text };
   ui.els.cardNameInput.value = draft.name;
-  ui.els.cardText.value = draft.text;
+  ui.els.cardText.value = callBridge('importCard', draft.text);
   resetUndo();
   refreshDraftPreview();
   saveStatus('已恢复本机草稿');
+  if (mode !== 'new' && original.text !== storedDocument) saveTimer = setTimeout(autoSave, 700);
+}
+
+let activeReview = null;
+function resolveConcurrentEdit(base, draft, current) {
+  if (typeof current !== 'string') return false;
+  const plan = planMerge(base,draft,current);
+  if (!plan) {
+    saveStatus('段落位置或结构已改变，请比较两个版本');
+    const status = document.getElementById('cardSaveState');
+    const compare = document.createElement('button');
+    compare.textContent = '查看分歧';
+    status.append(compare);
+    compare.onclick = () => {
+      const d = document.createElement('dialog');
+      for (const [label,value] of [['我的草稿',draft],['已保存版本',current]]) {
+        const box=document.createElement('details'), title=document.createElement('summary'), body=document.createElement('pre');
+        title.textContent=label; body.textContent=value; box.append(title,body);d.append(box);
+      }
+      for (const [label,value] of [['采用我的完整草稿',draft],['采用已保存版本',current]]) {
+        const choice=document.createElement('button');
+        choice.textContent=label;
+        choice.onclick=()=>{
+          d.close();
+          if(sourcePane.value!==draft || callBridge('readCard',state.cardName)!==current) {autoSave();return;}
+          sourcePane.value=value;
+          original={text:current};
+          recordInput();
+          autoSave();
+          refreshDraftPreview();
+        };
+        d.append(choice);
+      }
+      const close=document.createElement('button'); close.textContent='继续编辑'; close.onclick=()=>d.close();
+      d.append(close); document.body.append(d);d.onclose=()=>d.remove();d.showModal();
+    };
+    return true;
+  }
+  const name = state.cardName;
+  function save(choices) {
+    if (state.cardName !== name || sourcePane.value !== draft) return false;
+    const merged = plan.finish(choices);
+    if (callBridge('autosaveCard',name,'',merged,false,'',current) !== 'saved') return false;
+    original = {text:merged};
+    sourcePane.value = merged;
+    localStorage.removeItem(draftKey());
+    resetUndo();
+    refreshDraftPreview();
+    saveStatus('已合并并保存');
+    return true;
+  }
+  if (!plan.conflicts.length) return save([]);
+  if (activeReview?.name===name && activeReview.draft===draft && activeReview.current===current) return true;
+  const id = crypto.randomUUID();
+  const review = activeReview = {id,name,draft,current};
+  const status = document.getElementById('cardSaveState');
+  const button = document.createElement('button');
+  button.textContent = '比较冲突修改';
+  status.textContent = '正在合并';
+  let explanation = '';
+  review.report = text => {
+    if (name !== state.cardName || sourcePane.value !== draft) return;
+    let response;
+    try { response = JSON.parse(text); } catch (_) {}
+    const signals = value => (value.match(/\d+(?:[.,]\d+)*|不|没|禁止|必须|仅|never|must|not/gi) || []).join('|');
+    const proposed = response?.merged;
+    if (Array.isArray(proposed) && proposed.length===plan.conflicts.length &&
+        plan.conflicts.every((e,i)=>!e.private && typeof proposed[i]==='string' && proposed[i].trim() &&
+          signals(e.draft)===signals(e.current) && signals(proposed[i])===signals(e.draft))) {
+      activeReview=null;
+      if (save(proposed)) return;
+      autoSave();
+      return;
+    }
+    explanation = typeof response?.ask==='string' ? response.ask : '两处修改可能影响原意，请选择要保留的文字。';
+    button.textContent=explanation;
+    status.replaceChildren(button);
+    if(review.summary) review.summary.textContent = explanation;
+  };
+  button.onclick = () => {
+    const dialog = document.createElement('dialog');
+    const summary = document.createElement('p');
+    review.summary = summary;
+    summary.textContent = explanation || '正在比较分歧';
+    dialog.append(summary);
+    const choices = plan.conflicts.map(entry => {
+      const field=document.createElement('fieldset');
+      const prior=document.createElement('legend'); prior.textContent='原文 · '+entry.original; field.append(prior);
+      const group=crypto.randomUUID();
+      for(const [label,value] of [['我的修改',entry.draft],['已保存的修改',entry.current]]) {
+        const option=document.createElement('label'), radio=document.createElement('input');
+        radio.type='radio'; radio.name=group; radio.value=value;
+        option.append(radio,document.createTextNode(label+' · '+value)); field.append(option);
+      }
+      dialog.append(field); return field;
+    });
+    const apply=document.createElement('button'); apply.textContent='确认合并';
+    apply.onclick=()=>{const selected=choices.map(f=>f.querySelector(':checked'));if(selected.some(x=>!x))return;
+      dialog.close();activeReview=null;if(!save(selected.map(x=>x.value)))autoSave();};
+    const later=document.createElement('button');later.textContent='稍后';later.onclick=()=>dialog.close();
+    dialog.append(apply,later);document.body.append(dialog);dialog.addEventListener('close',()=>dialog.remove(),{once:true});dialog.showModal();
+  };
+  const publicChanges = plan.conflicts.filter(e=>!e.private).map(({original,draft,current})=>({original,draft,current}));
+  if (publicChanges.length === plan.conflicts.length) callBridge('reviewCardConflict',id,JSON.stringify(publicChanges));
+  else review.report('私人标注有分歧，请在本机选择。');
+  return true;
+}
+export function conflictReviewed(id,text) {
+  if(activeReview?.id===id) activeReview.report(text);
 }
 
 function autoSave() {
+  flushSnapshot();
   clearTimeout(saveTimer);
   if (!editing()) return;
   const creating = mode === 'new';
@@ -558,8 +740,9 @@ function autoSave() {
   const key = draftKey();
   if (!localStorage.getItem(key)) return;
   const result = callBridge('autosaveCard', creating ? name : state.cardName, '', text, creating, '', original.text);
+  if (result === 'conflict' && !creating && name === state.cardName && resolveConcurrentEdit(original.text,text,callBridge('readCard',name))) return;
   if (result !== 'saved') {
-    saveStatus(result === 'conflict' ? '卡片有其他修改，本机草稿已保留' :
+    saveStatus(result === 'conflict' ? (creating ? '同名卡片已存在，请修改卡名' : '卡片路径已变化，请核对保存位置') :
       result === 'limit' ? '内容超过卡片上限，本机草稿已保留' : '写入失败，本机草稿已保留');
     return;
   }
@@ -596,6 +779,28 @@ export function undoEdit() {
   recordInput(false);
   autoSave();
 }
+// Report the first edit immediately. During key repeat the desktop needs only the latest snapshot.
+let snapshotWindow;
+let queuedSnapshot;
+function flushSnapshot() {
+  clearTimeout(snapshotWindow);
+  snapshotWindow = undefined;
+  if (queuedSnapshot) {
+    const args = queuedSnapshot;
+    queuedSnapshot = null;
+    callBridge('cardDraftSnapshot', ...args);
+  }
+}
+function notifyDesktopDraft(name, base, text) {
+  if (queuedSnapshot && queuedSnapshot[0] !== name) flushSnapshot();
+  if (snapshotWindow === undefined) {
+    callBridge('cardDraftSnapshot', name, base, text);
+    snapshotWindow = setTimeout(flushSnapshot, 120);
+  } else {
+    queuedSnapshot = [name, base, text];
+  }
+}
+
 function recordInput(remember = true) {
   if (!editing()) return;
   clearTimeout(saveTimer);
@@ -605,10 +810,10 @@ function recordInput(remember = true) {
   }
   previousFields = fields();
   if (document.documentElement.classList.contains('desktop-client') && mode === 'edit') {
-    callBridge('cardDraftSnapshot', state.cardName, original.text, previousFields.text);
+    notifyDesktopDraft(state.cardName, original.text, previousFields.text);
   }
   cancelAnimationFrame(previewFrame);
-  previewFrame = requestAnimationFrame(refreshDraftPreview);
+  if (renderedDraft !== sourcePane.value) previewFrame = requestAnimationFrame(() => refreshDraftPreview());
   const draft = { original, ...previousFields };
   try {
     localStorage.setItem(draftKey(), JSON.stringify(draft));
@@ -620,13 +825,22 @@ function recordInput(remember = true) {
   saveTimer = setTimeout(autoSave, 700);
 }
 
+ui.els.cardNameInput.addEventListener('input', () => {
+  if (mode === 'read') {
+    const value = ui.els.cardNameInput.value;
+    editCard();
+    ui.els.cardNameInput.value = value;
+  }
+  recordInput();
+});
 document.getElementById('cardEditor').addEventListener('input', recordInput);
 // Capture the completed click so a tap that opens the editor cannot immediately close it.
 document.addEventListener('click', (event) => {
   if (!editing() || state.page !== 'cards') return;
-  if (event.target.closest('#cardEditor label, #cardEditor input, #cardText, #cardLivePreview, #cardTools button')) return;
+  if (event.target.closest('dialog, #cardSaveState, .card-folder-menu, .crumb, .crumb-rename, #cardNameField, #cardEditor label, #cardEditor input, #cardText, #cardLivePreview, #cardTools button')) return;
   if (ui.els.cardEditor.contains(document.activeElement)) document.activeElement.blur();
-  back();
+  if (mode === 'new') back();
+  else autoSave();
 }, true);
 
 window.addEventListener('pagehide', autoSave);
@@ -637,15 +851,17 @@ export function editCard() {
   if (mode !== 'read' || !card || card.locked || card.prompt) return;
   ui.els.cardNameInput.value = state.cardName;
   ui.els.cardText.value = String(callBridge('readCard', state.cardName) || '');
+  const scroll = ui.els.cardBody.scrollTop;
   beginEditing();
   show('edit');
+  sourcePane.scrollTop = scroll;
 }
 
 export function newCard() {
   state.cardName = '';
   setTitle('', '新卡片');
   ui.els.cardNameInput.value = '';
-  ui.els.cardText.value = '';
+  ui.els.cardText.value = '<!doctype html><html><body><p></p></body></html>';
   beginEditing();
   show('new');
 }
@@ -657,6 +873,7 @@ export function isOpen() {
 
 /** The page under the tabs changed: the open card shows only on the cards page, and waits there meanwhile. */
 export function onPage() {
+  localStorage.setItem(PAGE_KEY, state.page);
   show(mode);
 }
 
@@ -664,12 +881,8 @@ export function onPage() {
 export function back() {
   if (mode === 'closed') return false;
   if (editing()) autoSave();
-  if (mode === 'edit') {
-    renderOpenCard();
-    show('read');
-  } else {
-    show('closed');
-  }
+  if (editing() && localStorage.getItem(draftKey())) return true;
+  show('closed');
   return true;
 }
 
@@ -744,14 +957,18 @@ async function keepPages(id, data, progress) {
   });
 }
 
-/** Puts [text] into the editor where the cursor is. */
-function insertIntoText(text) {
-  const box = ui.els.cardText;
-  const at = box.selectionStart ?? box.value.length;
-  const before = box.value.slice(0, at);
-  const line = (before && !before.endsWith('\n') ? '\n' : '') + text + '\n';
-  box.value = before + line + box.value.slice(box.selectionEnd ?? at);
-  box.selectionStart = box.selectionEnd = at + line.length;
+function appendMedia(id, label, type, position) {
+  const doc = new DOMParser().parseFromString(sourcePane.value, 'text/html');
+  const figure = doc.createElement('figure');
+  const tag = type.startsWith('audio/') ? 'audio' : type.startsWith('video/') ? 'video' : 'img';
+  const media = doc.createElement(tag);
+  media.dataset.attachment = 'media:' + id;
+  if (tag === 'img') media.alt = label;
+  else media.controls = true;
+  figure.append(media);
+  const next = position && doc.body.children[position.index++];
+  if (next) next.before(figure); else doc.body.append(figure);
+  sourcePane.value = '<!doctype html>\n' + doc.documentElement.outerHTML;
   recordInput();
 }
 
@@ -761,10 +978,56 @@ function insertIntoText(text) {
  * its pages there and then, which is how it is shown and how the assistant sees it.
  */
 export async function attachMedia(event) {
-  const file = event.target.files && event.target.files[0];
+  const files = [...(event.target.files || [])];
   event.target.value = '';
-  if (!file) return;
+  await attachFiles(files);
+}
+
+function bindFileDrop(target) {
+  target.addEventListener('dragover', event => {
+    if (!event.dataTransfer.types.includes('Files')) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = editing() ? 'copy' : 'none';
+  });
+  target.addEventListener('drop', event => {
+    if (!event.dataTransfer.types.includes('Files')) return;
+    event.preventDefault();
+    if (!editing()) return;
+    const files = [...event.dataTransfer.files];
+    const body = target.body;
+    let position;
+    if (body) {
+      const blocks = [...body.children].filter(el => !el.matches('.card-text-format,.card-caption-add'));
+      const index = blocks.findIndex(el => {
+        const rect = el.getBoundingClientRect();
+        return event.clientY < rect.top + rect.height / 2;
+      });
+      position = {index: index < 0 ? blocks.length : index};
+    }
+    void attachFiles(files,position);
+  });
+}
+
+bindFileDrop(ui.els.cardPage);
+
+async function attachFiles(files,position) {
+  const name = state.cardName;
+  for (const file of files) {
+    if (!editing() || state.cardName !== name) return;
+    await attachOne(file,name,position);
+  }
+}
+async function attachOne(file,name,position) {
   try {
+    const media = /^(image|audio|video)\//.test(file.type) || file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+    if (!media) {
+      if (!name || mode === 'new') { ui.toast('请先保存卡片'); return; }
+      if (file.size > 20 * 1024 * 1024) { ui.toast('附件超过 20 MB'); return; }
+      const data = base64Of(await file.arrayBuffer());
+      if (callBridge('attachCardFile',name,file.name,data) !== true) throw Error('保存附件失败');
+      ui.toast('已挂载 ' + file.name);
+      return;
+    }
     const named = ((file.name.match(/\.([A-Za-z0-9]{2,5})$/) || [])[1] || '').toLowerCase();
     const isPdf = file.type === 'application/pdf' || named === 'pdf';
     const isDrawing = file.type === 'image/svg+xml' || named === 'svg';
@@ -783,19 +1046,42 @@ export async function attachMedia(event) {
       // The pages are drawn from a copy: the first was handed to the app above.
       const count = await keepPages(id, kept.buffer.slice(0), (page, total) => ui.setStatus('PDF 第 ' + page + '/' + total + ' 页'));
       ui.setStatus('');
-      insertIntoText('![' + label + '](media:' + id + ')');
+      if (!editing() || state.cardName !== name) return;
+      appendMedia(id, label, file.type, position);
       ui.toast('PDF 已放进卡片，共 ' + count + ' 页');
       return;
     }
-    insertIntoText('![' + label + '](media:' + id + ')');
+    if (!editing() || state.cardName !== name) return;
+    appendMedia(id, label, file.type, position);
     ui.toast((file.type.startsWith('audio/') ? '录音' : file.type.startsWith('video/') ? '视频' : '图片') + '已放进卡片');
   } catch (error) {
     ui.toast('放不进去：' + (error && error.message ? error.message : '读不了这个文件'));
   }
 }
 
-export function copyCard() {
-  const raw = editing() ? ui.els.cardText.value : String(callBridge('readCard', state.cardName) || '').trim();
+document.getElementById('cardExport').addEventListener('change', event => {
+  const format = event.target.value;
+  event.target.value = '';
+  if (!format || !state.cardName) return;
+  if (editing()) {
+    autoSave();
+    if (localStorage.getItem(draftKey())) { ui.toast('请先保存当前草稿'); return; }
+  }
+  const result = callBridge('exportCard', state.cardName, format);
+  if (result?.startsWith('已复制到剪贴板：')) ui.toast(format + '到达剪切板！');
+  else if (result?.startsWith('已导出到 ')) ui.toast(format + '已导出！');
+  else ui.toast(result || '导出失败');
+});
+
+export async function copyCard() {
+  if (callBridge('canShareCard',state.cardName) !== true) { ui.toast('私人卡片仅供作者查看'); return; }
+  let raw = editing() ? ui.els.cardText.value : String(callBridge('readCard', state.cardName) || '').trim();
+  if (/data-card-privacy|<\/?card-private/i.test(raw)) {
+    try {
+      const { publicSource } = await import('../article/article.js');
+      raw = await publicSource(raw);
+    } catch (error) { ui.toast(error.message); return; }
+  }
   const doc = /^\s*(?:<!doctype\s+html\b|<html\b)/i.test(raw) ? new DOMParser().parseFromString(raw, 'text/html') : null;
   doc?.querySelectorAll('style,script,template,[hidden]').forEach(el => el.remove());
   const text = doc ? doc.body.textContent.trim() : raw;

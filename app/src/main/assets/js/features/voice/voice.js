@@ -172,7 +172,7 @@ export function handleAsrResult(id, ok, text) {
   if (id !== state.recId) return;
   ui.hideRecordingBar();
   if (ok && text) {
-    chat.sendText(text);
+    chat.sendText(text, id);
     return;
   }
   ui.toast(text || '没有识别到文字');

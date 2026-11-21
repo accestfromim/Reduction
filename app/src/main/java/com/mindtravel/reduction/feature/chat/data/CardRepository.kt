@@ -22,6 +22,59 @@ import java.util.Base64
  */
 class CardRepository(private val dir: File) {
 
+    /** Explicit card paths or folder roots on this device; match whole path segments. */
+    fun privateRoots(): List<String> {
+        val config = File(dir, ".private-roots.json")
+        if (!config.exists()) return listOf("个人","实验室")
+        val entries = JSONArray(config.readText())
+        return (0 until entries.length()).map {
+            requireNotNull(cleanName(entries.getString(it))) { "私人目录配置含无效路径" }
+        }
+    }
+
+    class SharingPolicy(
+        private val privatePaths: List<String>,
+        private val annotatedRoots: Set<String>,
+        private val publicRoots: Set<String>,
+        private val publicCards: Set<String>
+    ) {
+        fun scope(name: String): String {
+            val path = requireNotNull(cleanName(name))
+            val root = path.substringBefore('/')
+            return when {
+                path in publicCards -> "公开例外"
+                privatePaths.any { path == it || path.startsWith("$it/") } -> "整卡私密"
+                root in annotatedRoots -> "可分享，使用隐私标注"
+                root in publicRoots -> "直接公开"
+                else -> ""
+            }
+        }
+    }
+
+    fun sharingPolicy(): SharingPolicy {
+        val file = File(dir, ".sharing-policy.json")
+        val policy = if (file.exists()) JSONObject(file.readText()) else JSONObject()
+        fun paths(field: String, rootsOnly: Boolean): Set<String> {
+            if (!policy.has(field)) return emptySet()
+            val list = policy.getJSONArray(field)
+            return (0 until list.length()).map {
+                val path = requireNotNull(cleanName(list.getString(it)))
+                require(!rootsOnly || '/' !in path) { "请指定一级文件夹" }
+                path
+            }.toSet()
+        }
+        return SharingPolicy(privateRoots(),
+            if (policy.has("annotatedRoots")) paths("annotatedRoots",true) else setOf("Reduction"),
+            if (policy.has("publicRoots")) paths("publicRoots",true) else setOf("资料","个人知识库","模板"),
+            paths("publicCards",false))
+    }
+
+    fun privateForSharing(name: String): Boolean = sharingPolicy().scope(name) == "整卡私密"
+
+    fun requireShareable(name: String) {
+        require(!privateForSharing(name)) { "这张卡属于私人范围，只能查看作者画面" }
+    }
+
     class Info(val name: String, val purpose: String, val chars: Int, val updatedAt: Long)
 
     /** Told the name of every card that has just been written or deleted. */
@@ -84,6 +137,8 @@ class CardRepository(private val dir: File) {
         textFile(name)?.takeIf { it.isFile }?.let { runCatching { it.readText() }.getOrNull() }
 
     @Synchronized
+    fun document(name: String): String? = read(name)?.let(CardDocument::from)
+
     fun purpose(name: String): String = cleanName(name)?.let { purposeOf(it) }.orEmpty()
 
     /**
@@ -99,7 +154,7 @@ class CardRepository(private val dir: File) {
         val existing = read(name)
         // The editor only changes the body. Older clients can still submit an explicit purpose change.
         val changingPurpose = purpose != oldPurpose
-        if (if (creating) existing != null else existing != oldText || (changingPurpose && purpose(name) != oldPurpose)) return "conflict"
+        if (if (creating) existing != null else (existing != oldText && existing?.let(CardDocument::from) != oldText) || (changingPurpose && purpose(name) != oldPurpose)) return "conflict"
         return if (save(name, content, purpose.takeIf { changingPurpose || (creating && it.isNotEmpty()) })) "saved" else "failed"
     }
 

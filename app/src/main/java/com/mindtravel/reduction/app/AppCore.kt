@@ -59,6 +59,7 @@ import com.mindtravel.reduction.model.voice.VoiceDetector
 import com.mindtravel.reduction.model.wake.KeywordSpotterModel
 import com.mindtravel.reduction.ui.overlay.CardOverlay
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import java.io.File
@@ -142,6 +143,13 @@ class AppCore private constructor(context: Context) {
     val recording = RecordingController(ui, pushToTalk, ui)
 
     // ── features: chat ──────────────────────────────────────────────────────
+    fun reviewCardConflict(id: String, changes: String) {
+        scope.launch(Dispatchers.IO) {
+            val result = runCatching { com.mindtravel.reduction.feature.chat.model.reviewCardConflict(models.chatGateway,settingsRepository.load(),changes) }
+            ui.emit("onCardConflictReview",id,result.getOrDefault("AI 暂不可用，请直接对照原文。"))
+        }
+    }
+
     private val chatEngine: ChatEngine = ChatSession(models.chatGateway)
     /** Sets cards as articles: for the assistant's tool, and for the page's preview, which asks for the template in use. */
     val articles = ArticleBuilder(
@@ -160,7 +168,13 @@ class AppCore private constructor(context: Context) {
             sessionStatusScript = { harnessScript(context, "session-status.py") },
             agentRuns = agentRuns,
             articles = articles,
-            renderArticleScript = { harnessScript(context, "render-article.sh") }
+            renderArticleScript = { harnessScript(context, "render-article.sh") },
+            hostTools = {
+                val renderer = com.mindtravel.reduction.hardware.web.CardPageRenderer(context, cardRepository)
+                listOf(com.mindtravel.reduction.feature.chat.model.tools.LocalCardTool(cardRepository, ui) { name, source, page, author ->
+                    renderer.render(name, if (author) source else articles.publicSource(source), page)
+                })
+            }
         )
     private val chatController = ChatController(
         settingsRepository = settingsRepository,
@@ -218,7 +232,7 @@ class AppCore private constructor(context: Context) {
         cue = ackCue,
         capture = turnListener,
         isPushToTalkActive = pushToTalk::isActive,
-        submit = { text -> conversation.submit(text) },
+        submit = { id, text -> conversation.submitVoice(id, text, "[]") },
         abortReply = chatController::cancel,
         emitter = ui,
         scope = scope
@@ -265,12 +279,12 @@ class AppCore private constructor(context: Context) {
         }
         if (WakeWordBus.consumePending()) voice.onWakeWord()
         // The record of sub agent runs is a card the program keeps, rewritten whenever a run changes.
-        val writeLedger = { cardRepository.writeProgramCard(AgentLedger.CARD, AgentLedger.render(agentRuns.all()), AgentLedger.PURPOSE) }
+        val writeLedger = { cardRepository.writeProgramCard(AgentLedger.CARD, com.mindtravel.reduction.feature.chat.data.CardDocument.from(AgentLedger.render(agentRuns.all())), AgentLedger.PURPOSE) }
         agentRuns.onChange = { writeLedger() }
         writeLedger()
         // The review card is written from the to-dos whenever they change, and the alarms follow them.
         val writeMemos = {
-            cardRepository.writeProgramCard(MemoCard.CARD, MemoCard.render(memoStore), MemoCard.PURPOSE)
+            cardRepository.writeProgramCard(MemoCard.CARD, com.mindtravel.reduction.feature.chat.data.CardDocument.from(MemoCard.render(memoStore)), MemoCard.PURPOSE)
             mainHandler.post { runCatching { alarms.reschedule(memoStore) } }
         }
         memoStore.onChange = {
@@ -283,7 +297,7 @@ class AppCore private constructor(context: Context) {
         // A change made on the card is the user's own: the to-dos are read again afterwards.
         cardRepository.onChange = { name ->
             cardOverlay.onCardChanged(name)
-            ui.emit("onCardsChanged", "")
+            ui.emit("onCardsChanged", name)
             phoneSync.changed()
         }
         mediaButtons.start()

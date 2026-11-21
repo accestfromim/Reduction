@@ -22,6 +22,7 @@ export function playSplash() {
     splash.remove();
     return;
   }
+  splash.classList.add('playing');
   logo.style.opacity = '0';
   let handover = null;
   const finish = () => {
@@ -38,7 +39,7 @@ export function playSplash() {
       const dx = (to.left + to.width / 2) - (from.left + from.width / 2);
       const dy = (to.top + to.height / 2) - (from.top + from.height / 2);
       const timing = { duration: LANDING_MS, easing: 'cubic-bezier(0.5, 0, 0.2, 1)', fill: 'forwards' };
-      splash.animate([{ backgroundColor: getComputedStyle(splash).backgroundColor }, { backgroundColor: 'transparent' }], timing);
+      splash.classList.add('landing');
       const landing = drawing.animate(
         [{ transform: 'none' }, { transform: `translate(${dx}px, ${dy}px) scale(${scale})` }],
         timing

@@ -2,54 +2,12 @@ package com.mindtravel.reduction.feature.chat.model.tools
 
 import com.mindtravel.reduction.core.events.EventSink
 import com.mindtravel.reduction.core.stringOrNull
-import com.mindtravel.reduction.feature.chat.data.CardPatch
+import com.mindtravel.reduction.feature.chat.data.textAttachments
 import com.mindtravel.reduction.feature.chat.data.CardRepository
 import com.mindtravel.reduction.model.chat.ChatImage
 import com.mindtravel.reduction.model.chat.ToolParam
 import com.mindtravel.reduction.model.chat.ToolSpec
 import org.json.JSONObject
-
-/** Every change to the memo cards: create, edit, delete, any number of them, as one patch. */
-class PatchCardsTool(
-    private val cards: CardRepository,
-    private val emitter: EventSink
-) : ChatTool {
-
-    override val spec = ToolSpec(
-        name = "patch_cards",
-        description = "用一份补丁修改备忘卡片，写法和 git patch 一样，但不写行号。一份补丁可以新建、修改、删除多张卡片，要么全部生效，要么一处都不动。\n" +
-            "*** Add Card: 名称      下一行写 Purpose: 一句话用途，之后每行以 + 开头，是卡片内容。\n" +
-            "*** Update Card: 名称   之后是改动：以空格开头的行是不变的上下文，以 - 开头的行删掉，以 + 开头的行加上；用单独一行 @@ 分隔同一张卡片里的另一处改动。" +
-            "上下文行和 - 行必须照抄卡片原文，它们决定改在哪里。只有 + 行的一处改动表示加在卡片末尾。可以在标题下一行写 Purpose: 来改用途。\n" +
-            "*** Delete Card: 名称\n" +
-            "*** Move Card: 旧名称 -> 新名称   给卡片改名。名称里的“/”表示文件夹，比如 产品需求/短期；把卡片放进文件夹就是改名。",
-        parameterName = "patch",
-        parameterDescription = "补丁全文"
-    )
-
-    override fun describe(argumentsJson: String): String {
-        val patch = JSONObject(argumentsJson).stringOrNull("patch").orEmpty()
-        val names = runCatching { CardPatch.parse(patch).map { it.name } }.getOrDefault(emptyList())
-        return if (names.isEmpty()) "改卡片" else "改卡片：" + names.distinct().joinToString("、")
-    }
-
-    override fun execute(argumentsJson: String): String {
-        val patch = JSONObject(argumentsJson).stringOrNull("patch").orEmpty()
-        if (patch.isBlank()) return "补丁是空的"
-        // A picture can only be one the program has kept: an id that names nothing is a mistake, caught before anything is changed.
-        val unknown = cards.mediaIn(patch.lines().filter { it.startsWith("+") }.joinToString("\n")).filter { cards.mediaFile(it) == null }
-        if (unknown.isNotEmpty()) {
-            return "补丁没有生效。没有这些附件：" + unknown.joinToString("、") + "。附件编号只能用程序给出的：用户发图时消息末尾的编号，或卡片里已有的。"
-        }
-        return try {
-            val changed = cards.patch(patch)
-            emitter.emit("onCardsChanged")
-            "已生效：" + changed.joinToString("；")
-        } catch (e: CardPatch.Invalid) {
-            "补丁没有生效。${e.message}"
-        }
-    }
-}
 
 /** Shows a card at the user's request without reading it into the conversation or changing it. */
 class OpenCardTool(
@@ -100,15 +58,17 @@ class ReadCardTool(private val cards: CardRepository) : ChatTool {
         showing = emptyList()
         val args = JSONObject(argumentsJson)
         val name = args.stringOrNull("name").orEmpty()
-        val text = cards.read(name) ?: return "没有名为“${name.trim()}”的卡片。现有卡片：" +
+        val text = cards.document(name) ?: return "没有名为“${name.trim()}”的卡片。现有卡片：" +
             cards.list().joinToString("、") { it.name }.ifBlank { "无" }
         val from = PAGE_RANGE.find(args.stringOrNull("pages").orEmpty())?.groupValues?.get(1)?.toIntOrNull()?.coerceAtLeast(1) ?: 1
 
         val pictures = ArrayList<ChatImage>()
         val notes = ArrayList<String>()
+        val attachments = org.jsoup.Jsoup.parse(text).select("[data-attachment]")
         for (id in cards.mediaIn(text)) {
             val kind = id.substringAfterLast('.')
-            val label = LABEL.find(text.substringBefore("(media:$id)").takeLast(80))?.groupValues?.get(1).orEmpty().ifBlank { id }
+            val node = attachments.firstOrNull { it.attr("data-attachment") == "media:$id" }
+            val label = node?.attr("alt").orEmpty().ifBlank { node?.closest("figure")?.selectFirst("figcaption")?.text().orEmpty() }.ifBlank { id }
             when {
                 kind == "svg" -> {
                     // A drawing is text: what it draws can be read from it, and a model is not handed it as a picture.
@@ -140,6 +100,15 @@ class ReadCardTool(private val cards: CardRepository) : ChatTool {
                 }
                 else -> notes += "- ${if (kind in VIDEO) "视频" else "录音"}「$label」：只能在卡片页播放，这里看不到内容"
             }
+        }
+        for ((label, file) in cards.textAttachments(name)) {
+            val bytes = file.readBytes()
+            val charset = when {
+                bytes.size >= 2 && bytes[0] == 0xff.toByte() && bytes[1] == 0xfe.toByte() -> Charsets.UTF_16
+                bytes.size >= 2 && bytes[0] == 0xfe.toByte() && bytes[1] == 0xff.toByte() -> Charsets.UTF_16
+                else -> Charsets.UTF_8
+            }
+            notes += "附件文件「$label」\n" + bytes.toString(charset).removePrefix("\uFEFF")
         }
         showing = pictures
         if (notes.isEmpty()) return text

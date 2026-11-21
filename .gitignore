@@ -20,7 +20,8 @@ local.env
 *.pem
 
 # Models and the speech library: fetched by tools/models/fetch-models.sh, not kept here
-app/libs/
+app/libs/*
+!app/libs/card/
 app/src/main/assets/kws/
 app/src/main/assets/kws-en/
 app/src/main/assets/vad/

@@ -1,0 +1,26 @@
+<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>*{box-sizing:border-box}html,body,main,iframe{margin:0;border:0;width:100%;height:100%;overflow:hidden;display:block}</style>
+<main></main><script src="vendor/purify.min.js"></script><script type="module">
+import {mountHtml} from './js/components/html/index.js';
+window.showOverlayCard = (name, source) => mountHtml(document.querySelector('main'), source, doc => {
+  doc.addEventListener('click', event => {
+    if (event.target.closest('a')) event.preventDefault();
+  });
+}, name);
+window.drawCard = (name, source, page) => mountHtml(document.querySelector('main'), source, async doc => {
+  try {
+    await Promise.all([...doc.images].map(img => img.decode()));
+    await doc.fonts.ready;
+    const step = doc.documentElement.clientHeight;
+    const total = doc.scrollingElement.scrollHeight;
+    const pages = Math.ceil(total / step);
+    if (page < 1 || page > pages) throw Error('页码超出范围');
+    const offset = (page - 1) * step;
+    const remaining = total - offset;
+    if (remaining < step) doc.body.style.paddingBottom = (parseFloat(getComputedStyle(doc.body).paddingBottom) + step - remaining) + 'px';
+    doc.scrollingElement.scrollTop = offset;
+    await new Promise(resolve => setTimeout(resolve, 600));
+    window.cardState = {pages, height: Math.ceil(1200 * Math.min(step, remaining) / step)};
+  } catch (e) { window.cardState = {error: String(e)}; }
+}, name);
+</script>

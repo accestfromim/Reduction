@@ -34,6 +34,19 @@ class CardFiles(private val cards: CardRepository, private val exports: File) {
         return null
     }
 
+    fun preview(name: String, source: String, page: Int, author: Boolean): Pair<ChatImage,Int> {
+        if (!author) cards.requireShareable(name)
+        val dir = java.nio.file.Files.createTempDirectory("card-preview-").toFile()
+        try {
+            val legacy = JSONObject()
+            for (id in cards.mediaIn(source)) legacy.put(id,cards.mediaFile(id)?.absolutePath ?: JSONObject.NULL)
+            val request = JSONObject().put("action","preview").put("format","png").put("author",author)
+                .put("name",name).put("text",source).put("exports",dir).put("dir",cards.attachmentDirectory(name)).put("legacy",legacy)
+            val path = JSONArray("[" + runCardWorker("files.py",request) + "]").getString(0)
+            return cardPngPage(File(path),page)
+        } finally { dir.deleteRecursively() }
+    }
+
     fun tool(settings: AppSettings) = object : ChatTool {
         private var image: ChatImage? = null
         override fun pictures(): List<ChatImage> = listOfNotNull(image).also { image = null }
@@ -42,14 +55,15 @@ class CardFiles(private val cards: CardRepository, private val exports: File) {
             ToolParam("card", "现有卡片全名"),
             ToolParam("path", "导入文件的绝对路径（位于已授权目录）", false),
             ToolParam("id", "读取附件时传 list 返回的 ID", false),
-            ToolParam("format", "导出格式", false, listOf("html","markdown","pdf","png","zip"))
+            ToolParam("format", "导出格式", false, listOf("html","markdown","pdf","png","jpg","zip"))
         ))
         override fun execute(argumentsJson: String): String {
             image = null
             val args = JSONObject(argumentsJson)
             val name = args.getString("card")
             val action = args.getString("action")
-            val saved = cards.read(name) ?: error("卡片不存在")
+            if (action == "export") cards.requireShareable(name)
+            val saved = cards.document(name) ?: error("卡片不存在")
             val text = drafts[name]?.takeIf { it.first == saved }?.second ?: saved
             val request = JSONObject().put("action", action).put("name", name).put("text", text)
                 .put("dir", cards.attachmentDirectory(name)).put("exports", exports)

@@ -16,12 +16,11 @@ class CardBlocksTool(private val cards: CardRepository, private val files: CardF
     override fun execute(argumentsJson: String): String {
         val args = JSONObject(argumentsJson)
         val card = args.getString("card")
-        val saved = cards.read(card)
+        val saved = cards.document(card)
         val change = if (args.has("change")) args.getJSONObject("change") else null
         require(saved != null || change != null) { "卡片不存在" }
         if (change != null) {
             require(!cards.isLocked(card) && !cards.isProgramCard(card)) { "卡片已锁定" }
-            require(!files.pending(card, saved.orEmpty())) { "用户正在编辑，草稿尚未保存" }
         }
         val request = JSONObject().put("source", saved.orEmpty()).put("change", change)
             .put("revision", args.optString("revision"))
@@ -40,7 +39,6 @@ class CardBlocksTool(private val cards: CardRepository, private val files: CardF
         val result = JSONObject(runCardWorker("blocks.py", request))
         if (change == null) return result.toString()
         val output = result.remove("source") as String
-        check(!files.pending(card, saved.orEmpty())) { "用户正在编辑，草稿尚未保存" }
         val status = cards.autosave(card, "", output, saved == null, "", saved.orEmpty())
         check(status == "saved") { "组件写入失败：$status" }
         return "已保存"

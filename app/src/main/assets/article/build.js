@@ -77,7 +77,7 @@
     // through only addresses of kinds it knows.
     var loose = new DOMParser().parseFromString('<body>' + html + '</body>', 'text/html');
     Array.prototype.forEach.call(loose.body.querySelectorAll('img'), function (image) {
-      var id = ((image.getAttribute('src') || '').match(/^media:(m[0-9a-f]{12}\.[a-z0-9]{2,5})$/) || [])[1];
+      var id = ((image.getAttribute('data-attachment') || image.getAttribute('src') || '').match(/^media:(m[0-9a-f]{12}\.[a-z0-9]{2,5})$/) || [])[1];
       if (!id) return;
       image.removeAttribute('src');
       image.setAttribute('data-media', id);

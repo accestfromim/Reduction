@@ -313,13 +313,30 @@ quiet =
   readonly DispatcherTimer wait = new DispatcherTimer();
   Binding pending; bool talking; int active, passing, swallowed;
 
+  readonly DispatcherTimer tapWindow = new DispatcherTimer();
+  uint firstTap;
+  public Func<bool> CanInterrupt = delegate { return false; };
+
+  void FlushTap() {
+    if (!tapWindow.IsEnabled) return;
+    tapWindow.Stop();
+    Send(0x20, false); Send(0x20, true);
+  }
+
   public Keys() {
+    tapWindow.Interval = TimeSpan.FromMilliseconds(HoldMs);
+    tapWindow.Tick += delegate { FlushTap(); };
     keep = Each;
     wait.Interval = TimeSpan.FromMilliseconds(HoldMs);
     wait.Tick += delegate {
       wait.Stop();
       if (pending == null) return;
-      string action = pending.Action; pending = null; talking = true;
+      FlushTap();
+      string action = pending.Action; pending = null;
+      if (action == "interruptOnly") {
+        passing = active; active = 0; Send(passing, false); return;
+      }
+      talking = true;
       try { Held(action); } catch { }
     };
   }
@@ -327,7 +344,7 @@ quiet =
   public void Start() { if (hook == IntPtr.Zero) hook = SetWindowsHookEx(13, keep, GetModuleHandle(null), 0); }
   public void Stop() {
     if (hook != IntPtr.Zero) UnhookWindowsHookEx(hook);
-    hook = IntPtr.Zero;
+    hook = IntPtr.Zero; wait.Stop(); FlushTap();
     if (talking) { talking = false; try { LetGo(); } catch { } }
   }
 
@@ -403,6 +420,7 @@ quiet =
     bool down = kind == 0x100 || kind == 0x104;
 
     if (down) {
+      if (key != 0x20) FlushTap();
       if (pending != null && key != active) {
         // Typing on: the held-back key goes first, then this one, both as they were pressed.
         pending = null; wait.Stop(); passing = active; Send(active, false); active = 0;
@@ -413,6 +431,8 @@ quiet =
       if (key == passing || IsModifier(key)) return CallNextHookEx(hook, code, message, at);
       int mods = ModsNow();
       Binding hold = HoldsEnabled ? Find(key, mods, true) : null;
+      if (hold == null && key == 0x20 && mods == 0 && CanInterrupt() && Find(key, mods, false) == null)
+        hold = new Binding { Action = "interruptOnly" };
       if (hold != null) { pending = hold; active = key; wait.Start(); return (IntPtr)1; }
       Binding press = Find(key, mods, false);
       if (press != null && Applies(press.Action)) {
@@ -430,7 +450,18 @@ quiet =
     if (key == passing) { passing = 0; return CallNextHookEx(hook, code, message, at); }
     if (key == active && pending != null) {
       // A tap: the key it was, passed on whole.
+      bool plainSpace = key == 0x20 && pending.Mods == 0;
       pending = null; wait.Stop(); active = 0;
+      if (plainSpace && CanInterrupt()) {
+        if (tapWindow.IsEnabled && unchecked(stroke.Time - firstTap) <= HoldMs) {
+          tapWindow.Stop();
+          wait.Dispatcher.BeginInvoke(new Action(delegate { Pressed("interrupt"); }));
+        } else {
+          FlushTap(); firstTap = stroke.Time; tapWindow.Start();
+        }
+        return (IntPtr)1;
+      }
+      FlushTap();
       Send(key, false); Send(key, true);
       return (IntPtr)1;
     }
@@ -546,7 +577,98 @@ class ReplyBox {
 //
 // The window has no frame of its own, so the page cannot be dragged by: it is the page that asks, through
 // messages — "resize:<edge>" when one of its edges is pressed, "fullscreen" to change between the two.
+// A native-only entry point: the web service and phone cannot dispatch messages.
+class CodexChat {
+  class Entry {
+    public Guid Id;
+    public string Title;
+    public DateTime Time;
+    public override string ToString() { return Title + "  ·  " + Time.ToLocalTime().ToString("MM-dd HH:mm") + "  ·  " + Id.ToString("N").Substring(0, 8); }
+  }
+  static List<Entry> Chats() {
+    string home = Environment.GetEnvironmentVariable("CODEX_HOME");
+    if (String.IsNullOrEmpty(home)) home = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".codex");
+    var index = new Dictionary<Guid, Entry>();
+    var json = new System.Web.Script.Serialization.JavaScriptSerializer();
+    using (var file = new FileStream(System.IO.Path.Combine(home,"session_index.jsonl"),FileMode.Open,FileAccess.Read,FileShare.ReadWrite | FileShare.Delete))
+    using (var reader = new StreamReader(file,Encoding.UTF8)) {
+      string line;
+      while ((line=reader.ReadLine()) != null) {
+        try {
+          var item=json.Deserialize<Dictionary<string,object>>(line);
+          Guid id; DateTime time;
+          if (!Guid.TryParse(Convert.ToString(item["id"]),out id)) continue;
+          DateTime.TryParse(Convert.ToString(item["updated_at"]),out time);
+          index[id]=new Entry { Id=id, Title=Convert.ToString(item["thread_name"]), Time=time };
+        } catch (ArgumentException) { } catch (KeyNotFoundException) { }
+      }
+    }
+    var result=new List<Entry>(index.Values);
+    result.Sort((a,b)=>b.Time.CompareTo(a.Time)); return result;
+  }
+  static string Executable() {
+    string root=System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"OpenAI","Codex","bin");
+    foreach(var process in Process.GetProcessesByName("codex")) {
+      using(process) { try { string path=process.MainModule.FileName;
+        if(path.StartsWith(root+System.IO.Path.DirectorySeparatorChar,StringComparison.OrdinalIgnoreCase)) return path;
+      } catch(System.ComponentModel.Win32Exception) {} catch(InvalidOperationException) {} }
+    }
+    string[] candidates=Directory.GetFiles(root,"codex.exe",SearchOption.AllDirectories);
+    if(candidates.Length==0) throw new FileNotFoundException("找不到本机 Codex CLI。");
+    Array.Sort(candidates,(a,b)=>File.GetLastWriteTimeUtc(b).CompareTo(File.GetLastWriteTimeUtc(a)));return candidates[0];
+  }
+  // Win32 argv quoting, including backslashes immediately before a quote or the closing delimiter.
+  static string Quote(string value) {
+    var b=new StringBuilder("\""); int slashes=0;
+    foreach(char c in value) {
+      if(c=='\\') {slashes++;continue;}
+      b.Append('\\',c=='"' ? 2*slashes+1 : slashes); b.Append(c);slashes=0;
+    }
+    return b.Append('\\',2*slashes).Append('"').ToString();
+  }
+  internal static string Queue(Guid id,string message) {
+    if(String.IsNullOrWhiteSpace(message)||message.Length>8000) throw new ArgumentException("消息需要 1 到 8000 个字符。");
+    var start=new ProcessStartInfo(Executable(),"queue --thread "+id.ToString()+" --message="+Quote(message)+" --resume");
+    start.UseShellExecute=false;start.CreateNoWindow=true;start.RedirectStandardOutput=true;start.RedirectStandardError=true;
+    start.StandardOutputEncoding=Encoding.UTF8;start.StandardErrorEncoding=Encoding.UTF8;
+    using(var proc=Process.Start(start)) {
+      var stdout=proc.StandardOutput.ReadToEndAsync();var stderr=proc.StandardError.ReadToEndAsync();
+      if(!proc.WaitForExit(30000)) {try{proc.Kill();}catch(InvalidOperationException){} throw new IOException("等待超时。请先查看目标聊天，避免重复发送。");}
+      var detail=(stdout.Result+"\n"+stderr.Result).Trim();
+      if(proc.ExitCode!=0) throw new IOException(detail.Length==0?"Codex 未接受消息。":detail);
+      if(detail.IndexOf("could not resume thread",StringComparison.OrdinalIgnoreCase)>=0) return "已排队，当前会话未被自动唤醒。请勿重复发送。\n"+detail;
+      return "已交给 Codex 队列。\n"+detail;
+    }
+  }
+  static Window open;
+  public static void Show() {
+    if(open!=null){open.Activate();return;}
+    var w=new Window { Title="发送到 Codex",Width=480,Height=365,MinWidth=340,MinHeight=300,Topmost=true,WindowStartupLocation=WindowStartupLocation.CenterScreen };
+    var stack=new StackPanel{Margin=new Thickness(16)};w.Content=stack;
+    var list=new ComboBox();var message=new TextBox{AcceptsReturn=true,TextWrapping=TextWrapping.Wrap,Height=88,MaxLength=8000,VerticalScrollBarVisibility=ScrollBarVisibility.Auto,Margin=new Thickness(0,10,0,10)};
+    var send=new Button{Content="发送到所选聊天",Padding=new Thickness(8),IsEnabled=false};
+    var status=new TextBox{IsReadOnly=true,BorderThickness=new Thickness(0),TextWrapping=TextWrapping.Wrap,Height=85,VerticalScrollBarVisibility=ScrollBarVisibility.Auto};
+    stack.Children.Add(new TextBlock{Text="已有 Codex 聊天"});stack.Children.Add(list);stack.Children.Add(message);stack.Children.Add(send);stack.Children.Add(status);
+    try{list.ItemsSource=Chats();if(list.Items.Count==0)status.Text="没有找到已命名的本机聊天。";}catch(Exception e){status.Text=e.Message;}
+    bool busy=false;Action update=delegate{send.IsEnabled=!busy && list.SelectedItem!=null && !String.IsNullOrWhiteSpace(message.Text);};
+    list.SelectionChanged+=delegate{update();};message.TextChanged+=delegate{update();};
+    send.Click+=async delegate{var target=(Entry)list.SelectedItem;var text=message.Text;busy=true;update();list.IsEnabled=false;message.IsReadOnly=true;status.Text="正在提交…";
+      try{status.Text=await System.Threading.Tasks.Task.Run(()=>Queue(target.Id,text));message.Clear();}catch(Exception e){status.Text=e.Message;}
+      finally{busy=false;list.IsEnabled=true;message.IsReadOnly=false;update();}
+    };
+    w.Closing+=delegate(object sender,System.ComponentModel.CancelEventArgs e){if(busy)e.Cancel=true;};
+    w.Closed+=delegate{open=null;};open=w;w.Show();
+  }
+}
+
 class Panel {
+  [StructLayout(LayoutKind.Sequential)] struct Bounds { public int Left, Top, Right, Bottom; }
+  [StructLayout(LayoutKind.Sequential)] struct MonitorInfo { public int Size; public Bounds Monitor, Work; public uint Flags; }
+  [DllImport("user32.dll")] static extern IntPtr MonitorFromWindow(IntPtr window, uint flags);
+  [DllImport("user32.dll", CharSet=CharSet.Auto)] static extern bool GetMonitorInfo(IntPtr monitor, ref MonitorInfo info);
+  [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr window, out Bounds rect);
+  [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
+  Bounds restoredBounds;
   [DllImport("user32.dll")] static extern int SetWindowRgn(IntPtr window, IntPtr region, bool redraw);
   [DllImport("gdi32.dll")] static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int width, int height);
   [DllImport("user32.dll")] static extern bool ReleaseCapture();
@@ -564,7 +686,13 @@ class Panel {
   public string SizeFile;
 
   double width = Width, height = Height;
-  bool full, leaving, moving;
+  bool full, leaving, moving, pageReady;
+  string reviewCard;
+
+  public void ReviewCard(string name) {
+    reviewCard = name;
+    TellPage();
+  }
 
   public bool Open { get { return host != null && host.IsVisible; } }
   public bool IsFront { get { return host != null && host.IsVisible && host.IsActive; } }
@@ -627,8 +755,9 @@ class Panel {
         TellPage();
       };
       // A service that was not up yet, or went away for a moment, is asked again.
+      view.NavigationStarting += delegate { pageReady = false; };
       view.NavigationCompleted += delegate(object sender, Microsoft.Web.WebView2.Core.CoreWebView2NavigationCompletedEventArgs e) {
-        if (e.IsSuccess) { TellPage(); return; }
+        if (e.IsSuccess) { pageReady = true; TellPage(); return; }
         DispatcherTimer again = new DispatcherTimer(); again.Interval = TimeSpan.FromSeconds(1.5);
         again.Tick += delegate { again.Stop(); try { view.CoreWebView2.Navigate(url); } catch { } };
         again.Start();
@@ -652,7 +781,14 @@ class Panel {
 
   /// The page is told whether it has the whole screen, to draw its button the right way round.
   void TellPage() {
-    try { if (view != null && view.CoreWebView2 != null) view.CoreWebView2.PostWebMessageAsString(full ? "full" : "card"); } catch { }
+    try {
+      if (view == null || view.CoreWebView2 == null) return;
+      view.CoreWebView2.PostWebMessageAsString(full ? "full" : "card");
+      if (pageReady && reviewCard != null) {
+        view.CoreWebView2.PostWebMessageAsString("review:" + reviewCard);
+        reviewCard = null;
+      }
+    } catch { }
   }
 
   /// An edge or corner of the page is pressed: Windows itself takes the window from there, until the button is let go.
@@ -671,17 +807,21 @@ class Panel {
     } finally { moving = false; }
   }
 
-  /// The whole of the screen it is on, taskbar left showing; or back to the card it was.
+  /// Position the borderless window in the monitor's native coordinates.
   public void ToggleFull() {
-    if (host == null) return;
-    full = !full;
-    if (full) {
-      Rect work = SystemParameters.WorkArea;
-      host.Left = work.Left; host.Top = work.Top; host.Width = work.Width; host.Height = work.Height;
-    } else {
-      host.Width = width; host.Height = height;
-      Follow();
+    if (host == null || !host.IsVisible) return;
+    IntPtr window = new WindowInteropHelper(host).Handle;
+    Bounds bounds = restoredBounds;
+    if (!full) {
+      var info = new MonitorInfo { Size = Marshal.SizeOf(typeof(MonitorInfo)) };
+      if (!GetMonitorInfo(MonitorFromWindow(window, 2), ref info) || !GetWindowRect(window, out restoredBounds)) return;
+      bounds = info.Monitor;
     }
+    bool entering = !full;
+    full = true;
+    bool placed = SetWindowPos(window, new IntPtr(entering ? -1 : -2), bounds.Left, bounds.Top,
+      bounds.Right - bounds.Left, bounds.Bottom - bounds.Top, 0x0040);
+    full = placed ? entering : !entering;
     Shape(); TellPage();
   }
 
@@ -759,6 +899,30 @@ class Pet {
     body = Find<Ellipse>("Body"); glow = Find<Ellipse>("Glow");
     gap.RenderTransform = gapScale; core.RenderTransform = coreScale;
     lens = LensEffect.Create();
+    window.SourceInitialized += delegate {
+      HwndSource source = PresentationSource.FromVisual(window) as HwndSource;
+      if (source != null) source.AddHook(PetHitTest);
+    };
+  }
+
+  bool HitsBody(Point at) {
+    // The body's gradient is fully transparent at 90% of the ellipse radius.
+    double x = (at.X - body.ActualWidth / 2) / (body.ActualWidth * .45);
+    double y = (at.Y - body.ActualHeight / 2) / (body.ActualHeight * .45);
+    return x * x + y * y <= 1;
+  }
+
+  IntPtr PetHitTest(IntPtr hwnd, int message, IntPtr wParam, IntPtr lParam, ref bool handled) {
+    const int WmNcHitTest = 0x84, HtTransparent = -1;
+    if (message == WmNcHitTest) {
+      long packed = lParam.ToInt64();
+      Point screen = new Point(unchecked((short)packed), unchecked((short)(packed >> 16)));
+      if (!HitsBody(body.PointFromScreen(screen))) {
+        handled = true;
+        return new IntPtr(HtTransparent);
+      }
+    }
+    return IntPtr.Zero;
   }
 
   static void Put(Ellipse shape, double cx, double cy, double sx, double sy) {
@@ -924,9 +1088,11 @@ class Pet {
     };
     spaceFile = System.IO.Path.Combine(home, "pet-space.txt");
     try { keys.HoldsEnabled = File.ReadAllText(spaceFile).Trim() != "off"; } catch { }
+    keys.CanInterrupt = delegate { return state == "speaking" || state == "thinking"; };
     keys.Pressed = delegate(string action) {
       if (action == "panel") TogglePanel();
       else if (action == "full") panel.ToggleFull();
+      else if (action == "interrupt") Ask("/pet/interrupt", "POST", null);
       else if (action == "quiet") Ask("/bridge/stopSpeaking", "POST", null);
       else if (action == "close") {
         // From the whole screen, the first press brings it back to a card; the next puts it away.
@@ -945,6 +1111,7 @@ class Pet {
     keys.Start();
 
     pet.MouseLeftButtonDown += delegate(object sender, MouseButtonEventArgs e) {
+      if (!HitsBody(e.GetPosition(body))) return;
       down = true; moved = false; grab = e.GetPosition(window);
       pet.CaptureMouse();
     };
@@ -959,11 +1126,11 @@ class Pet {
       down = false;
       try { File.WriteAllText(placeFile, string.Format(System.Globalization.CultureInfo.InvariantCulture, "{0},{1}", window.Left, window.Top)); } catch { }
     };
-    pet.MouseLeftButtonUp += delegate {
+    pet.MouseLeftButtonUp += delegate(object sender, MouseButtonEventArgs e) {
       pet.ReleaseMouseCapture();
       if (!down) return;
       down = false;
-      if (!moved) TogglePanel();
+      if (!moved && HitsBody(e.GetPosition(body))) TogglePanel();
     };
 
     ContextMenu menu = new ContextMenu();
@@ -977,6 +1144,7 @@ class Pet {
     menu.Items.Add(bySpace);
     Add(menu, "快捷键…", delegate { try { Process.Start("notepad.exe", "\"" + keysFile + "\""); } catch { } });
     Add(menu, "收起桌宠", delegate { window.Close(); });
+    Add(menu, "发送到 Codex…", CodexChat.Show);
     pet.ContextMenu = menu;
 
     window.Closed += delegate { panel.Close(); keys.Stop(); box.Window.Close(); if (desktop != null) desktop.Stop(); };
@@ -1000,10 +1168,22 @@ class Pet {
     } catch { desktop = null; behind.Source = null; }
   }
 
+  string lastReviewId;
+  bool hasPetState;
+
   void Heard(Dictionary<string, object> now) {
     if (holding) return;
     if (now == null) { state = "asleep"; return; }
     if (wantPanel) { wantPanel = false; OpenPanel(); }            // asked for at the start: opened once the service answers
+    object reviewId, card;
+    if (now.TryGetValue("reviewId", out reviewId) && (string)reviewId != lastReviewId) {
+      lastReviewId = (string)reviewId;
+      if (hasPetState && !panel.Open && now.TryGetValue("reviewCard", out card)) {
+        OpenPanel();
+        panel.ReviewCard((string)card);
+      }
+    }
+    hasPetState = true;
     state = (string)now["state"];
     long id = Convert.ToInt64(now["lineId"]);
     if (lineId < 0) lineId = id;                                   // nothing old is repeated when the pet starts

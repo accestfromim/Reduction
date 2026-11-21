@@ -1,6 +1,7 @@
 """Edit semantic CARD components against one revision of an HTML document."""
 from html.parser import HTMLParser
 import hashlib
+from privacy import TAG, project
 import subprocess
 from pathlib import Path
 import json
@@ -16,8 +17,8 @@ def revision(source):
 
 
 def blocks(doc):
-    tags = doc.body.select("h1,h2,h3,h4,h5,h6,p,blockquote,table,figure,a,ol[data-timeline] > li > span,ol[data-timeline] > li > strong") if doc.body else []
-    return [tag for tag in tags if not tag.find_parent(["table", "figure", "blockquote", "p", "a", "h1", "h2", "h3", "h4", "h5", "h6"])]
+    tags = doc.body.select("aside[data-card-routine],h1,h2,h3,h4,h5,h6,p,blockquote,table,figure,svg,ol:not([data-timeline]),ul,a,ol[data-timeline] > li > span,ol[data-timeline] > li > strong") if doc.body else []
+    return [tag for tag in tags if not any(parent.name in ("ul", "ol") and not parent.has_attr("data-timeline") for parent in tag.parents) and not tag.find_parent(["table", "figure", "svg", "blockquote", "p", "a", "h1", "h2", "h3", "h4", "h5", "h6"])]
 
 
 def string(value):
@@ -50,8 +51,23 @@ def chart(table, view):
 
 def build(doc, change, files):
     kind = change["type"]
+    if kind == "svg":
+        fig = element(doc, "figure")
+        fig.append(BeautifulSoup(change["svg"], "html.parser").svg)
+        if fig.svg.has_attr("viewbox"):
+            fig.svg["viewBox"] = fig.svg.attrs.pop("viewbox")
+        return fig
     if kind == "text":
         style = change.get("style", "p")
+        if style == "routine":
+            aside = element(doc, "aside", **{"data-card-routine": ""})
+            text = string(change["text"])
+            url = "https://github.com/mindtravel/Reduction"
+            for i, part in enumerate(text.split(url)):
+                if i:
+                    aside.append(element(doc, "a", url, href=url))
+                aside.append(part)
+            return aside
         if style not in ("p", "h1", "h2", "h3", "blockquote"):
             raise ValueError("不支持的文字样式")
         return element(doc, style, change["text"])
@@ -204,7 +220,50 @@ def named_cell(items, change):
 def edit(req):
     source = req["source"]
     if source.strip() and not re.match(r"\s*(?:<!doctype\s+html\b|<html\b)", source, re.I):
-        raise ValueError("此工具编辑 HTML 卡片，普通 Markdown 卡可用 patch_cards")
+        raise ValueError("需要经过导入转换的 CARD 文档")
+    change = req.get("change") or {}
+    if "note" in change:
+        target = string(change["note"])
+        if not target.strip() or any(c in target for c in "<>\r\n"):
+            raise ValueError("请选择一段单行原文")
+        region = source
+        offset = 0
+        if "ref" in change:
+            token, _, index = string(change["ref"]).partition(".")
+            if token != revision(source):
+                raise ValueError("ref 已过期。用 {blocks:true} 读取最新位置，再用当前原文提交 {ref,note}。")
+            items = blocks(BeautifulSoup(source, "html.parser"))
+            if not index.isdecimal() or not 1 <= int(index) <= len(items):
+                raise ValueError("ref 的组件编号不存在；请重新读取组件目录")
+            offset, _, end = source_bounds(source,items[int(index)-1])
+            region = source[offset:end]
+        count = region.count(target)
+        if count != 1:
+            raise ValueError("指定范围找不到这段原文，请读取当前正文逐字复制。" if not count else
+                             "指定范围匹配多次，请延长原文或用 ref 限定组件。")
+        start = offset + region.index(target)
+        if any(m.start() <= start < m.end() for m in TAG.finditer(source)):
+            raise ValueError("该位置已标注")
+        class TextPosition(HTMLParser):
+            found = False
+            def handle_data(self, value):
+                row, col = self.getpos()
+                offset = sum(map(len, source.splitlines(keepends=True)[:row-1])) + col
+                if offset <= start and start + len(target) <= offset + len(value):
+                    self.found = True
+        parser = TextPosition(convert_charrefs=False)
+        parser.feed(source)
+        parser.close()
+        if not parser.found:
+            raise ValueError("仅可标注正文文本，不能标注属性或跨元素内容")
+        wrapped = f'<card-private>{target}</card-private>'
+        end = start + len(target)
+        if source[max(0,start-6):start] == "{note:" and source[end:end+1] == "}":
+            start -= 6
+            end += 1
+        output = source[:start] + wrapped + source[end:]
+        project(output)
+        return dict(source=output)
     template = source or "<!doctype html><html><head></head><body></body></html>"
     doc = BeautifulSoup(template, "html.parser")
     if not doc.body:
@@ -214,9 +273,21 @@ def edit(req):
     change = req.get("change")
     if change is None:
         labels = [(t.caption if t.name=="table" and t.caption else t).get_text(" ", strip=True) for t in items]
-        return dict(blocks=[dict(tag=t.name, target=label) if label and len(label)<=60 and labels.count(label)==1
-                            else dict(tag=t.name, preview=label[:60], ref=f"{rev}.{i}")
+        return dict(blocks=[dict(tag=t.name, target=label, ref=f"{rev}.{i}") if label and len(label)<=60 and labels.count(label)==1
+                            else dict(tag=t.name, preview=label[:60], ref=f"{rev}.{i}", empty=t.name=="p" and not t.get_text(strip=True) and not t.find(True))
                             for i,(t,label) in enumerate(zip(items, labels),1)])
+    if "at" in change:
+        token, sep, index = string(change["at"]).partition(".")
+        if token != rev or not sep or not index.isdecimal() or not 1 <= int(index) <= len(items):
+            raise ValueError("位置已变化，请重新读取组件目录")
+        anchor = items[int(index)-1]
+        if anchor.name in ("span", "strong", "a") or anchor.find_parent(["p","li","table","figure"]):
+            raise ValueError("请选择段落或其他独立组件作为位置")
+        start, _, end = source_bounds(template, anchor)
+        empty = anchor.name == "p" and not anchor.get_text(strip=True) and not anchor.find(True)
+        component = build(doc, change, req.get("files", {}))
+        output = template[:start] + str(component) + template[end if empty else start:]
+        return dict(source=output, revision=revision(output), block=int(index))
     number = change.get("block")
     named = "row" in change
     by_target = "target" in change
@@ -224,8 +295,34 @@ def edit(req):
         label = string(change["target"]).strip()
         matches = [i for i,t in enumerate(items,1) if label and
                    (t.caption if t.name=="table" and t.caption else t).get_text(" ", strip=True) == label]
+        if not matches and label and "text" in change and change.keys() <= {"target","old","text"}:
+            # A private annotation can be inside a mixed paragraph, or stand on its own.
+            notes = doc.body.select("card-private, span[data-card-privacy]")
+            candidates = [note for note in notes if label in note.get_text()]
+            exact = [note for note in candidates if note.get_text() == label]
+            if exact:
+                candidates = exact
+            if len(candidates) == 1:
+                note = candidates[0]
+                if len(note.contents) != 1 or not isinstance(note.string, NavigableString):
+                    raise ValueError("私人标注需为单行纯文字")
+                old = string(change.get("old", label))
+                new = string(change["text"])
+                if not old or note.string.count(old) != 1 or any(c in new for c in "\r\n"):
+                    raise ValueError("请提供私人标注里唯一的一段原文和单行替换文字")
+                if not exact and len([n for n in doc.body.find_all(string=True) if label in n]) != 1:
+                    raise ValueError("短目标出现在多个位置，请用完整私人标注原文")
+                start, inner_end, end = source_bounds(template, note)
+                inner_start = template.index(">", start) + 1
+                from html import escape
+                value = str(note.string).replace(old, new, 1)
+                output = template[:inner_start] + escape(value, quote=False) + template[inner_end:]
+                project(output)
+                return dict(source=output, revision=revision(output))
+            if candidates:
+                raise ValueError("短目标匹配多条私人标注，请使用完整私人标注原文")
         if len(matches) != 1:
-            raise ValueError("目标未唯一匹配，请查看组件目录")
+            raise ValueError("目标不存在" if not matches else "目标匹配多个组件，请用组件目录的 ref 和 old")
         number = matches[0]
     if named:
         number, selected = named_cell(items, change)
@@ -252,11 +349,18 @@ def edit(req):
                 raise ValueError("cell 需要表体行列编号，从 1 开始")
             target = selected if named else tag.select("tbody > tr")[row-1].find_all(["td","th"],recursive=False)[col-1]
         if "text" in change:
-            if target.name in ("table","figure"):
+            if target.name in ("table","figure","svg","ul","ol"):
                 raise ValueError("请定位到具体单元格或文字组件")
-            if target.find(True) and target.string is None:
-                raise ValueError("含混合富文本，请用精准补丁保留格式")
-            if isinstance(target.string, NavigableString):
+            if "old" in change:
+                old = string(change["old"])
+                nodes = [node for node in target.find_all(string=True) if old and old in node]
+                if len(nodes) != 1 or nodes[0].count(old) != 1:
+                    raise ValueError("原句未唯一匹配单个文字片段，请缩小选区")
+                node = nodes[0]
+                node.replace_with(str(node).replace(old, string(change["text"]), 1))
+            elif target.find(True) and target.string is None:
+                raise ValueError("混排段落请用 ref、old 和 text 修改其中一句")
+            elif isinstance(target.string, NavigableString):
                 target.string.replace_with(string(change["text"]))
             else:
                 target.string = string(change["text"])

@@ -30,7 +30,7 @@ try {
     const href = 'data:' + meta.type + ';base64,' + (await readFile(file)).toString('base64');
     files[id] = {href, name:meta.name};
   }
-  const html = await page.evaluate(async (source,files,format) => {
+  const html = await page.evaluate(async (source,files,format,cardName) => {
     const {mountHtml} = await import('/js/components/html/index.js');
     // Markdown converters put media: references in src/href; retain their identity through sanitization.
     const parsed = new DOMParser().parseFromString(source, 'text/html');
@@ -38,7 +38,7 @@ try {
       const ref = el.getAttribute('src') || el.getAttribute('href');
       if (ref?.startsWith('media:')) el.dataset.attachment = ref;
     }
-    const doc = await new Promise(resolve => mountHtml(document.querySelector('main'),parsed.documentElement.outerHTML,resolve));
+    const doc = await new Promise(resolve => mountHtml(document.querySelector('main'),parsed.documentElement.outerHTML,resolve,cardName));
     const used = new Set();
     for (const el of doc.querySelectorAll('[data-attachment],[src],[href]')) {
       const key = (el.dataset.attachment || el.getAttribute('src') || el.getAttribute('href') || '').match(/^media:(.+)$/)?.[1];
@@ -83,21 +83,25 @@ try {
     printStyle.textContent='@media print { thead{display:table-header-group} figure,tr{break-inside:avoid} caption,h1,h2,h3{break-after:avoid} }';
     doc.head.append(printStyle);
     return '<!doctype html>\n'+doc.documentElement.outerHTML;
-  },task.html,files,task.format);
+  },task.html,files,task.format,task.name);
   const output = name=>path.join(task.dir,name);
   if (task.format === 'html') {
     await writeFile(output('output.html'),html);
   } else {
+    const article = ['png','jpg'].includes(task.format) && /<html\b[^>]*\sdata-card-template="wechat"/i.test(html);
+    const width = article ? 540 : 1000;
+    const scale = task.format === 'jpg' ? (article ? 3 : 2) : (article ? 2 : 1);
+    await page.setViewport({width,height:800,deviceScaleFactor:scale});
     await page.setContent(html,{waitUntil:'load'});
     await page.evaluate(async()=>{await document.fonts.ready;await Promise.all([...document.images].map(im=>im.decode()))});
     if (task.format === 'pdf') {
       await page.pdf({path:output('output.pdf'),format:'A4',printBackground:true,margin:{top:'12mm',bottom:'12mm',left:'12mm',right:'12mm'}});
     } else {
       const height = await page.evaluate(()=>Math.max(document.body.scrollHeight,document.documentElement.scrollHeight));
-      const limit = 8000;
+      const limit = 8000 / scale;
       for (let y=0, i=1;y<height;y+=limit,i++) {
-        const name = height<=limit?'output.png':'part-'+String(i).padStart(6,'0')+'.png';
-        await page.screenshot({path:output(name),captureBeyondViewport:true,clip:{x:0,y,width:1000,height:Math.min(limit,height-y)}});
+        const name = height<=limit && task.format!=='jpg'?'output.png':'part-'+String(i).padStart(6,'0')+'.png';
+        await page.screenshot({path:output(name),captureBeyondViewport:true,clip:{x:0,y,width,height:Math.min(limit,height-y)}});
       }
     }
   }

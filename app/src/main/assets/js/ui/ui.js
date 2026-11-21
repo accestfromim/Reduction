@@ -299,7 +299,7 @@ function formatToolArgs(raw) {
   try {
     const value = JSON.parse(raw || '{}');
     return Object.entries(value)
-      .map(([key, item]) => `${key}: ${String(item)}`)
+      .map(([key, item]) => `${key}: ${typeof item === "string" ? item : JSON.stringify(item)}`)
       .join('\n');
   } catch (_) {
     return String(raw || '');

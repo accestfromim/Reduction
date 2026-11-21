@@ -5,7 +5,8 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import com.mindtravel.reduction.core.Logs
 
-class PcmCapture {
+class PcmCapture(private val allowShared: Boolean = true) {
+    @Volatile private var shared = false
 
     companion object {
         const val SAMPLE_RATE = WavEncoder.SAMPLE_RATE
@@ -32,7 +33,17 @@ class PcmCapture {
         onFrame: (ShortArray) -> Unit,
         onError: (String) -> Unit
     ): Boolean {
-        if (worker?.isAlive == true) return false
+        if (running || worker?.isAlive == true) return false
+        if (allowShared && WarmHeadsetInput.available) {
+            running = true
+            shared = true
+            if (WarmHeadsetInput.attach(this,onFrame) { message ->
+                running = false
+                shared = false
+                onError(message)
+            }) return true
+            shared = false
+        }
         val current = ++generation
         running = true
         worker = Thread { loop(current, source, onFrame, onError) }.also { it.start() }
@@ -41,10 +52,14 @@ class PcmCapture {
 
     fun requestStop() {
         running = false
+        if (shared) {
+            WarmHeadsetInput.detach(this)
+            shared = false
+        }
     }
 
     fun stop() {
-        running = false
+        requestStop()
         if (Thread.currentThread() === worker) return
         record?.let { runCatching { it.stop() } }
         worker?.let { runCatching { it.join(1_500) } }
@@ -53,7 +68,7 @@ class PcmCapture {
 
     fun cancel() {
         generation++
-        running = false
+        requestStop()
         record?.let { runCatching { it.stop() } }
         if (Thread.currentThread() !== worker) {
             worker?.let { runCatching { it.join(1_500) } }
@@ -94,7 +109,10 @@ class PcmCapture {
                 while (running && current == generation) {
                     val read = recorder.read(buffer, 0, buffer.size)
                     if (read <= 0) {
-                        if (read < 0) break
+                        if (read < 0) {
+                            if (running) errorMessage = "麦克风读取中断 ($read)"
+                            break
+                        }
                         continue
                     }
                     if (!named) {

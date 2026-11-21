@@ -19,18 +19,22 @@ class HeadsetMicController(private val context: Context) {
     @Volatile
     private var active = false
 
+    private fun isHeadset(type: Int): Boolean = type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+        (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET)
+
     fun hasBluetoothHeadset(): Boolean {
         val manager = audioManager ?: return false
         val inputs = manager.getDevices(AudioManager.GET_DEVICES_INPUTS)
-        if (inputs.any { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }) return true
+        if (inputs.any { isHeadset(it.type) }) return true
         val outputs = manager.getDevices(AudioManager.GET_DEVICES_OUTPUTS)
         return outputs.any {
             it.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                isHeadset(it.type)
         }
     }
 
     fun start(): Boolean {
+        if (WarmHeadsetInput.available) return true
         val manager = audioManager ?: return false
         if (!hasBluetoothHeadset()) {
             Logs.add("Headset mic unavailable: no Bluetooth SCO input")
@@ -40,7 +44,7 @@ class HeadsetMicController(private val context: Context) {
             var routed = false
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 val device = manager.availableCommunicationDevices.firstOrNull {
-                    it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO
+                    isHeadset(it.type)
                 }
                 routed = device != null && manager.setCommunicationDevice(device)
             }
@@ -75,6 +79,7 @@ class HeadsetMicController(private val context: Context) {
 
     /** Whether the headset's call link is carrying audio, as the system last announced it. */
     private fun linkIsUp(): Boolean {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && audioManager?.communicationDevice?.type?.let(::isHeadset) == true) return true
         @Suppress("DEPRECATION")
         val sticky = context.registerReceiver(null, IntentFilter(AudioManager.ACTION_SCO_AUDIO_STATE_UPDATED))
         return sticky?.getIntExtra(AudioManager.EXTRA_SCO_AUDIO_STATE, -1) == AudioManager.SCO_AUDIO_STATE_CONNECTED

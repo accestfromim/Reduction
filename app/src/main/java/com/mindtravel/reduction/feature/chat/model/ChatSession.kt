@@ -21,7 +21,7 @@ class ChatSession(
 
     companion object {
         /** Room for several dispatch → verify → redo cycles in one reply. */
-        private const val DEFAULT_MAX_TOOL_ROUNDS = 12
+        private const val DEFAULT_MAX_TOOL_ROUNDS = 60
 
         /** How many times a request is sent before the network is declared down. */
         const val ATTEMPTS = 3

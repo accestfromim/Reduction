@@ -1,5 +1,7 @@
 package com.mindtravel.reduction.feature.voice
 
+import com.mindtravel.reduction.core.VoiceTrace
+
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.core.audio.AudioGateway
 import com.mindtravel.reduction.core.events.EventSink
@@ -36,6 +38,7 @@ class PushToTalkSession(
             return
         }
 
+        VoiceTrace.start(id)
         val useHeadset = settings.headsetMicEnabled && headsetMic.start()
         val started = wavRecorder.start(useCommunicationSource = useHeadset) {
             emitter.emit("onRecordingLimit", id)
@@ -71,14 +74,17 @@ class PushToTalkSession(
     private suspend fun finish(id: String) {
         if (!finishing.compareAndSet(false, true)) return
         try {
+            VoiceTrace.mark(id, "release")
             val wav = wavRecorder.stop()
             if (wav == null || wav.size < 1_000) {
+                VoiceTrace.mark(id, "asrfailed")
                 emitter.emit("onAsrResult", id, false, "没有录到声音，请再试一次")
                 return
             }
             transcribe(id, wav)
         } catch (t: Throwable) {
             Logs.add("ASR failed: ${t.message}")
+            VoiceTrace.mark(id, "asrfailed")
             emitter.emit("onAsrResult", id, false, t.message ?: "识别失败")
         } finally {
             headsetMic.stop()
@@ -89,14 +95,18 @@ class PushToTalkSession(
     private suspend fun transcribe(id: String, wav: ByteArray) {
         val settings = settingsRepository.load()
         if (settings.apiKey.isBlank()) {
+            VoiceTrace.mark(id, "asrfailed")
             emitter.emit("onAsrResult", id, false, "请先在设置里填写 API Key")
             return
         }
         emitter.emit("onStatus", id, "识别中")
+        VoiceTrace.mark(id, "asrstart")
         val raw = withContext(Dispatchers.IO) { audioGateway.transcribe(settings.apiKey, wav) }
         val text = clean(raw)
+        if (text.isNotBlank()) VoiceTrace.mark(id, "asrend")
         withContext(Dispatchers.IO) { keepRecording("talk", wav, text) }
         if (text.isBlank()) {
+            VoiceTrace.mark(id, "asrfailed")
             emitter.emit("onAsrResult", id, false, "没有识别到内容，请重说")
         } else {
             emitter.emit("onAsrResult", id, true, text)

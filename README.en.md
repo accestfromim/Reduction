@@ -4,6 +4,8 @@
 
 <h1 align="center">Reduction: Smart Pocket Assistant</h1>
 
+[中文](README.md) · English
+
 <p align="center">
   <img src="docs/badges/android.svg" alt="Android 8.0 and later" />
   <img src="docs/badges/arm64.svg" alt="arm64" />
@@ -50,6 +52,16 @@ To that end, Reduction proposes a solution delivered by a headset, a phone, a co
 | **Multi-agent scheduling** | Reduction can drive a group of AIs with a super agent–sub agent architecture: the super agent splits tasks and reads intent, and sub agents execute and report back |
 | **Tool use** | Steadily adding everything you can think of: web search, a calculator, the status of other programming agent sessions on your computer, and low-battery alerts for the phone and headset |
 
+### Cards and attachments
+
+Drop an image between two paragraphs to insert it there. Documents such as Markdown, TXT, and CSV files are attached under their original names. The assistant can read Markdown and TXT attachments when it reads the card. The **Export** menu produces a full-length PNG, a PDF, or a ZIP containing the original files.
+
+Cards inherit their sharing settings from the top-level folder. Cards under `个人/` (Personal) and `实验室/` (Lab) are private by default. Under `Reduction/`, you can write for a public audience and mark personal relationships or reminders as private annotations. The author can see those annotations. Public exports omit them.
+
+### Manage GitHub by voice (desktop)
+
+Ask “Refresh the GitHub repository activity card” to collect issues, pull requests, and releases in `Reduction/GitHub/仓库动态`. You can also ask Reduction to create or update an issue, post a comment, or publish the public version of a card to an HTML file in the repository. Writes use your GitHub CLI login in WSL (`gh auth login`). Reduction shows you the destination and content for confirmation before submitting.
+
 ## Full-stack setup
 
 [DeepSeek](https://platform.deepseek.com/) API key: provides the large language model, speech-to-text and text-to-speech, and web search services.
@@ -77,6 +89,8 @@ desktop/install.sh     # install as an app: desktop pet, start on boot, desktop 
 
 ### Cloud server
 
+An optional relay lets the phone reach the computer over the internet. The computer merges changes from both devices.
+
 ### Let the phone schedule agents on your computer
 
 The computer needs an SSH service, `bwrap`, and [opencode](https://opencode.ai/). In the app, tap the computer icon, copy the public key into the computer's `~/.ssh/authorized_keys`, and enter the address. Sub agents use the DeepSeek key on your phone.
@@ -86,7 +100,7 @@ The computer needs an SSH service, `bwrap`, and [opencode](https://opencode.ai/)
 | | |
 | :-- | :-- |
 | **API key** | Stored only on your devices (encrypted on the phone; a file only you can read on the computer), and sent only to DeepSeek |
-| **Conversations, cards, images, and recordings** | Stored on the local device. The phone and the computer each keep their own copy, they do not sync, and there is no cloud |
+| **Conversations, cards, images, and recordings** | Once the phone and computer are connected, they can sync conversations, cards, to-dos, and missing card media. Each device keeps a local copy and stores its own settings. |
 | **Sent to DeepSeek** | What you say (recordings are used for recognition), conversation content, and the text to be read aloud |
 | **Sent to your own computer** | Only after you configure the computer connection: run logs and the recording of each of your turns, for troubleshooting and wake-word improvement. If you do not want to keep them, do not configure the computer connection |
 

@@ -94,8 +94,12 @@ window.Native = {
     ui.setUpdateState(state, version, progress);
   },
 
-  onCardsChanged() {
-    cards.onChanged();
+  onCardConflictReview(id,text) { cards.conflictReviewed(id,text); },
+
+  onCardExport(message) { ui.toast(message); },
+
+  onCardsChanged(name) {
+    cards.onChanged(name);
   },
 
   onOpenCard(name) {
@@ -240,7 +244,6 @@ ui.whenPageShown(cards.onPage);
 ui.els.cardNew.addEventListener('click', cards.newCard);
 ui.els.cardLock.addEventListener('click', cards.toggleLock);
 ui.els.cardFloat.addEventListener('click', cards.toggleFloat);
-document.getElementById('cardPreview').addEventListener('click', cards.togglePreview);
 ui.els.cardBody.addEventListener('click', (event) => {
   if (event.target.closest('a, button, input, img, video, audio, .pdf-pages') || window.getSelection()?.toString()) return;
   cards.editCard();
@@ -256,12 +259,11 @@ ui.els.cardMediaInput.addEventListener('change', cards.attachMedia);
 ui.els.cardCopy.addEventListener('click', cards.copyCard);
 ui.els.cardDelete.addEventListener('click', cards.deleteCard);
 
-playSplash();
-
 function init() {
   state.settings = loadSettings();
   state.messages = loadHistory();
   cards.loadCards();
+  cards.restoreView();
   ui.setReadHandler((text) => chat.speakText(text));
   ui.renderAll();
   ui.updateHint();
@@ -283,4 +285,4 @@ function init() {
   ui.setUpdateState(callBridge('updateState'), callBridge('updateVersion'), 0);
 }
 
-init();
+try { init(); } finally { requestAnimationFrame(playSplash); }

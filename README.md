@@ -4,6 +4,8 @@
 
 <h1 align="center">Reduction：智能随身助手</h1>
 
+中文 · [English](README.en.md)
+
 <p align="center">
   <img src="docs/badges/android.svg" alt="Android 8.0 及以上" />
   <img src="docs/badges/arm64.svg" alt="arm64" />
@@ -50,6 +52,16 @@ Reduction回答一个问题：我们有可能在生活更轻松的同时、可�
 | **多 agent 调度** | Reduction是可以控制一群AI，采用super agent-sub agent架构：super agent分发任务、理解意图；sub agent具体执行、反馈结果 |
 | **工具使用** | 正在不断支持你能想到的一切：联网搜索、计算器、查看电脑上其它编程 agent 会话的状态、手机和耳机电量提醒。 |
 
+### 卡片与附件
+
+把图片拖到卡片的两段文字之间，图片会插在落点。Markdown、TXT 和 CSV 等文档按原文件名挂载。读卡时助手可以读取 Markdown 和 TXT 正文。使用卡片上的「导出」菜单可生成 PNG 长图、PDF，或包含原件的 ZIP 包。
+
+分享范围跟随一级文件夹。`个人/` 和 `实验室/` 默认整卡私密；`Reduction/` 适合写可分享的内容，夹在正文里的个人关系或备注可以标为私人标注。作者能看到标注，公开导出时会自动过滤。
+
+### 用语音管理 GitHub（桌面端）
+
+说“刷新 GitHub 仓库动态”，Reduction 会把本仓库的 Issues、PR 和 Releases 整理到「Reduction/GitHub/仓库动态」。也可以让它创建或更新 Issue、回复评论，或将指定卡片的公开版同步到仓库中的 HTML 文件。写入操作使用 WSL 的 GitHub CLI 登录态（`gh auth login`），提交前会显示目标和内容供你确认。
+
 ## 全栈方案
 
 [DeepSeek](https://platform.deepseek.com/) API Key：提供大模型、语音文字互转、网络搜索服务
@@ -77,6 +89,8 @@ desktop/install.sh     # 装成应用：桌宠、开机自启、桌面图标
 
 ### 云服务器
 
+可选的中转服务器让手机在外网也能连接到电脑。电脑负责合并两端的数据。
+
 ### 让手机调度电脑上的 agent
 
 电脑上要有 SSH 服务、`bwrap` 和 [opencode](https://opencode.ai/)。在 App 里点电脑图标，复制公钥加到电脑的 `~/.ssh/authorized_keys`，填上地址即可。sub agent 用的是你手机里那个 DeepSeek Key。
@@ -86,7 +100,7 @@ desktop/install.sh     # 装成应用：桌宠、开机自启、桌面图标
 | | |
 | :-- | :-- |
 | **API Key** | 只存在你的设备上（手机上加密保存，电脑上是只有本人可读的文件），只发给 DeepSeek。 |
-| **对话、卡片、图片和录音** | 存在本机。手机和电脑各存各的，不同步，也没有任何云端。 |
+| **对话、卡片、图片和录音** | 配置手机与电脑的连接后，可以同步对话、卡片、待办和缺少的卡片媒体。每台设备保留本地副本；设置由各设备单独保存。 |
 | **发给 DeepSeek 的** | 你说的话（录音用于识别）、对话内容、要朗读的文字。 |
 | **发给你自己电脑的** | 仅在你配置了电脑连接之后：运行日志和你每一轮说话的录音，用于排查问题和改进唤醒。不想留就不要配置电脑连接。 |
 

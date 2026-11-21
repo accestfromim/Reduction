@@ -10,6 +10,14 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.media.AudioDeviceCallback
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import android.os.Handler
+import android.os.Looper
+import com.mindtravel.reduction.hardware.audio.HeadsetMicController
+import com.mindtravel.reduction.hardware.audio.WarmHeadsetInput
+import java.util.concurrent.Executors
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.mindtravel.reduction.core.Logs
@@ -85,12 +93,48 @@ class WakeWordService : Service() {
 
     private var detector: WakeWordDetector? = null
 
+    private val main = Handler(Looper.getMainLooper())
+    private val routeWorker = Executors.newSingleThreadExecutor()
+    private val route by lazy { HeadsetMicController(this) }
+    private val settings by lazy { SettingsRepository(this) }
+    private var paused = false
+    private var started = false
+    @Volatile private var destroyed = false
+    private var desired: Boolean? = null
+    private var changingRoute = false
+    private var routeGeneration = 0
+    private val devices = object : AudioDeviceCallback() {
+        override fun onAudioDevicesAdded(devices: Array<AudioDeviceInfo>) = refreshRoute()
+        override fun onAudioDevicesRemoved(devices: Array<AudioDeviceInfo>) = refreshRoute()
+    }
+
+    private fun refreshRoute() {
+        if (!started || destroyed) return
+        val want = settings.load().headsetMicEnabled && route.hasBluetoothHeadset()
+        if (desired == want) return
+        changingRoute = true
+        desired = want
+        val generation = ++routeGeneration
+        detector?.stop()
+        routeWorker.execute {
+            if (want && !destroyed && route.start()) WarmHeadsetInput.open()
+            else { WarmHeadsetInput.close(); route.stop() }
+            main.post {
+                if (!destroyed && generation == routeGeneration) {
+                    changingRoute = false
+                    if (!paused) startDetector()
+                }
+            }
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
         isRunning = true
         createChannel()
+        getSystemService(AudioManager::class.java).registerAudioDeviceCallback(devices,main)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -100,6 +144,8 @@ class WakeWordService : Service() {
             return START_NOT_STICKY
         }
 
+        started = true
+        paused = intent?.action == ACTION_PAUSE
         when (intent?.action) {
             ACTION_PAUSE -> {
                 detector?.stop()
@@ -109,17 +155,16 @@ class WakeWordService : Service() {
                 Logs.add("Wake word listener restarted from the foreground")
                 detector?.stop()
                 startForegroundCompat(buildNotification("正在监听“Hi Reduction”"))
-                startDetector()
             }
             ACTION_RESUME -> {
                 startForegroundCompat(buildNotification("正在监听“Hi Reduction”"))
-                startDetector()
             }
             else -> {
                 startForegroundCompat(buildNotification("正在启动唤醒词…"))
-                startDetector()
             }
         }
+        refreshRoute()
+        if (!paused && !changingRoute) startDetector()
         return START_STICKY
     }
 
@@ -226,7 +271,11 @@ class WakeWordService : Service() {
     }
 
     override fun onDestroy() {
+        destroyed = true
+        getSystemService(AudioManager::class.java).unregisterAudioDeviceCallback(devices)
         detector?.release()
+        routeWorker.execute { WarmHeadsetInput.close(); route.stop() }
+        routeWorker.shutdown()
         detector = null
         isRunning = false
         deaf = false

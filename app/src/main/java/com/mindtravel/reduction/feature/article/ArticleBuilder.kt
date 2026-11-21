@@ -45,6 +45,9 @@ class ArticleBuilder(
     private fun own(name: String): String? {
         val text = card(name)?.trim().orEmpty()
         if (text.isEmpty()) return null
+        if (text.startsWith("<!doctype html>", true)) {
+            org.jsoup.Jsoup.parse(text).selectFirst("body > pre:only-child > code")?.let { return it.wholeText().trimEnd() }
+        }
         val fenced = FENCE.matchEntire(text)
         return (fenced?.groupValues?.get(1) ?: text).trim().takeIf { it.isNotEmpty() }
     }
@@ -53,8 +56,19 @@ class ArticleBuilder(
      * The page that builds the article of [source]. [media] maps the ids of the pictures it
      * refers to onto data: addresses, so that the page carries its pictures with it.
      */
+    fun publicSource(source: String): String {
+        val marker = Regex("""data-card-privacy|</?card-private""", RegexOption.IGNORE_CASE)
+        if (!marker.containsMatchIn(source)) return source
+        val rule = JSONObject(asset("article/privacy.json"))
+        val result = Regex(rule.getString("pattern")).replace(source, "")
+        require(!marker.containsMatchIn(result)) { "隐私标记不完整，请先修正" }
+        return result
+    }
+
     fun page(source: String, media: Map<String, String> = emptyMap()): String {
-        val data = JSONObject().put("source", source).put("media", JSONObject(media)).toString()
+        val public = publicSource(source)
+        val images = if (public == source) media else media.filterKeys { public.contains("media:$it") }
+        val data = JSONObject().put("source", public).put("media", JSONObject(images)).toString()
         val libraries = listOf("vendor/marked.umd.js", "vendor/purify.min.js", "vendor/katex/katex.min.js")
             .joinToString("\n;\n") { asset(it) }
         return fill(

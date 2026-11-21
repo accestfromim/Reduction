@@ -2,6 +2,10 @@
 // it does on the phone; here those calls go to the local server, and the server's events
 // come back over one stream. Sound and microphone are this browser's.
 (() => {
+  document.addEventListener('DOMContentLoaded', () => {
+    const menu = document.getElementById('cardExport');
+    if (menu) menu.add(new Option('JPG · 高清长图', 'jpg'), menu.querySelector('[value="pdf"]'));
+  });
   document.documentElement.classList.add('desktop-client');
   const post = (path, body, type) => fetch(path, { method: 'POST', headers: { 'X-Reduction': '1', 'Content-Type': type || 'application/json' }, body });
 
@@ -39,7 +43,8 @@
       button.className = 'icon-btn window-full';
       button.setAttribute('aria-label', '全屏');
       const draw = (full) => {
-        button.title = full ? '回到卡片大小（F11）' : '全屏（F11）';
+        button.title = full ? '退出全屏（Esc）' : '全屏（F11）';
+        button.setAttribute('aria-label', full ? '退出全屏' : '全屏');
         button.innerHTML = full
           ? '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5"/></svg>'
           : '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>';
@@ -47,7 +52,14 @@
       };
       draw(false);
       button.addEventListener('click', () => host.postMessage('fullscreen'));
-      host.addEventListener('message', (event) => draw(event.data === 'full'));
+      host.addEventListener('message', (event) => {
+        const message = event.data;
+        if (typeof message === 'string' && message.startsWith('review:')) {
+          native('onOpenCard', message.slice('review:'.length));
+        } else {
+          draw(message === 'full');
+        }
+      });
       const actions = document.querySelector('.header-actions') || document.querySelector('.topbar-right');
       if (actions) actions.insertBefore(button, actions.firstChild);
     });
@@ -157,9 +169,11 @@
   const here = {
     ...(ownAudio ? {
       requestMicPermission: () => setTimeout(() => native('onMicPermission', !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)), 0),
-      startRecording: (id) => { startRecording(id); },
+      startRecording: (id) => { call("voiceStart", [id]); startRecording(id); },
       stopAndTranscribe: (id) => {
+        call("voiceRelease", [id]);
         const done = endRecording();
+        if (!done || done.wav.byteLength < 44 + 3200) call("voiceAsrFailed", [id]);
         if (!done || done.wav.byteLength < 44 + 3200) return native('onAsrResult', id, false, '没有录到声音，请再试一次');
         post('/asr?id=' + encodeURIComponent(id), done.wav, 'audio/wav');
       },
@@ -182,6 +196,11 @@
   // ── what the server tells this page ─────────────────────────────────────
   function listen() {
     const events = new EventSource('/events');
+    let connected = false;
+    events.onopen = () => {
+      if (connected) native('onCardsChanged', '');
+      connected = true;
+    };
     events.onmessage = (message) => {
       const event = JSON.parse(message.data);
       if (event.fn) return native(event.fn, ...event.args);

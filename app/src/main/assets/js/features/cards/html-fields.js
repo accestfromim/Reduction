@@ -1,7 +1,11 @@
+import { bindCaretNavigation } from './caret-navigation.js';
+import { bindTextFormat } from './text-format.js';
+import { bindImagePaste } from './image-paste.js';
+import { preparePictures, bindPictures } from './image-edit.js';
 import { drawChart } from '../../components/html/chart-table.js';
 
 // Keep the authored document separate from edit handles and generated chart markup.
-export function htmlFields(source, commit) {
+export function htmlFields(source, commit, undo) {
   const doc = new DOMParser().parseFromString(source, 'text/html');
   const preview = doc.cloneNode(true);
   const excluded = 'script,style,template,noscript,svg,math,iframe,object,form,a,button,select,textarea,audio,video,[hidden],[aria-hidden="true"],[contenteditable="false"]';
@@ -26,13 +30,19 @@ export function htmlFields(source, commit) {
     node.replaceWith(handle);
     handle.append(node);
   });
+  preparePictures(preview);
   const serialize = document => '<!doctype html>\n' + document.documentElement.outerHTML;
   return {
     html: serialize(preview),
     bind(frame) {
-      for (const handle of frame.querySelectorAll('[data-reduction-field]')) {
+      bindCaretNavigation(frame);
+      bindTextFormat(frame, originals, bindHandle, () => commit(serialize(doc)));
+      bindImagePaste(frame, doc, originals, [...doc.body.querySelectorAll('img,svg')], index => commit(serialize(doc),index));
+      bindPictures(frame, doc, () => commit(serialize(doc)), undo);
+      for (const handle of frame.querySelectorAll('[data-reduction-field]')) bindHandle(handle);
+      function bindHandle(handle) {
         const original = originals[Number(handle.dataset.reductionField)];
-        if (!original) continue;
+        if (!original) return;
         handle.contentEditable = 'plaintext-only';
         handle.style.minWidth = '.25em';
         if (!original.data) handle.style.display = 'inline-block';

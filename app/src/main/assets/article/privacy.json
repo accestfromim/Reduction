@@ -1,0 +1,4 @@
+{
+  "attribute": "data-card-privacy",
+  "pattern": "<span data-card-privacy=\"(note|person|relation|chat|uncertain)\">([^<>\\r\\n]*)</span>|<card-private>([^<>\\r\\n]*)</card-private>"
+}

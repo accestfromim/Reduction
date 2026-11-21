@@ -1,5 +1,7 @@
 package com.mindtravel.reduction.feature.voice
 
+import com.mindtravel.reduction.core.VoiceTrace
+
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.core.events.EventSink
 import com.mindtravel.reduction.core.settings.SettingsGateway
@@ -106,6 +108,7 @@ class SpeechController(
         Logs.add("TTS stream start voice=$voice")
         streaming = true
         streamer.start(apiKey, voice, object : ReplyStreamer.Events {
+            override fun onFirstAudio() = VoiceTrace.mark(id, "audio")
             override fun onStart() {
                 if (isActive(id)) emitter.emit("onTtsStart", id)
             }

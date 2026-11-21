@@ -1,5 +1,7 @@
 package com.mindtravel.reduction.feature.chat.ui
 
+import com.mindtravel.reduction.core.VoiceTrace
+
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.core.events.EventSink
 import com.mindtravel.reduction.core.settings.SettingsGateway
@@ -93,7 +95,7 @@ class Conversation(
      * [PICTURES_IN_VIEW]; they are not written to the record.
      */
     @Synchronized
-    fun submit(raw: String, shown: String, images: List<ChatImage>): Boolean {
+    fun submit(raw: String, shown: String, images: List<ChatImage>, trace: String? = null): Boolean {
         val text = raw.trim()
         if (text.isEmpty()) return false
         val settings = settingsRepository.load()
@@ -104,11 +106,13 @@ class Conversation(
 
         lines += Line(UUID.randomUUID().toString(), Role.USER, text, System.currentTimeMillis(), images)
         save()
-        val id = UUID.randomUUID().toString()
+        val id = trace ?: UUID.randomUUID().toString()
         emitter.emit("onReplyBegin", id, shown.trim().ifEmpty { text })
 
+        val sharing = cards.sharingPolicy()
         val directory = cards.list().map { card ->
             "- ${card.name}：${card.purpose.ifBlank { "（没有写用途）" }}（${card.chars} 字）" +
+                sharing.scope(card.name).let { if (it.isEmpty()) "" else "【$it】" } +
                 if (cards.isLocked(card.name)) "【用户已审核并锁定的 prompt】" else ""
         }
         val messages = ArrayList<ChatMessage>()
@@ -142,9 +146,20 @@ class Conversation(
      * is a list of {name, mediaType, base64}. The words kept say that pictures came along.
      */
     @Synchronized
-    fun submitWithPictures(raw: String, picturesJson: String): Boolean {
+    fun submitVoice(id: String, text: String, pictures: String): Boolean {
+        try {
+            val accepted = submitWithPictures(text, pictures, id)
+            if (!accepted) VoiceTrace.mark(id, "submitfailed")
+            return accepted
+        } catch (error: Exception) {
+            VoiceTrace.mark(id, "submitfailed")
+            throw error
+        }
+    }
+
+    fun submitWithPictures(raw: String, picturesJson: String, trace: String? = null): Boolean {
         val images = ChatImage.listFromJson(picturesJson)
-        if (images.isEmpty()) return submit(raw)
+        if (images.isEmpty()) return submit(raw, raw, emptyList(), trace)
         val said = raw.trim().ifEmpty { "请看图。" }
         // Each picture is kept as something a card can hold, under an id the program gives it. The
         // assistant is told the ids, so that it can put a picture into a card where it belongs; one
@@ -155,11 +170,11 @@ class Conversation(
         }
         val note = if (ids.all { it != null }) {
             "［随这条消息发来 ${images.size} 张图片，按顺序的附件编号：" + ids.joinToString("、") +
-                "。要把哪张放进卡片，就在卡片里写一行 ![说明](media:编号)］"
+                "。要把哪张放进卡片，就调用 card 工具，do 传对象 {\"media\":\"附件编号\",\"caption\":\"图注\"}］"
         } else {
             "［随这条消息发来 ${images.size} 张图片］"
         }
-        return submit("$said\n$note", said, images)
+        return submit("$said\n$note", said, images, trace)
     }
 
     /** Everything said so far, as the JSON the UI draws from. */
