@@ -2,7 +2,7 @@
   <img src="docs/banner.png" alt="Reduction" width="100%" />
 </p>
 
-<h1 align="center">Reduction-JARVIS for everyone</h1>
+<h1 align="center">Reduction-JARVIS for Everyone</h1>
 
 [中文](README.md) · English
 
