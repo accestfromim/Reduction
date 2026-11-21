@@ -2,7 +2,7 @@
   <img src="docs/banner.png" alt="Reduction" width="100%" />
 </p>
 
-<h1 align="center">Reduction: Smart Pocket Assistant</h1>
+<h1 align="center">Reduction — Jarvis in the real world</h1>
 
 [中文](README.md) · English
 
@@ -13,11 +13,11 @@
   <img src="docs/badges/mit.svg" alt="MIT" />
 </p>
 
-Reduction (the name of this smart pocket assistant) answers one question: can we reliably control more intelligence while making life easier?
+Say “Hi Reduction” through your headset while your phone stays in your pocket. Tell it what you need to remember or get done. When you have a moment, open the cards on your phone, check the results, and edit them in place.
 
-The answer is yes. Reduction works toward this by maximizing information efficiency: the efficiency with which a person takes in information and verifies AI results.
+Reduction asks a question: can we reliably put more AI to work while making everyday life easier? We measure that in terms of information efficiency: how much you can take in and verify for the effort you spend interacting with the assistant.
 
-To that end, Reduction proposes a solution delivered by a headset, a phone, a computer, and a cloud server working together:
+Here’s how the devices work together.
 
 | | |
 | :-- | :-- |
@@ -47,9 +47,9 @@ To that end, Reduction proposes a solution delivered by a headset, a phone, a co
 
 | | |
 | :-- | :-- |
-| **Screen-off voice interaction** | Say “Hi Reduction” to wake the assistant, and say “完毕” (finished) to stop recording |
-| **Card-based memory** | Everything is a card, and a card is how work gets organized. Built on the CARD super protocol, you can produce delivery-ready files with AI, voice, and a little manual editing, without caring about file types |
-| **Multi-agent scheduling** | Reduction can drive a group of AIs with a super agent–sub agent architecture: the super agent splits tasks and reads intent, and sub agents execute and report back |
+| **Screen-off voice control** | Say “Hi Reduction” to wake the assistant and “完毕” (*wánbì*, “finished”) to end the recording. Give it tasks while your phone stays in your pocket. |
+| **Card-based memory** | A card is where you collect, organize, and revisit an everyday task or idea. The CARD protocol handles the underlying files. Use voice to direct the AI, edit the rendered result in place, and export a shareable file with private annotations removed. |
+| **Coordinating agents** | The lead agent works out what you want and delegates tasks. Subagents carry out the work and report their results. |
 | **Tool use** | Steadily adding everything you can think of: web search, a calculator, the status of other programming agent sessions on your computer, and low-battery alerts for the phone and headset |
 
 ### Cards and attachments
