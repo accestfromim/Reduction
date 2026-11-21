@@ -2,7 +2,7 @@
   <img src="docs/banner.png" alt="Reduction" width="100%" />
 </p>
 
-<h1 align="center">Reduction：智能随身助手</h1>
+<h1 align="center">Reduction-智能随身助手</h1>
 
 中文 · [English](README.en.md)
 
