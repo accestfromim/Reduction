@@ -13,7 +13,9 @@
   <img src="docs/badges/mit.svg" alt="MIT" />
 </p>
 
-Can we make everyday life easier while reliably directing more AI work? Reduction focuses on the time and effort it takes to understand information and verify an assistant’s results.
+Can we make everyday life easier while reliably directing more AI work?
+
+Reduction's answer is yes. It aims to help people take in information and verify AI results as efficiently as possible.
 
 A headset, phone, computer, and optional cloud relay share the work.
 
@@ -43,7 +45,7 @@ A headset, phone, computer, and optional cloud relay share the work.
 
 [Download Reduction for Android](https://ai.7-sunday.com/Reduction/). Version **1.0.81 (112)** moved the updater to HTTPS. If you have 1.0.80 or earlier, install the signed APK over your existing app once to keep your cards and settings. For later updates, open Settings and choose **检查并自动下载更新** (“Check for and automatically download updates”). The app verifies the download before handing it to the Android installer.
 
-Try saying “Remind me on Friday to send the draft to Lin.” Later, review the reminder on your phone or open the related card on your computer. For spoken replies, Settings offers DeepSeek API voices and the Android system voice. The latter requires a Chinese offline voice installed on the phone.
+Try saying “Remind me on Friday to send the draft to Lin.” Later, review the reminder on your phone or open the related card on your computer. For spoken replies, Settings offers DeepSeek API voices and the Android system voice. To hear Chinese replies through the Android system voice, install an offline Chinese voice on the phone.
 
 ## What it can do
 
@@ -100,7 +102,7 @@ Open the computer panel on your phone, add its SSH public key to the target acco
 
 ### How a delegated task finishes
 
-A write task declares the files it intends to change. Reduction records an attempt before launch, checks for conflicts, and applies the configured directory permissions. If the launch acknowledgement is lost, the scheduler looks up that attempt by ID. A worker returns its commands, outputs, artifacts and a receipt. A separate read-only reviewer checks the artifacts against the requested criteria before the ledger marks the task complete.
+A write task declares the files it intends to change. Reduction records an attempt before launch, checks for conflicts, and applies the configured directory permissions. If the launch acknowledgement is lost, the scheduler looks up that attempt by ID. A worker returns its commands, outputs, artifacts and a receipt. The task then enters pending review. An independent, read-only reviewer checks the artifacts against the original criteria and cites evidence from tool calls before the ledger marks the task complete.
 
 The Android release and the deployed desktop have been tested for report delivery after a restart, duplicate requests, cancellation and retry checks.
 
