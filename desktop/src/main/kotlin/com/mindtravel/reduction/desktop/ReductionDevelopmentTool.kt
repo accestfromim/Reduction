@@ -14,7 +14,8 @@ class ReductionDevelopmentTool : ChatTool {
     override fun execute(argumentsJson: String): String {
         val args = JSONObject(argumentsJson)
         val root = File(System.getenv("REDUCTION_ROOT") ?: System.getProperty("user.dir"))
-        val process = ProcessBuilder("python3",File(root,"tools/session/develop.py").path)
+        val python = System.getenv("REDUCTION_PYTHON") ?: if (System.getProperty("os.name").startsWith("Windows")) "python.exe" else "python3"
+        val process = ProcessBuilder(python, "-X", "utf8", File(root, "tools/session/develop.py").path)
             .directory(root).redirectErrorStream(true).start()
         val input = JSONObject().put("prompt",args.getString("prompt"))
             .put("files",args.getString("files").lines().map(String::trim).filter(String::isNotEmpty))
