@@ -231,6 +231,9 @@ ui.els.shareDiagnostics.addEventListener('click', settings.shareDiagnostics);
 
 ui.els.pcBtn.addEventListener('click', pc.openPc);
 ui.els.pcPill.addEventListener('click', pc.openPc);
+document.getElementById('settingsUpdate').addEventListener('click', () => {
+  callBridge(callBridge('updateState') === 'ready' ? 'installUpdate' : 'checkUpdate');
+});
 ui.els.updatePill.addEventListener('click', () => callBridge('installUpdate'));
 ui.els.closePc.addEventListener('click', ui.closeSheets);
 ui.els.pcBackdrop.addEventListener('click', ui.closeSheets);

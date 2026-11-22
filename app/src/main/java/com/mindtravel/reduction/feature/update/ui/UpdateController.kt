@@ -42,8 +42,12 @@ class UpdateController(
     fun state(): String = status
     fun version(): String = readyVersion
 
-    fun check() {
-        if (MANIFEST_URL.isBlank() || checking || status == "ready") return
+    fun check(userInitiated: Boolean = false) {
+        if (MANIFEST_URL.isBlank()) {
+            if (userInitiated) emitter.emit("onUpdateError", "当前版本未配置更新地址，无法检查更新")
+            return
+        }
+        if (checking || status == "ready") return
         checking = true
         setStatus("checking", "")
         scope.launch(Dispatchers.IO) {

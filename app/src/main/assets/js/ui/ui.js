@@ -144,6 +144,20 @@ export function setPcConnection(state) {
 }
 
 export function setUpdateState(state, version, progress) {
+  const button = document.getElementById('settingsUpdate');
+  if (button && /Android/i.test(navigator.userAgent) && window.Android?.checkUpdate) {
+    button.classList.remove('hidden');
+    button.disabled = ['checking', 'available', 'downloading', 'installing'].includes(state);
+    const labels = {
+      checking: '正在检查更新…',
+      available: '准备自动下载…',
+      downloading: `正在下载 ${progress || 0}%`,
+      ready: `安装更新 ${version || ''}`.trim(),
+      installing: '正在安装…',
+      error: '重试下载更新'
+    };
+    button.textContent = labels[state] || '检查并自动下载更新';
+  }
   const visible = state === 'available' || state === 'downloading' || state === 'ready';
   els.updatePill.classList.toggle('hidden', !visible);
   els.updatePill.classList.remove('available', 'downloading', 'ready');
