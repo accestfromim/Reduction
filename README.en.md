@@ -2,7 +2,7 @@
   <img src="docs/banner.png" alt="Reduction" width="100%" />
 </p>
 
-<h1 align="center">Reduction-JARVIS for Everyone</h1>
+<h1 align="center">Reduction-JARVIS for everyone</h1>
 
 [中文](README.md) · English
 
@@ -13,7 +13,9 @@
   <img src="docs/badges/mit.svg" alt="MIT" />
 </p>
 
-Say “Hi Reduction” through your headset while your phone stays in your pocket. Tell it what you need to remember or get done. When you have a moment, open the cards on your phone, check the results, and edit them in place.
+Reduction is open source, and it is a voice-first AI assistant: a smart pocket assistant that stays with you through a headset, a phone, a computer, and an optional cloud server.
+
+Say “Hi Reduction” through your headset while your phone stays in your pocket. Tell it what you need to remember or get done, hands-free. When you have a moment, open the cards on your phone, check the results, and edit them in place.
 
 Reduction asks a question: can we reliably put more AI to work while making everyday life easier? We measure that in terms of information efficiency: how much you can take in and verify for the effort you spend interacting with the assistant.
 
@@ -21,10 +23,10 @@ Here’s how the devices work together.
 
 | | |
 | :-- | :-- |
-| **Headset and microphone** | Short real-time chats, controlled by voice alone |
-| **Phone** | The pocket assistant sorts affairs and turns them into cards. You can leave the phone in your pocket and review them all at once when you have time |
-| **Computer** | Runs the sub agents (AI workers that a super agent delegates tasks to) that involve personal privacy, and provides the tool-calling interface |
-| **Cloud server** | Runs around the clock, relays messages between the phone and the computer, and runs sub agents that do not involve personal privacy |
+| **Headset and microphone** | Short real-time chats with the voice assistant, controlled by voice alone |
+| **Phone** | The personal assistant sorts affairs and turns them into cards. You can leave the phone in your pocket and review them all at once when you have time |
+| **Computer** | Runs the sub agents (AI workers that a super agent delegates tasks to) and provides the tool-calling interface |
+| **Cloud server** | Runs around the clock and relays messages between the phone and the computer. It does not run sub agents |
 
 <table>
   <tr>
@@ -41,20 +43,27 @@ Here’s how the devices work together.
   </tr>
 </table>
 
+## Get started on Android
+
+[Download Reduction for Android](https://ai.7-sunday.com/Reduction/). Version **1.0.81 (112)** moved the updater to HTTPS. If you have 1.0.80 or earlier, install the signed APK over your existing app once to keep your cards and settings. For later updates, open Settings and choose the update button. The app verifies the download before handing it to the Android installer.
+
+Try saying “Remind me on Friday to send the draft to Lin.” Later, review the reminder on your phone or open the related card on your computer. For spoken replies, Settings offers DS TTS (Stella or Tide) and the Android system voice. The latter requires a Chinese offline voice installed on the phone.
+
 ## What it can do
 
 [**CARD · the Reduction card protocol**](docs/html-components.md) defines how to write CARD components (the building blocks of a card), with AI usage examples and the rules for attachments and export.
 
 | | |
 | :-- | :-- |
-| **Screen-off voice control** | Say “Hi Reduction” to wake the assistant and “完毕” (*wánbì*, “finished”) to end the recording. Give it tasks while your phone stays in your pocket. |
+| **Screen-off voice control** | Say the wake word “Hi Reduction” to wake the assistant and “完毕” (*wánbì*, “finished”) to end the recording. Give it tasks while your phone stays in your pocket. |
+| **Chat input** | Paste a multi-line Markdown body, or drop a Markdown file onto the composer to send its text. Headings, paragraphs, and code-block line breaks are kept. Enter sends; Shift+Enter adds a line. |
 | **Card-based memory** | A card is where you collect, organize, and revisit an everyday task or idea. The CARD protocol handles the underlying files. Use voice to direct the AI, edit the rendered result in place, and export a shareable file with private annotations removed. |
-| **Coordinating agents** | The lead agent works out what you want and delegates tasks. Subagents carry out the work and report their results. |
-| **Tool use** | Steadily adding everything you can think of: web search, a calculator, the status of other programming agent sessions on your computer, and low-battery alerts for the phone and headset |
+| **Coordinating agents** | The multi-agent design uses a super agent that works out what you want and delegates tasks. Sub agents carry out the work and report their results. |
+| **Tool use** | Tool calling keeps growing: web search, a calculator, the status of other programming agent sessions on your computer, and low-battery alerts for the phone and headset |
 
 ### Cards and attachments
 
-Drop an image between two paragraphs to insert it there. Documents such as Markdown, TXT, and CSV files are attached under their original names. The assistant can read Markdown and TXT attachments when it reads the card. The **Export** menu produces a full-length PNG, a PDF, or a ZIP containing the original files.
+Cards form a local-first note-taking layer and personal knowledge base. Drop an image between two paragraphs to insert it there. Documents such as Markdown, TXT, and CSV files are attached under their original names. The assistant can read Markdown and TXT attachments when it reads the card. The **Export** menu produces a full-length PNG, a PDF, or a ZIP containing the original files.
 
 Cards inherit their sharing settings from the top-level folder. Cards under `个人/` (Personal) and `实验室/` (Lab) are private by default. Under `Reduction/`, you can write for a public audience and mark personal relationships or reminders as private annotations. The author can see those annotations. Public exports omit them.
 
@@ -64,7 +73,7 @@ Ask “Refresh the GitHub repository activity card” to collect issues, pull re
 
 ## Full-stack setup
 
-[DeepSeek](https://platform.deepseek.com/) API key: provides the large language model, speech-to-text and text-to-speech, and web search services.
+[DeepSeek](https://platform.deepseek.com/) API key: provides the large language model (LLM), speech recognition and transcription (speech-to-text, ASR), text-to-speech (TTS), and web search services.
 
 ### Bluetooth headset
 
@@ -78,24 +87,35 @@ tools/models/fetch-models.sh       # fetch the speech runtime and wake-word mode
 ./build.sh                         # produces dist/Reduction-v<version>.apk
 ```
 
-You need to grant elevated permissions such as an always-on recorder and overlay windows.
+The Android app is written in Kotlin and built with Gradle; `./build.sh` produces the APK. Wake-word detection and the start and end of each spoken turn run on-device. You need to grant elevated permissions such as an always-on recorder and overlay windows.
 
-### Computer (Windows + WSL, or any Linux that can run a JVM)
+### Desktop on Windows or Linux
 
-```bash
-desktop/install.sh     # install as an app: desktop pet, start on boot, desktop icon
-./desktop.sh           # or launch it only in a terminal; open the address it prints in your browser
-```
+Both desktop hosts serve the same card and chat interface. On **Windows**, the pet uses WebView2 and connects to a local Java backend. The [PowerShell installer](desktop/install-windows.ps1) takes the desktop distribution's library directory and a Windows Java 17 executable. The desktop shortcut and sign-in launcher then start the backend on Windows.
+
+On **WSL or Linux**, build the desktop distribution with `./gradlew :desktop:installDist`, then run `desktop/open-panel.sh` in a graphical session. It starts the user service and opens the panel in Linux Chrome or Chromium.
 
 ### Cloud server
 
 An optional relay lets the phone reach the computer over the internet. The computer merges changes from both devices.
 
-### Let the phone schedule agents on your computer
+### Use Dot Astra from your phone
 
-The computer needs an SSH service, `bwrap`, and [opencode](https://opencode.ai/). In the app, tap the computer icon, copy the public key into the computer's `~/.ssh/authorized_keys`, and enter the address. Sub agents use the DeepSeek key on your phone.
+Pair the phone to your computer over SSH. From the computer panel in the app, copy the phone's public key to the SSH account's `~/.ssh/authorized_keys`, then configure the host, port and user. For the tested Android 1.0.81 setup, SSH connects to WSL with OpenCode and Bubblewrap installed, and Dot runs on the paired Windows computer.
+
+In Settings, select **Dot Astra** for the main assistant. Enable the separate **Dot Astra only** option to route subagents there too. Enable read-only project analysis and choose which directories they may access. Text chat in this setup works without a DeepSeek API key. The phone can ask a read-only subagent to read an authorized file on the computer and return its contents to the conversation.
+
+### How a delegated task finishes
+
+A write task declares the files it intends to change. Reduction records an attempt before launch, checks for conflicts, and applies the configured directory permissions. If the launch acknowledgement is lost, the scheduler looks up that attempt by ID. A worker returns its commands, outputs, artifacts and a receipt. A separate read-only reviewer checks the artifacts against the requested criteria before the ledger marks the task complete.
+
+The Android release and the deployed desktop have been tested for report delivery after a restart, duplicate requests, cancellation and retry checks. Windows native Codex can require Windows sandbox initialization before running local tools.
 
 ## Where your data lives
+
+With Dot Astra selected, the paired computer forwards the conversation and tool results to Dot for inference. Directory permissions govern what a subagent can read or change on that computer.
+
+Reduction is local-first: your conversations, cards, and media stay on your devices by default, and data ownership stays with you. The optional cloud relay only passes messages between your own phone and computer.
 
 | | |
 | :-- | :-- |
@@ -114,4 +134,4 @@ The computer needs an SSH service, `bwrap`, and [opencode](https://opencode.ai/)
 
 ## License
 
-[MIT](LICENSE). The licenses of the third-party components used are listed [here](docs/THIRD_PARTY.md).
+[MIT license](LICENSE). The licenses of the third-party components used are listed [here](docs/THIRD_PARTY.md).

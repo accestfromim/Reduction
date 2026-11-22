@@ -2,7 +2,7 @@
   <img src="docs/banner.png" alt="Reduction" width="100%" />
 </p>
 
-<h1 align="center">Reduction-智能随身助手</h1>
+<h1 align="center">Reduction：智能随身助手</h1>
 
 中文 · [English](README.en.md)
 
@@ -23,8 +23,8 @@ Reduction回答一个问题：我们有可能在生活更轻松的同时、可�
 | :-- | :-- |
 | **耳机和麦克风** | 实时简短的聊天，纯语音控制 |
 | **手机** | 随身助手把事务归类、整理成卡片，平时可以不拿出手机，空闲时刻可以一次性审核 |
-| **电脑** | 运行部分subagent，提供工具调用的接口 |
-| **云服务器** | 24h常驻，在手机和电脑间转发消息，运行部分subagent |
+| **电脑** | 运行subagent，提供工具调用的接口 |
+| **云服务器** | 24h常驻，在手机和电脑间转发消息，不运行subagent |
 
 <table>
   <tr>
@@ -40,6 +40,12 @@ Reduction回答一个问题：我们有可能在生活更轻松的同时、可�
     <td align="center"><sub>电脑上的桌宠</sub></td>
   </tr>
 </table>
+
+## 从手机开始
+
+[下载 Reduction 安卓版](https://ai.7-sunday.com/Reduction/)。从 **1.0.81（112）** 起，应用通过 HTTPS 获取更新。已经安装 1.0.80 或更早版本的用户，请手动覆盖安装一次，保留卡片和设置。以后打开设置，点「检查并自动下载更新」，校验通过后即可安装。
+
+可以先说一句「周五提醒我把草稿发给小林」，再回到手机核对提醒，或在电脑上打开相关卡片。朗读音色可以在设置里选择 DS TTS 的 Stella、Tide，或 Android 原生音色。使用原生中文朗读前，需要在手机系统里安装中文离线音色。
 
 ## 能做什么
 
@@ -80,22 +86,31 @@ tools/models/fetch-models.sh       # 取语音运行库和唤醒词模型（有�
 
 需要授予录音机常驻、悬浮窗等较高权限
 
-### 电脑（Windows + WSL，或任何能跑 JVM 的 Linux）
+### Windows、WSL 与 Linux 桌面
 
-```bash
-desktop/install.sh     # 装成应用：桌宠、开机自启、桌面图标
-./desktop.sh           # 或者只在终端里启动，浏览器打开它给出的地址
-```
+两种桌面部署共用卡片和对话界面。**Windows** 桌宠通过 WebView2 连接本机 Java 后端。使用 [PowerShell 安装脚本](desktop/install-windows.ps1) 时，指定桌面发行包的库目录和 Windows Java 17 可执行文件。安装后，桌面快捷方式和登录自启均从 Windows 启动后端。
+
+**WSL 或 Linux** 用户可先运行 `./gradlew :desktop:installDist` 构建桌面发行包，再在图形会话中运行 `desktop/open-panel.sh`。脚本会启动用户服务，并用 Linux 版 Chrome 或 Chromium 打开面板。
 
 ### 云服务器
 
 可选的中转服务器让手机在外网也能连接到电脑。电脑负责合并两端的数据。
 
-### 让手机调度电脑上的 agent
+### 在手机上使用 Dot Astra
 
-电脑上要有 SSH 服务、`bwrap` 和 [opencode](https://opencode.ai/)。在 App 里点电脑图标，复制公钥加到电脑的 `~/.ssh/authorized_keys`，填上地址即可。sub agent 用的是你手机里那个 DeepSeek Key。
+先通过 SSH 配对电脑：在 App 的电脑面板复制手机公钥，加入目标账户的 `~/.ssh/authorized_keys`，再填写主机、端口和用户名。Android 1.0.81 实测使用的组合是手机通过 SSH 连到 WSL，WSL 安装 OpenCode 和 Bubblewrap，配对的 Windows 电脑运行 Dot。
+
+在设置中把主助手选为 **「Dot Astra（使用电脑）」**。如果也希望子任务走 Astra，勾选 **「子助手仅用 Dot Astra」**，并打开「允许 sub agent 只读分析项目」，配置它可以访问的目录。这套配置下，文字对话可以不填 DeepSeek API Key。例如，你可以让手机派一个只读子任务，到电脑上的授权目录读取文件，再把原文带回当前对话。
+
+### 派出去的任务怎样才算完成
+
+写任务先声明要改哪些文件。Reduction 在启动前记录尝试编号，检查冲突，并按目录配置读写权限。如果启动回执丢失，调度器按原编号找回任务。执行者交回命令、输出、产物和回执后，任务进入「待验收」；独立的只读核验者按原要求检查产物，引用工具证据后，台账才记为「完成」。
+
+手机正式版和已部署桌面版已验证重启后重送报告、重复派发、取消和重试检查。Windows 原生 Codex 执行本地工具前可能需要系统沙箱初始化。
 
 ## 你的数据在哪
+
+选择 Dot Astra 时，配对电脑会把对话和工具结果发给 Dot 推理。目录授权决定子助手可以在电脑上读取或修改哪些文件。
 
 | | |
 | :-- | :-- |
