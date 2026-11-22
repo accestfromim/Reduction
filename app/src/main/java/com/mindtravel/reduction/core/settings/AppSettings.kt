@@ -25,9 +25,13 @@ data class AppSettings(
     val opencodeWriteEnabled: Boolean = false,
     val opencodeSessionId: String = "",
     val pcProject: String = DEFAULT_PROJECT,
-    val agentDirectories: List<AgentDirectory> = emptyList()
+    val agentDirectories: List<AgentDirectory> = emptyList(),
+    val superAgentProfile: String = "deepseek"
 ) {
+    val superAgentModel: String get() = if (superAgentProfile == "dot-astra") "gpt-6.2-astra-dot" else model
+
     fun toJson(): JSONObject = JSONObject().apply {
+        put("superAgentProfile", superAgentProfile)
         put("apiKey", apiKey)
         put("model", model)
         put("voice", voice)
@@ -57,6 +61,7 @@ data class AppSettings(
         fun fromJson(raw: String): AppSettings {
             val json = JSONObject(raw)
             return AppSettings(
+                superAgentProfile = if (json.optString("superAgentProfile") == "dot-astra") "dot-astra" else "deepseek",
                 apiKey = json.stringOrEmpty("apiKey").trim(),
                 model = json.stringOrEmpty("model").trim().ifBlank { "deepseek-flash" },
                 voice = json.stringOrEmpty("voice").trim().takeIf { it == "tide" || it == "android-system" } ?: "stella",

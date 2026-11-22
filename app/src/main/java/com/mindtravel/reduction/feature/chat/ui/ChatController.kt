@@ -1,5 +1,6 @@
 package com.mindtravel.reduction.feature.chat.ui
 
+import com.mindtravel.reduction.core.settings.AppSettings
 import com.mindtravel.reduction.core.VoiceTrace
 
 import com.mindtravel.reduction.core.ApiException
@@ -39,7 +40,8 @@ class ChatController(
     /** Says a ready-made cue. A reply that cannot be given is still heard about. */
     private val say: (Cue) -> Unit,
     private val emitter: EventSink,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val chatModel: (AppSettings) -> String = { it.model }
 ) {
     var observer: ReplyObserver? = null
 
@@ -59,7 +61,8 @@ class ChatController(
      */
     fun send(requestId: String, messages: List<ChatMessage>, onCompleted: (String) -> Unit = {}): Boolean {
         val settings = settingsRepository.load()
-        if (settings.apiKey.isBlank()) {
+        val model = chatModel(settings)
+        if (model != com.mindtravel.reduction.model.chat.SuperAgentGateway.DOT && settings.apiKey.isBlank()) {
             emitter.emit("onChatError", requestId, "请先在设置里填写 API Key")
             return false
         }
@@ -74,7 +77,7 @@ class ChatController(
         val registry = toolFactory.create(settings)
         val request = ChatRequest(
             apiKey = settings.apiKey,
-            model = settings.model,
+            model = model,
             messages = boundedMessages,
             tools = registry.specs()
         )

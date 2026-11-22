@@ -71,6 +71,13 @@ import java.util.concurrent.atomic.AtomicLong
  *   page ◀──GET /events (stream)── the events the app sends its page, and speech as PCM
  */
 fun main(args: Array<String>) {
+    // The Windows JDK uses a Unix-domain socket when it creates an HTTP selector.
+    if (System.getProperty("os.name").startsWith("Windows") &&
+        System.getProperty("jdk.net.unixdomain.tmpdir") == null) {
+        val profile = System.getenv("USERPROFILE") ?: System.getProperty("user.home")
+        val socketDir = java.nio.file.Files.createDirectories(File(profile, ".rd-sock").toPath())
+        System.setProperty("jdk.net.unixdomain.tmpdir", socketDir.toString())
+    }
     val port = args.firstOrNull()?.toIntOrNull() ?: 8780
     val home = File(System.getProperty("user.home"))
     val data = File(home, ".local/share/reduction").apply { mkdirs() }
@@ -261,6 +268,23 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     private val memos = MemoStore(File(data, "memos.json"))
     /** REDUCTION_API_BASE points the models somewhere else, which is how this is tested without spending anything. */
     private val models = ModelGraph(System.getenv("REDUCTION_API_BASE")?.takeIf { it.isNotBlank() }?.let { DeepSeekHttp(baseUrl = it) } ?: DeepSeekHttp())
+    private val dotHttp by lazy { java.net.http.HttpClient.newHttpClient() }
+    private val superAgent = com.mindtravel.reduction.model.chat.SuperAgentGateway(models.chatGateway) { body ->
+        val endpoint = System.getenv("REDUCTION_DOT_RESPONSES_URL")?.takeIf { it.isNotBlank() }
+            ?: "http://127.0.0.1:8788/v1/responses".takeIf { System.getProperty("os.name").startsWith("Windows") }
+        if (endpoint != null) {
+            val request = java.net.http.HttpRequest.newBuilder(java.net.URI.create(endpoint))
+                .timeout(java.time.Duration.ofSeconds(180))
+                .header("Content-Type", "application/json")
+                .POST(java.net.http.HttpRequest.BodyPublishers.ofByteArray(body)).build()
+            val response = dotHttp.send(request, java.net.http.HttpResponse.BodyHandlers.ofString())
+            response.body() + "\nDOT_HTTP=" + response.statusCode() + "\n"
+        } else {
+            val cfg = settings.load()
+            LocalShell().send(com.mindtravel.reduction.hardware.pc.PcProfile(cfg.pcHost, cfg.pcPort, cfg.pcUser),
+                com.mindtravel.reduction.model.chat.SuperAgentGateway.COMMAND, body)
+        }
+    }
     private val ttsCache = TtsCache(File(data, "tts_cache"))
     private val synthesizer = TtsSynthesizer(models.audioGateway, ttsCache)
     private val onMain: (() -> Unit) -> Unit = { block -> scope.launch { block() } }
@@ -311,7 +335,8 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
     )
     private val chat = ChatController(
         settingsRepository = settings,
-        chatEngine = ChatSession(models.chatGateway),
+        chatEngine = ChatSession(superAgent),
+        chatModel = { it.superAgentModel },
         toolFactory = toolFactory,
         speech = speech,
         say = { cue -> audio?.play(cues.sound(cue)) ?: pageSpeech.play(0, cues.sound(cue)) },

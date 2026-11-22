@@ -15,6 +15,10 @@ WEBVIEW2_SHA256=90778deb1b77e36292828b4b5833c9255c27533f40e0ddd55891ae718944edc4
 win() { "$PS" -NoProfile -NonInteractive -Command "$1" | tr -d '\r'; }
 
 if [ "${1:-}" = "--remove" ]; then
+  if [ "$(win 'Test-Path -LiteralPath "$env:LOCALAPPDATA\Reduction\windows-runtime.json"')" = True ]; then
+    echo "Windows has a native Reduction installation. Use its own launcher and rollback command." >&2
+    exit 1
+  fi
   win 'Remove-Item -ErrorAction SilentlyContinue "$([Environment]::GetFolderPath("Startup"))\Reduction.lnk","$([Environment]::GetFolderPath("Desktop"))\Reduction.lnk"; Remove-Item -Recurse -ErrorAction SilentlyContinue "$env:LOCALAPPDATA\Reduction"'
   echo "已移除桌面图标和开机自启。数据仍在 $DATA"
   exit 0
@@ -25,9 +29,7 @@ npm ci --prefix "$HERE/card/render" --omit=dev --ignore-scripts --prefer-offline
 echo "== 构建"
 . "$HERE/../tools/env.sh"
 ( cd "$ROOT" && $GRADLE -q :desktop:installDist )
-# A service still running from before the build would go on with half of the old program and half of
-# the new one, and fail without a word; it is stopped here and started again at the end.
-pkill -f 'com.mindtravel.reduction.desktop.MainK[t]' || true
+"$HERE/start.sh" restart
 
 echo "== CARD 文件读取器"
 READERS="$DATA/card-readers"
@@ -50,8 +52,17 @@ else
   [ -z "$missing" ] && echo "已取到 $AUDIO" || { echo "音频工具还缺这些库，声音会由浏览器窗口代劳："; echo "$missing"; }
 fi
 
+if [ "${1:-}" = --linux ]; then
+  echo "Linux backend installed. Open the panel with $HERE/open-panel.sh."
+  exit 0
+fi
+
 echo "== Windows 图标与开机自启"
 [ -x "$PS" ] || { echo "这不是带 Windows 的环境，跳过。用 $HERE/start.sh 启动。"; exit 0; }
+if [ "$(win 'Test-Path -LiteralPath "$env:LOCALAPPDATA\Reduction\windows-runtime.json"')" = True ]; then
+  echo "Windows already has its native launcher. Open the Linux panel with $HERE/open-panel.sh."
+  exit 0
+fi
 APPDIR_WIN="$(win '$d="$env:LOCALAPPDATA\Reduction"; New-Item -ItemType Directory -Force $d | Out-Null; $d')"
 APPDIR="$(wslpath "$APPDIR_WIN")"
 cp "$HERE/reduction.ico" "$APPDIR/reduction.ico"
