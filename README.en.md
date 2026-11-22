@@ -2,7 +2,7 @@
   <img src="docs/banner.png" alt="Reduction" width="100%" />
 </p>
 
-<h1 align="center">Reduction-JARVIS for everyone</h1>
+<h1 align="center">Reduction — a personal AI assistant</h1>
 
 [中文](README.md) · English
 
@@ -13,20 +13,16 @@
   <img src="docs/badges/mit.svg" alt="MIT" />
 </p>
 
-Reduction is open source, and it is a voice-first AI assistant: a smart pocket assistant that stays with you through a headset, a phone, a computer, and an optional cloud server.
+Can we make everyday life easier while reliably directing more AI work? Reduction focuses on the time and effort it takes to understand information and verify an assistant’s results.
 
-Say “Hi Reduction” through your headset while your phone stays in your pocket. Tell it what you need to remember or get done, hands-free. When you have a moment, open the cards on your phone, check the results, and edit them in place.
-
-Reduction asks a question: can we reliably put more AI to work while making everyday life easier? We measure that in terms of information efficiency: how much you can take in and verify for the effort you spend interacting with the assistant.
-
-Here’s how the devices work together.
+A headset, phone, computer, and optional cloud relay share the work.
 
 | | |
 | :-- | :-- |
 | **Headset and microphone** | Short real-time chats with the voice assistant, controlled by voice alone |
-| **Phone** | The personal assistant sorts affairs and turns them into cards. You can leave the phone in your pocket and review them all at once when you have time |
-| **Computer** | Runs the sub agents (AI workers that a super agent delegates tasks to) and provides the tool-calling interface |
-| **Cloud server** | Runs around the clock and relays messages between the phone and the computer. It does not run sub agents |
+| **Phone** | Organizes tasks into cards. Keep the phone in your pocket, then review the cards together when you have time |
+| **Computer** | Runs the subagents and provides the tools they can call |
+| **Cloud server** | Relays messages between the phone and the computer around the clock. Subagents run on the computer |
 
 <table>
   <tr>
@@ -45,7 +41,7 @@ Here’s how the devices work together.
 
 ## Get started on Android
 
-[Download Reduction for Android](https://ai.7-sunday.com/Reduction/). Version **1.0.81 (112)** moved the updater to HTTPS. If you have 1.0.80 or earlier, install the signed APK over your existing app once to keep your cards and settings. For later updates, open Settings and choose the update button. The app verifies the download before handing it to the Android installer.
+[Download Reduction for Android](https://ai.7-sunday.com/Reduction/). Version **1.0.81 (112)** moved the updater to HTTPS. If you have 1.0.80 or earlier, install the signed APK over your existing app once to keep your cards and settings. For later updates, open Settings and choose **检查并自动下载更新** (“Check for and automatically download updates”). The app verifies the download before handing it to the Android installer.
 
 Try saying “Remind me on Friday to send the draft to Lin.” Later, review the reminder on your phone or open the related card on your computer. For spoken replies, Settings offers DeepSeek API voices and the Android system voice. The latter requires a Chinese offline voice installed on the phone.
 
@@ -56,14 +52,13 @@ Try saying “Remind me on Friday to send the draft to Lin.” Later, review the
 | | |
 | :-- | :-- |
 | **Screen-off voice control** | Say the wake word “Hi Reduction” to wake the assistant and “完毕” (*wánbì*, “finished”) to end the recording. Give it tasks while your phone stays in your pocket. |
-| **Chat input** | Paste a multi-line Markdown body, or drop a Markdown file onto the composer to send its text. Headings, paragraphs, and code-block line breaks are kept. Enter sends; Shift+Enter adds a line. |
 | **Card-based memory** | A card is where you collect, organize, and revisit an everyday task or idea. The CARD protocol handles the underlying files. Use voice to direct the AI, edit the rendered result in place, and export a shareable file with private annotations removed. |
 | **Coordinating agents** | The multi-agent design uses a super agent that works out what you want and delegates tasks. Sub agents carry out the work and report their results. |
 | **Tool use** | Tool calling keeps growing: web search, a calculator, the status of other programming agent sessions on your computer, and low-battery alerts for the phone and headset |
 
 ### Cards and attachments
 
-Cards form a local-first note-taking layer and personal knowledge base. Drop an image between two paragraphs to insert it there. Documents such as Markdown, TXT, and CSV files are attached under their original names. The assistant can read Markdown and TXT attachments when it reads the card. The **Export** menu produces a full-length PNG, a PDF, or a ZIP containing the original files.
+Drop an image between two paragraphs to insert it there. Documents such as Markdown, TXT, and CSV files are attached under their original names. The assistant can read Markdown and TXT attachments when it reads the card. The **Export** menu produces a full-length PNG, a PDF, or a ZIP containing the original files.
 
 Cards inherit their sharing settings from the top-level folder. Cards under `个人/` (Personal) and `实验室/` (Lab) are private by default. Under `Reduction/`, you can write for a public audience and mark personal relationships or reminders as private annotations. The author can see those annotations. Public exports omit them.
 
@@ -71,7 +66,7 @@ Cards inherit their sharing settings from the top-level folder. Cards under `个
 
 Ask “Refresh the GitHub repository activity card” to collect issues, pull requests, and releases in `Reduction/GitHub/仓库动态`. You can also ask Reduction to create or update an issue, post a comment, or publish the public version of a card to an HTML file in the repository. Writes use your GitHub CLI login in WSL (`gh auth login`). Reduction shows you the destination and content for confirmation before submitting.
 
-## Full-stack setup
+## Set up the devices and services
 
 [DeepSeek](https://platform.deepseek.com/) API key: provides the large language model (LLM), speech recognition and transcription (speech-to-text, ASR), text-to-speech (TTS), and web search services.
 
@@ -87,9 +82,9 @@ tools/models/fetch-models.sh       # fetch the speech runtime and wake-word mode
 ./build.sh                         # produces dist/Reduction-v<version>.apk
 ```
 
-The Android app is written in Kotlin and built with Gradle; `./build.sh` produces the APK. Wake-word detection and the start and end of each spoken turn run on-device. You need to grant elevated permissions such as an always-on recorder and overlay windows.
+Grant microphone access for background recording and permission to display overlays.
 
-### Desktop on Windows or Linux
+### Windows, WSL, and Linux desktops
 
 Both desktop hosts serve the same card and chat interface. On **Windows**, the pet uses WebView2 and connects to a local Java backend. The [PowerShell installer](desktop/install-windows.ps1) takes the desktop distribution's library directory and a Windows Java 17 executable. The desktop shortcut and sign-in launcher then start the backend on Windows.
 
@@ -113,8 +108,6 @@ The Android release and the deployed desktop have been tested for report deliver
 
 Directory permissions govern what a subagent can read or change on that computer.
 
-Reduction is local-first: your conversations, cards, and media stay on your devices by default, and data ownership stays with you. The optional cloud relay only passes messages between your own phone and computer.
-
 | | |
 | :-- | :-- |
 | **API key** | Stored only on your devices (encrypted on the phone; a file only you can read on the computer), and sent only to DeepSeek |
@@ -128,7 +121,6 @@ Reduction is local-first: your conversations, cards, and media stay on your devi
 - [Architecture diagram](docs/interaction-states-simple.png): the four layers of hardware, models, features, and UI, plus the voice state machine
 - [Agent working principles](docs/agent-principles.md): how the super agent, sub agents, and people divide the work
 - [Third-party components used](docs/THIRD_PARTY.md)
-- [Source repository](https://github.com/mindtravel/Reduction)
 
 ## License
 
