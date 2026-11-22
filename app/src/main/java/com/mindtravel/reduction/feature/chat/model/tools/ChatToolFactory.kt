@@ -27,6 +27,7 @@ class ChatToolFactory(
     /** Sets a card as an article; with [renderArticleScript], draws it on the computer. Null: no such tool. */
     private val articles: ArticleBuilder? = null,
     private val renderArticleScript: () -> String = { "" },
+    private val nativeAgentLauncher: NativeAgentLauncher? = null,
     private val hostTools: (AppSettings) -> List<ChatTool> = { emptyList() }
 ) {
     /** Answers too long for one go, kept whole across the replies of a conversation. */
@@ -79,6 +80,7 @@ class ChatToolFactory(
         apiKey = settings.apiKey,
         model = settings.model,
         launcherScript = agentLauncherScript,
+        nativeLauncher = nativeAgentLauncher,
         directories = settings.agentDirectories
     )
 

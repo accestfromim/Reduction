@@ -13,6 +13,12 @@ import java.util.Base64
  * launcher script, which mounts the configured directories with their saved permissions.
  * A run can be asked how far it has got at any time.
  */
+interface NativeAgentLauncher {
+    fun start(agent: AgentHarness.Agent, folder: String, prompt: String, directories: List<AgentDirectory>): String
+    fun progress(folder: String, id: String): AgentHarness.Progress
+    fun stop(folder: String, id: String)
+}
+
 class AgentHarness(
     private val pcGateway: PcGateway,
     private val profile: PcProfile,
@@ -20,6 +26,7 @@ class AgentHarness(
     private val apiKey: String,
     private val model: String,
     private val directories: List<AgentDirectory> = emptyList(),
+    private val nativeLauncher: NativeAgentLauncher? = null,
     private val launcherScript: () -> String
 ) {
     enum class Agent(val wire: String) {
@@ -57,7 +64,8 @@ class AgentHarness(
         /** The pictures the agent left beside its result file, to be looked at. */
         val images: List<ChatImage> = emptyList(),
         /** Pictures it left that were not brought back: too many, or too large. */
-        val skippedImages: List<String> = emptyList()
+        val skippedImages: List<String> = emptyList(),
+        val toolEvidence: Map<String, String> = emptyMap()
     ) {
         val succeeded: Boolean get() = state == State.DONE && exitCode == 0 && errors.isEmpty()
 
@@ -71,18 +79,20 @@ class AgentHarness(
         val content: String get() = returned.ifBlank { resultFile }.ifBlank { said }.trim()
     }
 
-    val isConfigured: Boolean get() = profile.host.isNotBlank() && profile.user.isNotBlank()
+    val isConfigured: Boolean get() = nativeLauncher != null || (profile.host.isNotBlank() && profile.user.isNotBlank())
 
     /** Starts a run and returns its id. Throws [IllegalStateException] with the launcher's message when it cannot start. */
     fun start(agent: Agent, folder: String, prompt: String, engine: Engine = Engine.OPENCODE): String {
+        nativeLauncher?.let { return it.start(agent, folder, prompt, directories) }
         val output = launcher("start", agent.wire, folder, prompt, withModel = true, engine = engine).trim()
         val id = output.lineSequence().firstOrNull { it.startsWith("RUN ") }?.removePrefix("RUN ")?.trim()
         return id?.takeIf { it.isNotBlank() } ?: throw IllegalStateException(output.ifBlank { "harness 没有响应" })
     }
 
-    fun progress(folder: String, id: String): Progress = parse(launcher("status", folder, id))
+    fun progress(folder: String, id: String): Progress = nativeLauncher?.progress(folder, id) ?: parse(launcher("status", folder, id))
 
     fun stop(folder: String, id: String) {
+        nativeLauncher?.let { it.stop(folder, id); return }
         launcher("stop", folder, id)
     }
 
@@ -163,6 +173,8 @@ class AgentHarness(
             val said = ArrayList<String>()
             val steps = LinkedHashMap<String, String>()
             val errors = ArrayList<String>()
+            val pending = linkedMapOf<String,String>()
+            val toolEvidence = linkedMapOf<String,String>()
             for (line in lines) {
                 val event = runCatching { JSONObject(line) }.getOrNull()
                 if (event == null) {
@@ -174,11 +186,37 @@ class AgentHarness(
                     val error = event.optJSONObject("error")
                     val message = error?.optJSONObject("data")?.optString("message").orEmpty()
                         .ifBlank { error?.optString("name").orEmpty() }
-                    errors += message.ifBlank { "未知错误" }
+                    errors += message.ifBlank { line }
                     continue
                 }
                 // Claude Code: each turn is a message of blocks, and the last event carries what it returns.
                 when (event.optString("type")) {
+                    "turn.failed" -> { errors += line; continue }
+                    "item.started", "item.completed" -> {
+                        val item = event.optJSONObject("item") ?: continue
+                        val completed = event.optString("type") == "item.completed"
+                        when (item.optString("type")) {
+                            "agent_message" -> if (completed) said += item.optString("text")
+                            "error" -> {
+                                val message = item.optString("message")
+                                if (message.startsWith("Model metadata for `") &&
+                                    message.contains("` not found. Defaulting to fallback metadata;")) {
+                                    said += "执行器提示：$message"
+                                } else errors += line
+                            }
+                            "command_execution" -> {
+                                val key = item.optString("id")
+                                steps[key] = item.optString("command")
+                                if (completed) {
+                                    pending.remove(key)
+                                    if (item.optString("status") == "completed" && item.optInt("exit_code", -1) == 0) {
+                                        toolEvidence["tool/$key"] = line
+                                    } else errors += line
+                                } else pending[key] = line
+                            }
+                        }
+                        continue
+                    }
                     "assistant" -> {
                         val blocks = event.optJSONObject("message")?.optJSONArray("content") ?: continue
                         for (i in 0 until blocks.length()) {
@@ -220,7 +258,8 @@ class AgentHarness(
                     }
                 }
             }
-            return Progress(state, exitCode, said.joinToString("\n"), steps.values.toList(), errors, returned, resultFile, images, skipped)
+            if (state != State.RUNNING) pending.values.forEach { errors += "工具缺少终态：$it" }
+            return Progress(state, exitCode, said.joinToString("\n"), steps.values.toList(), errors, returned, resultFile, images, skipped, toolEvidence)
         }
     }
 }

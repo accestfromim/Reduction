@@ -298,6 +298,7 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         emitter = page,
         cards = cards,
         memos = memos,
+        nativeAgentLauncher = if (System.getProperty("os.name").startsWith("Windows")) WindowsAgentLauncher(File(data, "native-agent-runs")) else null,
         agentLauncherScript = { resourceText("harness/run-agent.sh") },
         sessionStatusScript = { resourceText("harness/session-status.py") },
         agentRuns = agentRuns,
