@@ -47,7 +47,7 @@ Here’s how the devices work together.
 
 [Download Reduction for Android](https://ai.7-sunday.com/Reduction/). Version **1.0.81 (112)** moved the updater to HTTPS. If you have 1.0.80 or earlier, install the signed APK over your existing app once to keep your cards and settings. For later updates, open Settings and choose the update button. The app verifies the download before handing it to the Android installer.
 
-Try saying “Remind me on Friday to send the draft to Lin.” Later, review the reminder on your phone or open the related card on your computer. For spoken replies, Settings offers DS TTS (Stella or Tide) and the Android system voice. The latter requires a Chinese offline voice installed on the phone.
+Try saying “Remind me on Friday to send the draft to Lin.” Later, review the reminder on your phone or open the related card on your computer. For spoken replies, Settings offers DeepSeek API voices and the Android system voice. The latter requires a Chinese offline voice installed on the phone.
 
 ## What it can do
 
@@ -99,21 +99,19 @@ On **WSL or Linux**, build the desktop distribution with `./gradlew :desktop:ins
 
 An optional relay lets the phone reach the computer over the internet. The computer merges changes from both devices.
 
-### Use Dot Astra from your phone
+### Pair your phone with a computer
 
-Pair the phone to your computer over SSH. From the computer panel in the app, copy the phone's public key to the SSH account's `~/.ssh/authorized_keys`, then configure the host, port and user. For the tested Android 1.0.81 setup, SSH connects to WSL with OpenCode and Bubblewrap installed, and Dot runs on the paired Windows computer.
-
-In Settings, select **Dot Astra** for the main assistant. Enable the separate **Dot Astra only** option to route subagents there too. Enable read-only project analysis and choose which directories they may access. Text chat in this setup works without a DeepSeek API key. The phone can ask a read-only subagent to read an authorized file on the computer and return its contents to the conversation.
+Open the computer panel on your phone, add its SSH public key to the target account, and enter the host, port and username. Enable read-only analysis and choose a directory to let the assistant read files there and bring the results back to your conversation.
 
 ### How a delegated task finishes
 
 A write task declares the files it intends to change. Reduction records an attempt before launch, checks for conflicts, and applies the configured directory permissions. If the launch acknowledgement is lost, the scheduler looks up that attempt by ID. A worker returns its commands, outputs, artifacts and a receipt. A separate read-only reviewer checks the artifacts against the requested criteria before the ledger marks the task complete.
 
-The Android release and the deployed desktop have been tested for report delivery after a restart, duplicate requests, cancellation and retry checks. Windows native Codex can require Windows sandbox initialization before running local tools.
+The Android release and the deployed desktop have been tested for report delivery after a restart, duplicate requests, cancellation and retry checks.
 
 ## Where your data lives
 
-With Dot Astra selected, the paired computer forwards the conversation and tool results to Dot for inference. Directory permissions govern what a subagent can read or change on that computer.
+Directory permissions govern what a subagent can read or change on that computer.
 
 Reduction is local-first: your conversations, cards, and media stay on your devices by default, and data ownership stays with you. The optional cloud relay only passes messages between your own phone and computer.
 
