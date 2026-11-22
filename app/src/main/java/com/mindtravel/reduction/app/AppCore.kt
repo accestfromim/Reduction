@@ -130,7 +130,7 @@ class AppCore private constructor(context: Context) {
         scope = scope,
         describeOutput = { AudioRoutes.describe(context) }
     )
-    val speech = SpeechController(settingsRepository, ReplyStreamer(ttsSynthesizer, pcmPlayer, scope), ttsCache, ui)
+    val speech = SpeechController(settingsRepository, ReplyStreamer(ttsSynthesizer, pcmPlayer, scope, com.mindtravel.reduction.model.voice.AndroidTts(context, ttsCache)::openVoice), ttsCache, ui)
     private val pushToTalk = PushToTalkSession(
         settingsRepository = settingsRepository,
         audioGateway = models.audioGateway,

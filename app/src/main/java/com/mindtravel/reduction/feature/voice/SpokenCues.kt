@@ -53,7 +53,7 @@ class SpokenCues(
     fun prepare() {
         val settings = settingsRepository.load()
         val voice = settings.voice
-        if (settings.apiKey.isBlank()) return
+        if (voice == "android-system" || settings.apiKey.isBlank()) return
         for (cue in Cue.entries) {
             val key = key(voice, cue)
             if (spoken.containsKey(key) || !asked.add(key)) continue

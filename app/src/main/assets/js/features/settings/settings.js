@@ -56,6 +56,10 @@ function directoriesFromForm() {
 export function openSettings() {
   ui.els.apiKeyInput.value = state.settings.apiKey || '';
   ui.els.modelSelect.value = state.settings.model;
+  if (window.Android?.checkUpdate && !document.documentElement.classList.contains('desktop-client') &&
+      !ui.els.voiceSelect.querySelector('option[value="android-system"]')) {
+    ui.els.voiceSelect.add(new Option('安卓原生 · 中文离线音色', 'android-system'));
+  }
   ui.els.voiceSelect.value = state.settings.voice;
   ui.els.autoSpeakInput.checked = !!state.settings.autoSpeak;
   ui.els.webSearchInput.checked = !!state.settings.webSearchEnabled;

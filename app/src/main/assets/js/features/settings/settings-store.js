@@ -28,7 +28,7 @@ export function normalizeSettings(raw) {
   return {
     apiKey: string(raw?.apiKey).trim(),
     model: string(raw?.model, 'deepseek-flash').trim() || 'deepseek-flash',
-    voice: raw?.voice === 'tide' ? 'tide' : 'stella',
+    voice: ['tide', 'android-system'].includes(raw?.voice) ? raw.voice : 'stella',
     autoSpeak: raw?.autoSpeak !== false,
     pcHost: string(raw?.pcHost).trim(),
     pcPort: Math.max(1, Math.min(65535, Number(raw?.pcPort) || 22)),

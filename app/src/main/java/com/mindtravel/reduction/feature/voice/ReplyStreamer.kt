@@ -3,6 +3,7 @@ package com.mindtravel.reduction.feature.voice
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.hardware.audio.Loudness
 import com.mindtravel.reduction.hardware.audio.SpeechOutput
+import com.mindtravel.reduction.model.voice.SpeechVoice
 import com.mindtravel.reduction.model.voice.TtsSynthesizer
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -19,7 +20,8 @@ import kotlinx.coroutines.launch
 class ReplyStreamer(
     private val synthesizer: TtsSynthesizer,
     private val player: SpeechOutput,
-    private val scope: CoroutineScope
+    private val scope: CoroutineScope,
+    private val openNativeVoice: (suspend () -> SpeechVoice)? = null
 ) {
     /** Delivered on the thread of the scope this was given. Exactly one of onDone / onError ends a session that is not stopped. */
     interface Events {
@@ -53,13 +55,16 @@ class ReplyStreamer(
             onDone = { if (current == session) events.onDone() }
         )
         job = scope.launch(Dispatchers.IO) {
+            var native: SpeechVoice? = null
             try {
+                if (voice == "android-system") native = checkNotNull(openNativeVoice) { "此设备不支持安卓原生朗读" }.invoke()
                 var index = 0
                 for (text in queue) {
                     // Timings go to the log: they show where a pause in speech comes from.
                     val synthStart = System.currentTimeMillis()
                     // Every piece at one loudness: the same as the cues around it.
-                    val pcm = Loudness.leveled(synthesizer.synthesize(apiKey, voice, text))
+                    val pcm = Loudness.leveled(native?.synthesize(text) ?: synthesizer.synthesize(apiKey, voice, text))
+                    if (pcm.isEmpty()) continue
                     val synthMs = System.currentTimeMillis() - synthStart
                     if (current != session) return@launch
                     val queueStart = System.currentTimeMillis()
@@ -77,6 +82,8 @@ class ReplyStreamer(
             } catch (t: Throwable) {
                 Logs.add("TTS synthesis failed: ${t.message}")
                 fail(t.message ?: "TTS 失败")
+            } finally {
+                native?.close()
             }
         }
     }

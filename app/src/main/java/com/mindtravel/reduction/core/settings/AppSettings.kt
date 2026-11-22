@@ -59,7 +59,7 @@ data class AppSettings(
             return AppSettings(
                 apiKey = json.stringOrEmpty("apiKey").trim(),
                 model = json.stringOrEmpty("model").trim().ifBlank { "deepseek-flash" },
-                voice = json.stringOrEmpty("voice").trim().takeIf { it == "tide" } ?: "stella",
+                voice = json.stringOrEmpty("voice").trim().takeIf { it == "tide" || it == "android-system" } ?: "stella",
                 autoSpeak = json.optBoolean("autoSpeak", true),
                 pcHost = json.stringOrEmpty("pcHost").trim(),
                 pcPort = json.optInt("pcPort", 22).takeIf { it in 1..65535 } ?: 22,

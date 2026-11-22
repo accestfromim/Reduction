@@ -40,7 +40,7 @@ class SpeechController(
             if (id != activeId) return
             if (!streaming) {
                 val settings = settingsRepository.load()
-                if (!settings.autoSpeak || settings.apiKey.isBlank()) return
+                if (!settings.autoSpeak || (settings.voice != "android-system" && settings.apiKey.isBlank())) return
                 begin(id, settings.apiKey, settings.voice)
             }
             streamer.push(text)
@@ -69,7 +69,7 @@ class SpeechController(
     fun speak(id: String, text: String) {
         stop(notify = false)
         val settings = settingsRepository.load()
-        if (settings.apiKey.isBlank()) {
+        if ((settings.voice != "android-system" && settings.apiKey.isBlank())) {
             emitter.emit("onTtsError", id, "请先在设置里填写 API Key")
             return
         }

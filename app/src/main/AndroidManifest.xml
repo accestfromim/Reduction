@@ -24,6 +24,7 @@
 
     <!-- The camera app is offered when a picture is asked for; it has to be visible to be offered. -->
     <queries>
+        <intent><action android:name="android.intent.action.TTS_SERVICE" /></intent>
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
         </intent>
