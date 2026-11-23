@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/banner.png" alt="Reduction" width="100%" />
+  <img src="docs/banner.png" alt="Reduction-JARVIS for Everyone" width="100%" />
 </p>
 
-<h1 align="center">Reduction — a personal AI assistant</h1>
+<h1 align="center">Reduction-JARVIS for Everyone — a personal AI assistant</h1>
 
 [中文](README.md) · English
 
