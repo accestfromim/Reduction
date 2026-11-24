@@ -30,6 +30,18 @@ label:has(#opencodeSessionInput), #shareDiagnostics { display: none; }
   .mic-btn.big { width: 52px; height: 52px; flex: 0 0 52px; }
   .toast { bottom: 84px; }
 }
+/* Queue status is already visible in the review dock. Keep directory rows visually quiet. */
+#cardList .card-row:is(.review-pending, .review-focus) {
+  box-shadow: none;
+  animation: none;
+  outline: none;
+}
+#cardList .card-row:focus-visible {
+  outline: none;
+  text-decoration: underline;
+  text-underline-offset: .2em;
+}
+
 /* On a card the scroll bars would be most of what there is to see: it scrolls without them. */
 ::-webkit-scrollbar { width: 0; height: 0; }
 
