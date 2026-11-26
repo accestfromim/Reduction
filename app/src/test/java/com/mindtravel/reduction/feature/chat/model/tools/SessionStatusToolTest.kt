@@ -15,9 +15,10 @@ class SessionStatusToolTest {
     private val script = File("src/main/assets/harness/session-status.py").readText()
     private val home: File = Files.createTempDirectory("session-status").toFile()
 
-    private fun tool() = SessionStatusTool(
-        AgentHarness(LocalShell(home), PcProfile("host", 22, "user"), "key", "model") { "" }
-    ) { script }
+    // The independent iOS session browser still ships this script.
+    private fun report(hours: Int = 24) =
+        AgentHarness(LocalShell(home), PcProfile("host", 22, "user"), "", "") { "" }
+            .runScript("python3 -", script, "--hours", hours.toString(), "--limit", "8")
 
     private fun hasPython(): Boolean =
         runCatching { ProcessBuilder("python3", "--version").start().waitFor() == 0 }.getOrDefault(false)
@@ -41,7 +42,7 @@ class SessionStatusToolTest {
         assumeTrue(hasPython())
         val now = Instant.now()
         claudeSession("a", userSays("把测试跑一遍", now.minusSeconds(120)), assistantSays("跑完了，全部通过。", now.minusSeconds(60)))
-        val report = tool().execute("{}")
+        val report = report()
         assertTrue(report, report.contains("[claude] /work/demo"))
         assertTrue(report, report.contains("状态：等用户输入"))
         assertTrue(report, report.contains("用户最后说：把测试跑一遍"))
@@ -53,7 +54,7 @@ class SessionStatusToolTest {
         assumeTrue(hasPython())
         val now = Instant.now()
         claudeSession("b", userSays("构建一下", now.minusSeconds(4000)), assistantCalls("Bash", now.minusSeconds(3600)))
-        val report = tool().execute("{}")
+        val report = report()
         assertTrue(report, report.contains("工具 Bash 已运行"))
         assertTrue(report, report.contains("可能卡住，或在等用户批准"))
     }
@@ -63,7 +64,7 @@ class SessionStatusToolTest {
         assumeTrue(hasPython())
         val now = Instant.now()
         claudeSession("c", userSays("密钥是 sk-abcdef0123456789abcdef 记一下", now.minusSeconds(30)), assistantSays("好的。", now.minusSeconds(20)))
-        val report = tool().execute("{}")
+        val report = report()
         assertFalse(report, report.contains("sk-abcdef0123456789abcdef"))
         assertTrue(report, report.contains("[已隐去]"))
     }
@@ -76,7 +77,7 @@ class SessionStatusToolTest {
         File(home, ".claude").mkdirs()
         File(home, ".claude/.credentials.json").writeText("""{"token":"CREDENTIAL-MATERIAL"}""")
         claudeSession("d", userSays("你好", Instant.now().minusSeconds(10)))
-        val report = tool().execute("{}")
+        val report = report()
         assertFalse(report, report.contains("PRIVATE-KEY-MATERIAL") || report.contains("CREDENTIAL-MATERIAL"))
         assertTrue(report, report.contains("模型处理中"))
     }
@@ -84,6 +85,6 @@ class SessionStatusToolTest {
     @Test
     fun anEmptyComputerSaysSo() {
         assumeTrue(hasPython())
-        assertTrue(tool().execute("""{"hours":"2"}""").contains("最近 2 小时内没有活动的会话"))
+        assertTrue(report(2).contains("最近 2 小时内没有活动的会话"))
     }
 }

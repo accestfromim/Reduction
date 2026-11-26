@@ -31,7 +31,7 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
         /** Who did the work: "opencode" or "claude". */
         val engine: String = "opencode",
         /** The card the task was read from and the result is written back to; blank when there is none. */
-        val card: String = "",
+        var card: String = "",
         /** Stands for exactly what was asked, where, and of whom: the same request has the same one. */
         val fingerprint: String = "",
         var endedAt: Long = 0,
@@ -39,7 +39,12 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
         var outcome: String = "",
         /** What the sub agent handed back, word for word. */
         var result: String = "",
-        var diff: String = ""
+        var diff: String = "",
+        val host: String = "",
+        val remoteDir: String = "",
+        var phase: String = "running",
+        var replyId: String = "",
+        var reply: String = ""
     ) {
         val finished: Boolean get() = outcome.isNotEmpty()
 
@@ -68,6 +73,7 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
     var onChange: () -> Unit = {}
 
     private val runs = ArrayList<Run>()
+    private val cards = HashMap<String, Run>()
     private var lastNumber = 0
 
     init {
@@ -85,23 +91,25 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
                     engine = item.optString("engine", "opencode"), card = item.optString("card"),
                     fingerprint = item.optString("fingerprint"),
                     endedAt = item.optLong("endedAt"), outcome = item.optString("outcome"),
-                    result = item.optString("result"), diff = item.optString("diff")
+                    result = item.optString("result"), diff = item.optString("diff"), host = item.optString("host"), remoteDir = item.optString("remoteDir"), phase = item.optString("phase", "running"),
+                    replyId = item.optString("replyId"), reply = item.optString("reply")
                 )
             }
         }
+        for (run in runs) if (run.host.isNotEmpty() && run.card.isNotEmpty()) cards[run.card] = run
     }
 
     @Synchronized
     fun add(
         launcherId: String, folderName: String, folder: String, task: String, write: Boolean = false,
-        changesProject: Boolean = false, engine: String = "opencode", card: String = "", fingerprint: String = ""
+        changesProject: Boolean = false, engine: String = "opencode", card: String = "", fingerprint: String = "", host: String = "", remoteDir: String = ""
     ): Run {
         val run = Run(
             ++lastNumber, launcherId, folderName, folder, task.trim(), write, changesProject, now(),
-            engine, card, fingerprint
+            engine, card, fingerprint, host = host, remoteDir = remoteDir
         )
         runs += run
-        while (runs.size > KEPT) runs.removeAt(0)
+        if (host.isNotEmpty() && card.isNotEmpty()) cards[card] = run
         save()
         return run
     }
@@ -135,23 +143,64 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
         save()
     }
 
+    @Synchronized
+    fun reply(run: Run, id: String, text: String) {
+        run.replyId = id
+        run.reply = text
+        save()
+    }
+
+    @Synchronized
+    fun byCard(name: String): Run? = cards[name]
+
+    @Synchronized
+    fun card(run: Run, name: String) {
+        if (run.card == name) return
+        cards.remove(run.card)
+        run.card = name
+        if (name.isNotEmpty() && run.host.isNotEmpty()) cards[name] = run
+        save()
+    }
+
+    @Synchronized
+    fun phase(run: Run, value: String) {
+        if (run.phase == value && run.host.isNotEmpty()) return
+        run.phase = value
+        run.outcome = when (value) {
+            "done" -> DONE
+            "failed" -> FAILED
+            "stopped" -> STOPPED
+            else -> ""
+        }
+        run.endedAt = if (run.finished) now() else 0
+        save()
+    }
+
+    @Synchronized
+    fun remove(number: Int) {
+        val run = find(number) ?: return
+        runs.remove(run)
+        cards.remove(run.card)
+        save()
+    }
+
     private fun save() {
         val target = file
         if (target != null) {
-            runCatching {
-                target.parentFile?.mkdirs()
-                val list = JSONArray()
-                for (run in runs) {
-                    list.put(
-                        JSONObject().put("number", run.number).put("id", run.launcherId).put("folderName", run.folderName)
-                            .put("folder", run.folder).put("task", run.task).put("write", run.write)
-                            .put("changes", run.changesProject).put("startedAt", run.startedAt).put("endedAt", run.endedAt)
-                            .put("engine", run.engine).put("card", run.card).put("fingerprint", run.fingerprint)
-                            .put("outcome", run.outcome).put("result", run.result).put("diff", run.diff)
-                    )
-                }
-                target.writeText(JSONObject().put("last", lastNumber).put("runs", list).toString())
+            target.parentFile?.mkdirs()
+            val list = JSONArray()
+            for (run in runs) {
+                list.put(
+                    JSONObject().put("number", run.number).put("id", run.launcherId).put("folderName", run.folderName)
+                        .put("folder", run.folder).put("task", run.task).put("write", run.write)
+                        .put("changes", run.changesProject).put("startedAt", run.startedAt).put("endedAt", run.endedAt)
+                        .put("engine", run.engine).put("card", run.card).put("fingerprint", run.fingerprint)
+                        .put("replyId", run.replyId).put("reply", run.reply).put("host", run.host).put("remoteDir", run.remoteDir).put("phase", run.phase).put("outcome", run.outcome).put("result", run.result).put("diff", run.diff)
+                )
             }
+            val next = File(target.parentFile, target.name + ".tmp")
+            next.writeText(JSONObject().put("last", lastNumber).put("runs", list).toString())
+            check(next.renameTo(target)) { "无法保存 sub agent 目录" }
         }
         runCatching { onChange() }
     }
@@ -164,7 +213,6 @@ class AgentRuns(private val file: File? = null, private val now: () -> Long = Sy
         const val TIMED_OUT = "超时"
         const val EMPTY = "没有拿到内容"
 
-        private const val KEPT = 30
         private const val TITLE_CHARS = 40
     }
 }

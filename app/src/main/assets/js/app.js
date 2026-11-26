@@ -165,8 +165,8 @@ ui.els.sendBtn.addEventListener('click', () => {
   chat.sendText(text);
 });
 
-ui.els.messages.addEventListener('click', (event) => {
-  const link = event.target.closest('.assistant .bubble a[href^="#card="]');
+document.addEventListener('click', (event) => {
+  const link = event.target.closest('.assistant .bubble a[href^="#card="], #cardBody a[href^="#card="]');
   if (!link) return;
   event.preventDefault();
   let name;

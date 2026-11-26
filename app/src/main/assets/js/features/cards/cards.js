@@ -210,6 +210,13 @@ function show(next) {
   ui.els.cardDelete.classList.toggle('hidden', mode === 'new' || locked || prompt);
 }
 
+function cardText(name) {
+  const text = callBridge('readCard', name);
+  if (typeof text === 'string') return text;
+  ui.toast('未能读取最新卡片，请检查服务器连接');
+  return null;
+}
+
 function renderOpenCard() {
   setTitle(state.cardName);
   if (state.cardName === PLAN_CARD) {
@@ -218,8 +225,9 @@ function renderOpenCard() {
   }
   ui.els.cardPlan.classList.add('hidden');
   ui.els.cardBody.classList.remove('hidden');
-  const text = String(callBridge('readCard', state.cardName) || '').trim();
-  renderCardInto(ui.els.cardBody, text);
+  const text = cardText(state.cardName);
+  if (text === null) { ui.els.cardBody.textContent = '未能读取最新卡片'; return; }
+  renderCardInto(ui.els.cardBody, text.trim());
   ui.els.cardBody.scrollTop = 0;
   if (asArticle) drawArticle();
 }
@@ -321,7 +329,9 @@ async function drawArticle() {
   const frame = document.getElementById('cardArticleFrame');
   try {
     const article = await import('../article/article.js');
-    const { height, problem } = await article.show(frame, String(callBridge('readCard', name) || ''));
+    const text = cardText(name);
+    if (text === null) return;
+    const { height, problem } = await article.show(frame, text);
     if (name !== state.cardName || !asArticle) return;
     frame.contentDocument?.addEventListener('keydown', browseAdjacentCard);
     if (problem) ui.toast(problem);
@@ -561,7 +571,7 @@ function autoSave() {
   if (!localStorage.getItem(key)) return;
   const result = callBridge('autosaveCard', creating ? name : state.cardName, '', text, creating, '', original.text);
   if (result !== 'saved') {
-    saveStatus(result === 'conflict' ? '卡片有其他修改，本机草稿已保留' :
+    saveStatus(result === 'pending' ? '待同步，已保留本机草稿' : result === 'conflict' ? '卡片有其他修改，本机草稿已保留' :
       result === 'limit' ? '内容超过卡片上限，本机草稿已保留' : '写入失败，本机草稿已保留');
     return;
   }
@@ -638,7 +648,9 @@ export function editCard() {
   const card = state.cards.find((item) => item.name === state.cardName);
   if (mode !== 'read' || !card || card.locked || card.prompt) return;
   ui.els.cardNameInput.value = state.cardName;
-  ui.els.cardText.value = String(callBridge('readCard', state.cardName) || '');
+  const text = cardText(state.cardName);
+  if (text === null) return;
+  ui.els.cardText.value = text;
   beginEditing();
   show('edit');
 }
@@ -797,7 +809,8 @@ export async function attachMedia(event) {
 }
 
 export function copyCard() {
-  const raw = editing() ? ui.els.cardText.value : String(callBridge('readCard', state.cardName) || '').trim();
+  const raw = editing() ? ui.els.cardText.value : cardText(state.cardName);
+  if (raw === null) return;
   const doc = /^\s*(?:<!doctype\s+html\b|<html\b)/i.test(raw) ? new DOMParser().parseFromString(raw, 'text/html') : null;
   doc?.querySelectorAll('style,script,template,[hidden]').forEach(el => el.remove());
   const text = doc ? doc.body.textContent.trim() : raw;
@@ -812,7 +825,7 @@ export function copyCard() {
 export function deleteCard() {
   if (!state.cardName) return;
   const name = state.cardName;
-  callBridge('deleteCard', name);
+  if (callBridge('deleteCard', name) !== true) { ui.toast('删除尚未确认，请检查服务器连接'); return; }
   load();
   renderList();
   show('closed');

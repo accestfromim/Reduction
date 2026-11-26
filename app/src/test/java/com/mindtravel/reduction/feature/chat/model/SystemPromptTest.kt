@@ -46,7 +46,7 @@ class SystemPromptTest {
     fun repliesAreSpokenInFull() {
         val all = built().getValue("all")
         assertFalse(all.contains("【朗读】") || all.contains("【详情】"))
-        assertTrue(all.contains("summary") && all.contains("session_status"))
+        assertTrue(all.contains("summary") && all.contains("action=send") && !all.contains("session_status"))
     }
 
     @Test

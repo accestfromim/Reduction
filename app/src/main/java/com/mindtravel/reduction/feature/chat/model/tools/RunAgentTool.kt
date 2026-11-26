@@ -1,5 +1,7 @@
 package com.mindtravel.reduction.feature.chat.model.tools
 
+import com.mindtravel.reduction.feature.chat.data.CardRepository
+import java.util.UUID
 import com.mindtravel.reduction.core.Logs
 import com.mindtravel.reduction.core.settings.AgentDirectory
 import com.mindtravel.reduction.core.stringOrNull
@@ -23,16 +25,19 @@ class RunAgentTool(
     private val directories: List<AgentDirectory>,
     /** How long "start" lingers: only long enough to notice a run that dies at once. */
     private val waitMillis: Long = 2_500,
-    private val pollMillis: Long = 500
+    private val pollMillis: Long = 500,
+    private val cards: CardRepository? = null,
+    private val answerQuestion: ((AgentRuns.Run, String) -> String)? = null
 ) : ChatTool {
 
     override val spec = ToolSpec(
         name = "run_agent",
         description = "派发 sub agent 并查询它们的进度。sub agent 在电脑上后台运行，按设置中各路径的权限访问文件。" +
             "start 交出任务卡后立刻返回任务编号，不等它做完；" +
-            "status 报告还没结束的任务各做到哪了，做完的给出结果；stop 结束一个任务；record 取出一个任务存着的全过程，只在用户明确要看原文时用。任务编号由程序分配。",
+            "status 查登记状态；record 读任务卡全文；send 向已有会话补充消息；stop 停止执行。",
         parameters = listOf(
-            ToolParam("action", "start：派发新任务；status：查询进度；stop：结束任务；record：取出一个任务的任务卡原文和结果全文", choices = listOf("start", "status", "stop", "record")),
+            ToolParam("action", "要执行的操作", choices = listOf("start", "status", "send", "stop", "record")),
+            ToolParam("text", "send 要送给执行器的消息", required = false),
             ToolParam("task", "start 时必填。任务卡：目标、约束、验收标准，以及希望交回什么", required = false),
             ToolParam(
                 "folder",
@@ -75,6 +80,21 @@ class RunAgentTool(
             "status" -> status(args)
             "stop" -> stop(args)
             "record" -> record(args)
+            "send" -> {
+                val run = named(args).getOrElse { return it.message.orEmpty() } ?: return "send 要填任务编号 run"
+                if (run.host.isEmpty()) return "此旧任务没有可续聊的会话通道"
+                val text = args.optString("text").trim().ifEmpty { return "send 要填消息 text" }
+                val reply = harness.task(run, JSONObject().put("op", "send").put("text", text)
+                    .put("id", UUID.randomUUID().toString()))
+                check(!reply.optBoolean("detached")) { "此任务已移除" }
+                runs.phase(run, "running")
+                val receipt = when (reply.optString("delivery")) {
+                    "current" -> "已送入当前轮"
+                    "next" -> "已送入原会话的新一轮"
+                    else -> "已排队，等待原会话接收"
+                }
+                "任务 ${run.number}：$receipt"
+            }
             else -> "未知的 action，只能是 start、status、stop 或 record"
         }
     }
@@ -88,9 +108,46 @@ class RunAgentTool(
         // Pictures of a run the assistant asked about itself: its answer then was words, the pictures follow now.
         val held = runs.takePictures().map { (number, report, images) -> Ended(number, report, images) }
         return held + runs.unfinished().mapNotNull { run ->
+            if (run.host.isNotEmpty()) {
+                if (run.host != harness.hostId) return@mapNotNull null
+                if (run.phase == "idle") return@mapNotNull null
+                return@mapNotNull try {
+                    watchManaged(run)
+                } catch (e: Exception) {
+                    Logs.add("任务 ${run.number} 暂未收到状态：${e.message}")
+                    null
+                }
+            }
             val progress = harness.progress(run.folder, run.launcherId)
             if (progress.state == AgentHarness.State.RUNNING) null else Ended(run.number, report(run, progress, attached = true), progress.images)
         }
+    }
+
+    private fun watchManaged(run: AgentRuns.Run): Ended? {
+        val status = harness.task(run, JSONObject().put("op", "status"))
+        if (status.optBoolean("detached")) {
+            cards?.forgetTask(run)
+            runs.remove(run.number)
+            return null
+        }
+        val question = status.optJSONObject("question")
+        if (question != null && run.card.isNotEmpty() && answerQuestion != null) {
+            val id = question.getString("id")
+            val text = if (run.replyId == id) run.reply else {
+                val reply = answerQuestion.invoke(run, question.getString("text"))
+                runs.reply(run, id, reply)
+                reply
+            }
+            harness.task(run, JSONObject().put("op", "send").put("id", "reply:$id")
+                .put("question", id).put("text", text))
+            runs.reply(run, "", "")
+            runs.phase(run, "running")
+            return null
+        }
+        runs.phase(run, status.getString("status"))
+        if (!run.finished) return null
+        val pictures = if (run.outcome == AgentRuns.DONE) harness.pictures(run) else emptyList()
+        return Ended(run.number, "任务 ${run.number} · ${run.outcome}。${status.optString("detail")} 任务卡：${run.card.ifEmpty { "已删除" }}", pictures)
     }
 
     /** A run that has ended: its number, its report in words, and the pictures it handed back with it. */
@@ -107,6 +164,8 @@ class RunAgentTool(
     /** The whole of one run as it is kept: the task as handed over and what came back, word for word. */
     private fun record(args: JSONObject): String {
         val run = named(args).getOrElse { return it.message.orEmpty() } ?: return "record 要填任务编号 run"
+        if (run.host.isNotEmpty()) return if (run.card.isEmpty()) "任务卡已删除" else
+            cards?.read(run.card) ?: "任务卡已删除"
         return buildString {
             appendLine("任务 ${run.number} · ${run.outcome.ifEmpty { "进行中" }} · 文件夹 ${run.folderName}")
             appendLine()
@@ -132,7 +191,16 @@ class RunAgentTool(
         val one = named(args).getOrElse { return it.message.orEmpty() }
         val asked = if (one != null) listOf(one) else runs.unfinished().ifEmpty { listOfNotNull(runs.latest()) }
         if (asked.isEmpty()) return "还没有派发过任务。"
-        return asked.joinToString("\n\n") { run -> report(run, harness.progress(run.folder, run.launcherId)) }
+        return asked.joinToString("\n\n") { run ->
+            if (run.host.isEmpty()) report(run, harness.progress(run.folder, run.launcherId))
+            else {
+                val snapshot = harness.task(run, JSONObject().put("op", "status"))
+                if (snapshot.optBoolean("detached")) "任务已移除" else {
+                    runs.phase(run, if (snapshot.optJSONObject("question") != null) "waiting" else snapshot.getString("status"))
+                    AgentLedger.render(listOf(run)).trim()
+                }
+            }
+        }
     }
 
     private fun stop(args: JSONObject): String {
@@ -140,8 +208,9 @@ class RunAgentTool(
         val open = runs.unfinished()
         val run = one ?: open.singleOrNull()
             ?: return if (open.isEmpty()) "现在没有在跑的任务。" else "有 ${open.size} 个任务在跑，请说明结束哪一个。${known()}"
+        if (run.host.isNotEmpty() && run.host != harness.hostId) return "请连接此任务所在的服务器"
         harness.stop(run.folder, run.launcherId)
-        runs.end(run, AgentRuns.STOPPED)
+        if (run.host.isEmpty()) runs.end(run, AgentRuns.STOPPED) else runs.phase(run, "stopped")
         return "已结束任务 ${run.number}"
     }
 
@@ -160,11 +229,34 @@ class RunAgentTool(
                 "交回结果时分两块：依据（只放原文、出处、链接、文件路径、实际 diff、命令输出）和分析（只放推断和判断）。" +
                 "你只做执行、预筛和整理，不替人下结论。$PICTURES\n\n授权目录，子路径的规则优先：\n$access\n\n$task"
         } else {
-            "你是只读的 sub agent，禁止修改任何文件。" +
+            "你是只读的 sub agent，只能读取项目文件，可以更新自己的任务卡和交付目录。" +
                 "交回结果时分两块：依据（只放原文、出处、文件路径和行号、命令输出）和分析（只放推断和判断）。" +
                 "如果任务是验收：你不是执行者，逐条对照任务卡；第一行只写 PASS 或 FAIL，随后列直接证据，最后指出最值得人亲自看的一个判决点。$PICTURES\n\n授权目录，子路径的规则优先：\n$access\n\n$task"
         }
 
+        if (harness.managed && cards != null) {
+            require(task.length <= CardRepository.MAX_CHARS - 100) { "初始任务卡过长" }
+            val body = "## 目标与约束\n\n$task\n\n## 当前进展\n\n## 双方往来\n"
+            val instructions = """
+                共享任务卡全文位于 ~/.reduction-task/task.md。阶段进展、证据和阻塞点直接更新这张卡。
+                python3 ~/.reduction-task/card.py read 返回全文与 rev。把完整新正文通过标准输入交给
+                python3 ~/.reduction-task/card.py save REV。版本冲突时重新读取，再应用你的修改。
+                需要手机助手决策时用 Codex 的 request_user_input 或 python3 ~/.reduction-task/card.py ask '问题'。
+                文件式提问后可结束这一轮等原会话续聊。答复尚未确定时，继续能独立做的部分。
+                确认完成整个任务时调用 python3 ~/.reduction-task/card.py done。普通一轮结束表示可续聊。
+            """.trimIndent()
+            val started = harness.startTask(if (write) AgentHarness.Agent.BUILD else AgentHarness.Agent.PLAN,
+                folder, "$brief\n\n$instructions", body)
+            val run = runs.add(started.id, folderName, folder, task.lineSequence().first(), write = write,
+                changesProject = write && onProject, engine = harness.defaultEngine.wire, host = harness.hostId, remoteDir = started.directory)
+            var name = "sub agent/任务 ${run.number}"
+            while (cards.hasCached(name)) name += "·"
+            cards.registerTask(name, body)
+            runs.card(run, name)
+            // Fetch its first server timestamp. A temporary disconnection leaves the binding intact.
+            runCatching { cards?.read(name) }
+            return "【已派发】任务 ${run.number}：${run.title}。任务卡「$name」"
+        }
         val id = try {
             harness.start(if (write) AgentHarness.Agent.BUILD else AgentHarness.Agent.PLAN, folder, brief)
         } catch (t: IllegalStateException) {
@@ -194,28 +286,12 @@ class RunAgentTool(
         when (progress.state) {
             AgentHarness.State.RUNNING -> {
                 appendLine("【进行中】$name：${run.title}")
-                appendLine("已执行 ${progress.steps.size} 步：")
-                progress.steps.forEach { appendLine("- $it") }
-                if (progress.said.isNotBlank()) {
-                    appendLine("目前说到：")
-                    appendLine(progress.said)
-                }
             }
             AgentHarness.State.DONE -> {
-                val diff = if (!run.changesProject) "" else {
-                    runCatching { harness.exec("git -C ${AgentHarness.path(run.folder)} diff --stat") }.getOrDefault("").trim()
-                }
-                val said = (progress.errors.map { "错误：$it" } + listOf(progress.said).filter { it.isNotBlank() }).joinToString("\n")
-                runs.end(run, if (progress.succeeded) AgentRuns.DONE else AgentRuns.FAILED, said, diff)
+                runs.end(run, if (progress.succeeded) AgentRuns.DONE else AgentRuns.FAILED, progress.resultFile)
                 appendLine(if (progress.succeeded) "【完成】$name" else "【失败】$name，退出码 ${progress.exitCode}")
                 progress.errors.forEach { appendLine("错误：$it") }
-                if (progress.said.isNotBlank()) appendLine(progress.said)
-                if (progress.said.isBlank() && progress.errors.isEmpty()) appendLine("sub agent 没有留下任何输出。")
-                if (diff.isNotBlank()) {
-                    appendLine()
-                    appendLine("git diff --stat:")
-                    appendLine(diff)
-                }
+                if (progress.resultFile.isNotBlank()) appendLine(progress.resultFile)
                 if (progress.images.isNotEmpty()) {
                     appendLine()
                     val names = progress.images.joinToString("、") { it.name }

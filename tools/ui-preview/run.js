@@ -719,7 +719,13 @@ const review = await page.evaluate(() => {
   const link = document.querySelector('.assistant a[href^="#card="]');
   if (link) link.click();
   const followsLink = visible('cardPage') && title() === '科研/检索';
-  return { writeStaysInChat, showsRequested, keepsCurrent, keepsDraft, followsLink };
+  const taskName = 'sub agent/任务 1';
+  window.__cards[taskName] = { purpose: '任务卡', text: '执行器的最新进展' };
+  window.__cards['sub agent 任务'] = { purpose: '目录', text: '- 任务 1 · [打开](#card=' + encodeURIComponent(taskName) + ')' };
+  window.Native.onOpenCard('sub agent 任务');
+  document.querySelector('#cardBody a[href^="#card="]')?.click();
+  const followsTask = title() === taskName && document.querySelector('#cardBody').textContent.includes('最新进展');
+  return { writeStaysInChat, showsRequested, keepsCurrent, keepsDraft, followsLink, followsTask };
 });
 console.log('card review:', JSON.stringify(review));
 if (Object.values(review).some((passed) => !passed)) errors.push('card review ' + JSON.stringify(review));

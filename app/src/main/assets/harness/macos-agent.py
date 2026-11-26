@@ -1,3 +1,4 @@
+import base64
 import json
 import os
 import re
@@ -25,6 +26,8 @@ def sandbox_config(project, run, program, agent, domains, auth):
     for line in os.environ["REDUCTION_AGENT_MOUNTS"].splitlines():
         binding, raw = line.split("\t", 1)
         mounts[Path(raw)] = binding == "--bind" and agent == "build"
+    if (run / "channel").is_dir():
+        readable.append(run / "channel")
     readable.extend(mounts)
     writable.extend(path for path, write in mounts.items() if write)
     # A read-only subtree inside a writable directory needs an explicit deny.
@@ -136,7 +139,12 @@ def background(run, command, cwd, env, seconds, socket_root):
 
 
 def main():
-    state, folder, agent, prompt, engine, seconds, model = sys.argv[1:]
+    state, folder, agent, prompt, engine, seconds, model = sys.argv[1:8]
+    body = sys.argv[8] if len(sys.argv) > 8 else ""
+    if os.environ.get("REDUCTION_TASK_INPUT"):
+        payload = Path(os.environ["REDUCTION_TASK_INPUT"])
+        prompt = (payload / "prompt").read_text()
+        body = (payload / "body").read_text()
     seconds = int(seconds)
     if seconds <= 0:
         sys.exit("harness：运行时间必须大于零")
@@ -155,6 +163,15 @@ def main():
     (run / "result").mkdir()
     (home / ".reduction-result").symlink_to(run / "result", target_is_directory=True)
     (run / "prompt.txt").write_text(prompt + "\n", encoding="utf-8")
+    driver = run / "bridge.py"
+    if os.environ.get("REDUCTION_TASK_DRIVER"):
+        driver.write_bytes(base64.b64decode(os.environ["REDUCTION_TASK_DRIVER"], validate=True))
+        subprocess.run([sys.executable, str(driver), "init", str(run)], input=body, text=True, check=True)
+        (home / ".reduction-task").symlink_to(run / "channel", target_is_directory=True)
+        if engine == "codex":
+            args = ["app-server", "--enable", "default_mode_request_user_input", "-c", 'cli_auth_credentials_store="file"']
+        else:
+            args = args[:args.index("--")]
     settings = run / "sandbox.json"
     settings.write_text(json.dumps(sandbox_config(project, run, program, agent, domains, auth)), encoding="utf-8")
     socket_root = Path.home() / ".cache" / "reduction"
@@ -165,7 +182,17 @@ def main():
         "OPENCODE_DISABLE_AUTOUPDATE": "true", **auth,
     }
     command = [srt, "--settings", str(settings), "--", "/usr/bin/env", f"TMPDIR={temp}", str(program), *args]
-    background(run, command, project, env, seconds, socket_root)
+    if driver.exists():
+        env["TMPDIR"] = tempfile.mkdtemp(prefix="r", dir=socket_root)
+        subprocess.run([sys.executable, str(driver), "launch", str(run), engine, str(project),
+                        str(seconds), *command], env=env, check=True)
+        print("RUN " + run.name)
+        print("TASK_PATH " + str(run))
+    else:
+        capture = os.environ.get("REDUCTION_LEGACY_CAPTURE")
+        if capture:
+            command = [sys.executable, "-c", capture, str(run / "result/result.md"), engine, *command]
+        background(run, command, project, env, seconds, socket_root)
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@ class DataSync(
     /** Everything this device holds, and the media it has, for the other to merge. */
     fun export(): JSONObject = JSONObject()
         .put("version", VERSION)
-        .put("cards", cards.export())
+        .put("cards", cards.export(includeTaskCards = false))
         .put("memos", memos.export())
         .put("history", conversation.export())
         .put("media", JSONArray(cards.heldMedia().sorted()))

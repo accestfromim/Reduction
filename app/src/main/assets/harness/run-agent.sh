@@ -2,7 +2,7 @@
 # Runs sub agents with the directory policy supplied by Reduction, in the background.
 #
 #   run-agent.sh start  <build|plan> <folder> <prompt>   prints: RUN <id>
-#   run-agent.sh status <folder> <id>                    prints: STATE <running|done N|lost>, then the run's events,
+#   run-agent.sh status <folder> <id>                    prints: STATE <running|done N|lost>,
 #                                                        then a line "=====RESULT FILE=====" and what the agent
 #                                                        wrote into its result file, if anything
 #
@@ -34,6 +34,32 @@ model=${AGENT_MODEL:-deepseek/deepseek-flash}
 limit=${AGENT_TIMEOUT:-900}
 engine=${AGENT_ENGINE:-opencode}
 opencode=$home/.opencode/bin/opencode
+
+# Older single-shot clients also receive the native final answer. Consume stdout once
+# at execution time so status never fetches or parses a transcript.
+legacy_capture='
+import json, subprocess, sys
+from pathlib import Path
+target, engine = Path(sys.argv[1]), sys.argv[2]
+proc = subprocess.Popen(sys.argv[3:], stdout=subprocess.PIPE, text=True, errors="replace")
+final = ""
+for line in proc.stdout:
+    try:
+        item = json.loads(line)
+    except ValueError:
+        continue
+    if engine == "claude" and item.get("type") == "result":
+        final = item.get("result", "")
+    elif engine == "opencode" and item.get("type") == "text":
+        final = item.get("part", {}).get("text", "")
+if final:
+    try:
+        with target.open("x", encoding="utf-8") as result:
+            result.write(final)
+    except FileExistsError:
+        pass
+sys.exit(proc.wait())
+'
 
 say() { printf '%s\n' "$1"; exit 0; }
 
@@ -149,6 +175,17 @@ start)
   agent=${1:?agent}
   locate "${2:?folder}"
   prompt=${3:?prompt}
+  body=${4:-}
+  umask 077
+  payload_dir=
+  if [ "$prompt" = --task-stdin ] && [ -n "${REDUCTION_TASK_DRIVER:-}" ]; then
+    payload_dir=$(mktemp -d)
+    trap 'rm -f -- "$payload_dir/prompt" "$payload_dir/body"; rmdir -- "$payload_dir"' EXIT
+    python3 -c 'import json, pathlib, sys
+data = json.load(sys.stdin)
+for key in ("prompt", "body"):
+    (pathlib.Path(sys.argv[1]) / key).write_text(data[key], encoding="utf-8")' "$payload_dir"
+  fi
   case "$agent" in build|plan) ;; *) say "harness：未知的 agent 类型 $agent" ;; esac
   case "$engine" in opencode|codex|claude) ;; *) say "harness：未知的执行者 $engine" ;; esac
   if [ "$(uname -s)" = Darwin ]; then
@@ -156,7 +193,7 @@ start)
     command -v python3 >/dev/null 2>&1 || say "harness：macOS 需要 Python 3"
     [ -n "${REDUCTION_MAC_AGENT_SCRIPT:-}" ] || say "harness：没有收到 macOS 沙箱启动程序，请更新发出任务的 Reduction"
     mounts=$(mount_plan 2>&1) || say "harness：$mounts"
-    printf '%s' "$REDUCTION_MAC_AGENT_SCRIPT" | base64 -d | REDUCTION_AGENT_MOUNTS="$mounts" python3 - "$state" "$dir" "$agent" "$prompt" "$engine" "$limit" "$model"
+    printf '%s' "$REDUCTION_MAC_AGENT_SCRIPT" | base64 -d | REDUCTION_TASK_INPUT="$payload_dir" REDUCTION_LEGACY_CAPTURE="$legacy_capture" REDUCTION_AGENT_MOUNTS="$mounts" python3 - "$state" "$dir" "$agent" "$prompt" "$engine" "$limit" "$model" "$body"
     exit
   fi
   command -v bwrap >/dev/null 2>&1 || say "harness：电脑上没有 bwrap，无法隔离运行"
@@ -191,7 +228,20 @@ start)
   id=$(date +%Y%m%d-%H%M%S)-$$
   run=$state/runs/$id
   mkdir -p "$run/result"
-  printf '%s\n' "$prompt" > "$run/prompt.txt"
+  if [ -n "$payload_dir" ]; then
+    cp "$payload_dir/prompt" "$run/prompt.txt"
+  else
+    printf '%s\n' "$prompt" > "$run/prompt.txt"
+  fi
+
+  if [ -n "${REDUCTION_TASK_DRIVER:-}" ]; then
+    printf '%s' "$REDUCTION_TASK_DRIVER" | base64 -d > "$run/bridge.py"
+    if [ -n "$payload_dir" ]; then
+      python3 "$run/bridge.py" init "$run" < "$payload_dir/body"
+    else
+      printf '%s' "$body" | python3 "$run/bridge.py" init "$run"
+    fi
+  fi
 
   if [ "$engine" = claude ]; then
     REDUCTION_CLAUDE_ROOT=$(dirname "$(dirname "$claude")")
@@ -208,6 +258,15 @@ start)
     --ro-bind-try /etc/passwd /etc/passwd --ro-bind-try /etc/group /etc/group \
     --bind "$run/result" "$home/.reduction-result" \
     --unshare-user --disable-userns --unshare-pid --unshare-ipc --die-with-parent --new-session
+  # Carry the host's network route into the otherwise empty sandbox environment.
+  for proxy in HTTPS_PROXY HTTP_PROXY NO_PROXY https_proxy http_proxy no_proxy; do
+    value=$(printenv "$proxy") || continue
+    case "$value" in *@*) continue ;; esac
+    set -- "$@" --setenv "$proxy" "$value"
+  done
+  if [ -f "$run/bridge.py" ]; then
+    set -- "$@" --ro-bind "$run/channel" "$home/.reduction-task"
+  fi
   for system_dir in /bin /sbin /lib /lib64; do
     if [ -L "$system_dir" ]; then
       set -- "$@" --symlink "$(readlink "$system_dir")" "$system_dir"
@@ -239,14 +298,24 @@ MOUNTS
         ;;
     esac
     # bwrap 负责隔离工作目录。Codex 在这个已隔离的进程里执行。
-    set -- "$@" timeout "$limit" "$codex" exec --json --ephemeral --ignore-user-config --ignore-rules \
+    if [ -f "$run/bridge.py" ]; then
+      set -- "$@" "$codex" app-server --enable default_mode_request_user_input -c 'cli_auth_credentials_store="file"'
+    else
+      set -- "$@" timeout "$limit" "$codex" exec --json --ephemeral --ignore-user-config --ignore-rules \
       --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -c 'cli_auth_credentials_store="file"' \
       --output-last-message "$home/.reduction-result/result.md" -
+    fi
     input=$run/prompt.txt
     ;;
   claude)
     # Claude Code itself, its settings and login, and nothing of what other sessions said.
-    set -- "$@" --ro-bind "$(dirname "$(dirname "$claude")")" "$(dirname "$(dirname "$claude")")" --bind "$home/.claude" "$home/.claude" --tmpfs "$home/.claude/projects"
+    set -- "$@" --ro-bind "$(dirname "$(dirname "$claude")")" "$(dirname "$(dirname "$claude")")" --bind "$home/.claude" "$home/.claude"
+    if [ -f "$run/bridge.py" ]; then
+      mkdir -p "$run/claude-projects"
+      set -- "$@" --bind "$run/claude-projects" "$home/.claude/projects"
+    else
+      set -- "$@" --tmpfs "$home/.claude/projects"
+    fi
     [ -f "$home/.claude.json" ] && set -- "$@" --bind "$home/.claude.json" "$home/.claude.json"
     # Whatever this computer tells Claude Code through its environment goes with it; nothing else does.
     for name in $(env | sed -n 's/^\(ANTHROPIC_[A-Z0-9_]*\|CLAUDE_CODE_[A-Z0-9_]*\)=.*/\1/p'); do
@@ -262,38 +331,47 @@ MOUNTS
     set -- "$@" --ro-bind "$home/.opencode" "$home/.opencode" --bind "$state/opencode" "$home/.local/share/opencode"
     [ -d "$home/.config/opencode" ] && set -- "$@" --ro-bind "$home/.config/opencode" "$home/.config/opencode"
     [ -d "$home/.cache/opencode" ] && set -- "$@" --bind "$home/.cache/opencode" "$home/.cache/opencode"
-    set -- "$@" timeout "$limit" "$opencode" run --format json --model "$model" --agent "$agent" --auto --dir "$dir" "$prompt"
+    set -- "$@" timeout "$limit" "$opencode" run --format json --model "$model" --agent "$agent" --auto --dir "$dir"
+    [ -f "$run/bridge.py" ] || set -- "$@" -- "$prompt"
     input=/dev/null
     ;;
   esac
 
+  if [ -f "$run/bridge.py" ]; then
+    python3 "$run/bridge.py" launch "$run" "$engine" "$dir" "$limit" bwrap "$@"
+    printf 'RUN %s\nTASK_PATH %s\n' "$id" "$run"
+    exit
+  fi
+
+  set -- python3 -c "$legacy_capture" "$run/result/result.md" "$engine" bwrap "$@"
   # Detached from this shell, so the run outlives the SSH command that started it.
   nohup setsid sh -c '
     out=$1; input=$2; shift 2
     "$@" > "$out/events.jsonl" 2>&1 < "$input"
     echo $? > "$out/exit"
-  ' sh "$run" "$input" bwrap "$@" > /dev/null 2>&1 < /dev/null &
+  ' sh "$run" "$input" "$@" > /dev/null 2>&1 < /dev/null &
   echo $! > "$run/pid"
   printf 'RUN %s\n' "$id"
   ;;
 
-status)
+status|pictures)
   locate "${1:?folder}"
   run_dir "${2:?id}"
-  if [ -f "$run/exit" ]; then
+  if [ "$cmd" = pictures ]; then
+    printf 'STATE done 0\n'
+  elif [ -f "$run/exit" ]; then
     printf 'STATE done %s\n' "$(cat "$run/exit")"
   elif [ -s "$run/pid" ] && kill -0 "$(cat "$run/pid")" 2>/dev/null; then
     printf 'STATE running\n'
   else
     printf 'STATE lost\n'
   fi
-  [ -f "$run/events.jsonl" ] && cat "$run/events.jsonl"
-  if [ ! -L "$run/result" ] && [ -f "$run/result/result.md" ] && [ ! -L "$run/result/result.md" ]; then
+  if [ "$cmd" = status ] && [ ! -L "$run/result" ] && [ -f "$run/result/result.md" ] && [ ! -L "$run/result/result.md" ]; then
     printf '\n=====RESULT FILE=====\n'
     cat "$run/result/result.md"
   fi
   # Pictures are handed over once the run is over, not while it may still be drawing them.
-  if [ -f "$run/exit" ] && [ ! -L "$run/result" ]; then
+  if { [ "$cmd" = pictures ] || [ -f "$run/exit" ]; } && [ ! -L "$run/result" ]; then
     sent=0
     for picture in "$run/result"/*; do
       [ -f "$picture" ] && [ ! -L "$picture" ] || continue
@@ -317,9 +395,20 @@ status)
   fi
   ;;
 
+task)
+  locate "${1:?folder}"
+  run_dir "${2:?id}"
+  [ -f "$run/bridge.py" ] || say '{"error":"此旧会话没有任务卡通道"}'
+  exec python3 "$run/bridge.py" rpc "$run"
+  ;;
+
 stop)
   locate "${1:?folder}"
   run_dir "${2:?id}"
+  if [ -f "$run/bridge.py" ]; then
+    python3 "$run/bridge.py" stop "$run"
+    say "STOPPED"
+  fi
   if [ ! -f "$run/exit" ]; then
     pid=$(cat "$run/pid" 2>/dev/null || echo 0)
     [ "$pid" -gt 1 ] 2>/dev/null && kill -TERM -- "-$pid" 2>/dev/null || true

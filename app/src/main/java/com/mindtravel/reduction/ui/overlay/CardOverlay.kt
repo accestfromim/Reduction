@@ -35,6 +35,8 @@ import kotlin.math.abs
 class CardOverlay(private val context: Context, private val cards: CardRepository) {
 
     private val main = Handler(Looper.getMainLooper())
+    private val reader = java.util.concurrent.Executors.newSingleThreadExecutor()
+    private var generation = 0
     private val windows = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
     private val prefs = context.getSharedPreferences("card_overlay", Context.MODE_PRIVATE)
 
@@ -79,11 +81,19 @@ class CardOverlay(private val context: Context, private val cards: CardRepositor
     /** Brings what is on screen in line with what should be. Main thread only. */
     private fun sync() {
         val name = pinned()
-        val text = if (name.isEmpty()) null else cards.read(name)
-        if (text == null || appInFront || !allowed()) {
+        val attempt = ++generation
+        if (name.isEmpty() || appInFront || !allowed()) {
             hide()
             return
         }
+        if (!open) { display(name, ""); return }
+        reader.execute {
+            val text = runCatching { cards.read(name) }.getOrElse { "未能读取最新卡片：${it.message}" }
+            main.post { if (generation == attempt) { if (text == null) hide() else display(name, text) } }
+        }
+    }
+
+    private fun display(name: String, text: String) {
         try {
             if (root == null) show()
             title?.text = name

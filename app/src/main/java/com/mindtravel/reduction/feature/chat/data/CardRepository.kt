@@ -1,5 +1,6 @@
 package com.mindtravel.reduction.feature.chat.data
 
+import com.mindtravel.reduction.feature.chat.model.tools.AgentRuns
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -21,6 +22,11 @@ import java.util.Base64
  * file that no card refers to any more is removed.
  */
 class CardRepository(private val dir: File) {
+
+    var taskCards: TaskCards? = null
+
+    @Synchronized
+    fun retryTaskEdits() { taskCards?.retry(this) }
 
     class Info(val name: String, val purpose: String, val chars: Int, val updatedAt: Long)
 
@@ -51,6 +57,7 @@ class CardRepository(private val dir: File) {
     fun setLocked(name: String, locked: Boolean): Boolean {
         val clean = cleanName(name) ?: return false
         if (isProgramCard(clean) || read(clean) == null) return false
+        taskCards?.binding(clean)?.let { return taskCards!!.lock(it, locked, this) }
         val file = lockFile(clean) ?: return false
         val done = if (locked) runCatching { file.writeText(""); true }.getOrDefault(false) else (!file.exists() || file.delete())
         // Locking is a change to the card: its date moves, so that another device takes it over.
@@ -61,11 +68,20 @@ class CardRepository(private val dir: File) {
 
     private fun lockFile(name: String): File? = cleanName(name)?.let { File(dir, encode(it) + LOCK) }
 
+    internal fun cacheLock(name: String, locked: Boolean) {
+        val file = lockFile(name) ?: return
+        if (locked != file.isFile) {
+            if (locked) file.writeText("") else file.delete()
+            onChange(name)
+        }
+    }
+
     /** Writes a card that only the program may write. */
     @Synchronized
     fun writeProgramCard(name: String, content: String, purpose: String): Boolean {
         val clean = cleanName(name) ?: return false
         programCards += clean
+        if (cached(clean) == content && purposeOf(clean) == purpose) return true
         return save(clean, content, purpose, byProgram = true)
     }
 
@@ -76,8 +92,7 @@ class CardRepository(private val dir: File) {
     fun list(): List<Info> = dir.listFiles().orEmpty()
         .mapNotNull { file ->
             val name = cardName(file) ?: return@mapNotNull null
-            val text = runCatching { file.readText() }.getOrDefault("")
-            Info(name, purposeOf(name), text.length, file.lastModified())
+            Info(name, purposeOf(name), metadata(name).getInt("chars"), file.lastModified())
         }
         .sortedByDescending { it.updatedAt }
 
@@ -101,8 +116,46 @@ class CardRepository(private val dir: File) {
     }
 
     @Synchronized
-    fun read(name: String): String? =
-        textFile(name)?.takeIf { it.isFile }?.let { runCatching { it.readText() }.getOrNull() }
+    fun read(name: String): String? {
+        val binding = taskCards?.binding(name)
+        return if (binding == null) cached(name) else taskCards!!.read(binding, this)
+    }
+
+    internal fun hasCached(name: String) = textFile(name)?.isFile == true
+    internal fun cached(name: String): String? = textFile(name)?.takeIf { it.isFile }?.readText()
+    internal fun cache(name: String, text: String) {
+        val file = requireNotNull(textFile(name))
+        dir.mkdirs()
+        if (cached(name) != text) {
+            check(write(file, text)) { "无法缓存卡片 $name" }
+            deleted.remove(name)?.let { saveDeleted() }
+            onChange(name)
+        }
+    }
+    private fun metaFile(name: String) = File(dir, encode(name) + ".meta")
+    private fun metadata(name: String): JSONObject {
+        val meta = metaFile(name)
+        return if (meta.isFile) JSONObject(meta.readText()) else {
+            val text = read(name).orEmpty()
+            metadataFor(text).also { meta.writeText(it.toString()) }
+        }
+    }
+    private fun metadataFor(text: String) = JSONObject().put("chars", text.length).put("media", JSONArray(mediaIn(text)))
+    private fun mediaIds(name: String): List<String> = metadata(name).getJSONArray("media").let { ids ->
+        List(ids.length()) { ids.getString(it) }
+    }
+
+    @Synchronized
+    fun registerTask(name: String, body: String) {
+        dir.mkdirs()
+        writePurpose(name, "执行器与手机助手共享的任务、进展和往来")
+        cache(name, body)
+    }
+
+    @Synchronized
+    fun forgetTask(run: AgentRuns.Run) {
+        taskCards?.forget(run, this)
+    }
 
     @Synchronized
     fun purpose(name: String): String = cleanName(name)?.let { purposeOf(it) }.orEmpty()
@@ -117,19 +170,30 @@ class CardRepository(private val dir: File) {
     @Synchronized
     fun autosave(name: String, purpose: String, content: String, creating: Boolean, oldPurpose: String, oldText: String): String {
         if (content.length > MAX_CHARS || purpose.length > MAX_PURPOSE) return "limit"
-        val existing = read(name)
+        val binding = taskCards?.binding(name)
+        val existing = if (binding != null) cached(name) else read(name)
         // The editor only changes the body. Older clients can still submit an explicit purpose change.
         val changingPurpose = purpose != oldPurpose
-        if (if (creating) existing != null else existing != oldText || (changingPurpose && purpose(name) != oldPurpose)) return "conflict"
-        return if (save(name, content, purpose.takeIf { changingPurpose || (creating && it.isNotEmpty()) })) "saved" else "failed"
+        if (if (creating) existing != null else (existing != oldText && (binding == null || existing != content)) || (changingPurpose && purpose(name) != oldPurpose)) return "conflict"
+        return try {
+            if (save(name, content, purpose.takeIf { changingPurpose || (creating && it.isNotEmpty()) })) "saved" else "failed"
+        } catch (_: TaskCards.Offline) { "pending" }
+          catch (_: TaskCards.Conflict) { "conflict" }
     }
 
     private fun save(name: String, content: String, purpose: String?, byProgram: Boolean): Boolean {
         val file = textFile(name) ?: return false
         if (!byProgram && (isProgramCard(name) || isLocked(name))) return false
         dir.mkdirs()
+        val binding = if (byProgram) null else taskCards?.binding(name)
+        if (binding != null) {
+            require(content.length <= MAX_CHARS) { "超过卡片字数上限" }
+            taskCards!!.change(binding, content, this)
+            if (purpose != null) writePurpose(name, purpose)
+            return true
+        }
         if (purpose != null) writePurpose(name, purpose)
-        return write(file, content.take(MAX_CHARS)).also {
+        return write(file, if (byProgram) content else content.take(MAX_CHARS)).also {
             if (it) {
                 cleanName(name)?.let { clean -> if (deleted.remove(clean) != null) saveDeleted() }
                 runCatching { sweepMedia() }
@@ -193,14 +257,30 @@ class CardRepository(private val dir: File) {
                 }
             }
         }
-        for (op in ops) when (op) {
-            is CardPatch.Move -> moveAttachments(op.name, op.to)
-            is CardPatch.Delete -> attachmentDirectory(op.name).deleteRecursively()
-            else -> Unit
+        val targets = ops.mapNotNull { taskCards?.binding(it.name) }.distinct()
+            .associateWithTo(LinkedHashMap<AgentRuns.Run, String?>()) { it.card }
+        for (op in ops) {
+            val run = targets.entries.firstOrNull { it.value == op.name }?.key ?: continue
+            when (op) {
+                is CardPatch.Move -> targets[run] = op.to
+                is CardPatch.Delete -> targets[run] = null
+                else -> Unit
+            }
         }
-        for (name in deletes) delete(name)
+        val edits = LinkedHashMap<AgentRuns.Run, String?>()
+        for ((run, target) in targets) {
+            if (target == null) edits[run] = null
+            else writes[target]?.first?.let { if (it != cached(run.card)) edits[run] = it }
+        }
+        taskCards?.patch(edits, text, this)
+        for ((run, name) in targets) if (name != null && name != run.card) taskCards?.rename(run, name)
+        for (op in ops) if (op is CardPatch.Move) moveAttachments(op.name, op.to)
+        for (name in deletes) if (hasCached(name)) removeCached(name)
         for ((name, change) in writes) {
-            if (!save(name, change.first, change.second)) throw CardPatch.Invalid("卡片“$name”写入失败")
+            if (name in targets.values) {
+                cache(name, change.first)
+                change.second?.let { writePurpose(name, it) }
+            } else if (!save(name, change.first, change.second)) throw CardPatch.Invalid("卡片“$name”写入失败")
         }
         return summary
     }
@@ -214,8 +294,9 @@ class CardRepository(private val dir: File) {
         if (isProgramCard(source) || isProgramCard(target) || isLocked(source) || read(target) != null) return false
         val text = read(source) ?: return false
         if (!save(target, text, purposeOf(source))) return false
+        taskCards?.binding(source)?.let { taskCards!!.rename(it, target) }
         moveAttachments(source, target)
-        return delete(source)
+        return removeCached(source)
     }
 
     // ── pictures and sound ──────────────────────────────────────────────────
@@ -280,7 +361,7 @@ class CardRepository(private val dir: File) {
         val used = HashSet<String>()
         for (file in dir.listFiles().orEmpty()) {
             if (file.isFile && file.name.endsWith(TEXT)) {
-                MEDIA_REF.findAll(runCatching { file.readText() }.getOrDefault("")).forEach { used += it.groupValues[1] }
+                used.addAll(mediaIds(requireNotNull(cardName(file))))
             }
         }
         val cutoff = System.currentTimeMillis() - MEDIA_GRACE_MS
@@ -294,7 +375,19 @@ class CardRepository(private val dir: File) {
     @Synchronized
     fun delete(name: String): Boolean {
         if (isProgramCard(name) || isLocked(name)) return false
+        val binding = taskCards?.binding(name)
+        if (binding != null) {
+            taskCards!!.change(binding, null, this)
+            return true
+        }
+        return removeCached(name)
+    }
+
+    internal fun removeCached(name: String): Boolean {
+        if (name.isEmpty()) return false
         purposeFile(name)?.delete()
+        metaFile(name).delete()
+        lockFile(name)?.delete()
         return (textFile(name)?.takeIf { it.isFile }?.delete() ?: false).also {
             if (it) {
                 attachmentDirectory(name).deleteRecursively()
@@ -333,10 +426,10 @@ class CardRepository(private val dir: File) {
      * program writes are left out — each device writes its own.
      */
     @Synchronized
-    fun export(): JSONObject = JSONObject().apply {
+    fun export(includeTaskCards: Boolean = true): JSONObject = JSONObject().apply {
         put("cards", JSONArray().apply {
             for (card in list()) {
-                if (isProgramCard(card.name)) continue
+                if (isProgramCard(card.name) || (!includeTaskCards && taskCards?.binding(card.name) != null)) continue
                 put(
                     JSONObject().put("name", card.name).put("text", read(card.name).orEmpty())
                         .put("purpose", card.purpose).put("prompt", isLocked(card.name)).put("at", card.updatedAt)
@@ -358,12 +451,12 @@ class CardRepository(private val dir: File) {
         val gone = remote.optJSONObject("deleted") ?: JSONObject()
         for (raw in gone.keys()) {
             val name = cleanName(raw) ?: continue
-            if (isProgramCard(name)) continue
+            if (isProgramCard(name) || taskCards?.binding(name) != null) continue
             val at = gone.optLong(raw)
             val file = textFile(name) ?: continue
             if (file.isFile && file.lastModified() >= at) continue
             if (file.isFile) {
-                file.delete(); purposeFile(name)?.delete(); lockFile(name)?.delete(); attachmentDirectory(name).deleteRecursively()
+                file.delete(); purposeFile(name)?.delete(); metaFile(name).delete(); lockFile(name)?.delete(); attachmentDirectory(name).deleteRecursively()
                 changed = true
             }
             if ((deleted[name] ?: 0L) < at) deleted[name] = at
@@ -372,7 +465,7 @@ class CardRepository(private val dir: File) {
         for (i in 0 until theirs.length()) {
             val card = theirs.optJSONObject(i) ?: continue
             val name = cleanName(card.optString("name")) ?: continue
-            if (isProgramCard(name)) continue
+            if (isProgramCard(name) || taskCards?.binding(name) != null) continue
             val at = card.optLong("at")
             if ((deleted[name] ?: 0L) >= at) continue
             val file = textFile(name) ?: continue
@@ -405,7 +498,7 @@ class CardRepository(private val dir: File) {
         val held = HashSet<String>()
         for (file in dir.listFiles().orEmpty()) {
             if (!file.isFile || !file.name.endsWith(TEXT)) continue
-            for (id in mediaIn(runCatching { file.readText() }.getOrDefault(""))) {
+            for (id in mediaIds(requireNotNull(cardName(file)))) {
                 if (mediaFile(id) == null) continue
                 held += id
                 pages(id).forEach { held += it.name }
@@ -446,8 +539,11 @@ class CardRepository(private val dir: File) {
         val tmp = File(dir, "${file.name}.tmp")
         return runCatching {
             tmp.writeText(text)
-            if (file.exists()) file.delete()
-            tmp.renameTo(file)
+            tmp.renameTo(file).also { ok ->
+                if (ok && file.name.endsWith(TEXT)) {
+                    File(dir, file.name.removeSuffix(TEXT) + ".meta").writeText(metadataFor(text).toString())
+                }
+            }
         }.getOrDefault(false)
     }
 

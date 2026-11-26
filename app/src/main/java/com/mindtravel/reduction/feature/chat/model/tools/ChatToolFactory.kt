@@ -5,6 +5,9 @@ import com.mindtravel.reduction.core.settings.AppSettings
 import com.mindtravel.reduction.feature.article.ArticleBuilder
 import com.mindtravel.reduction.feature.article.RenderArticleTool
 import com.mindtravel.reduction.feature.chat.data.CardRepository
+import com.mindtravel.reduction.feature.chat.data.TaskCards
+import com.mindtravel.reduction.feature.chat.model.ChatEngine
+import java.io.File
 import com.mindtravel.reduction.feature.memo.MemoTool
 import com.mindtravel.reduction.feature.memo.data.MemoStore
 import com.mindtravel.reduction.hardware.pc.PcGateway
@@ -21,8 +24,8 @@ class ChatToolFactory(
     private val memos: MemoStore,
     /** The sandbox launcher that runs on the computer. */
     private val agentLauncherScript: () -> String,
-    /** The script that reports how the sessions on the computer are doing. */
-    private val sessionStatusScript: () -> String,
+    private val taskDriverScript: () -> String,
+    private val questionEngine: ChatEngine,
     /** The runs started so far; they outlive any one reply. */
     private val agentRuns: AgentRuns,
     /** Sets a card as an article; with [renderArticleScript], draws it on the computer. Null: no such tool. */
@@ -48,7 +51,7 @@ class ChatToolFactory(
             // Drawing an article is done by the computer's browser: offered when there is a computer to ask.
             if (articles != null && harness.isConfigured) add(RenderArticleTool(cards, articles, harness, renderArticleScript))
             if (harness.isConfigured && (settings.opencodeEnabled || settings.opencodeWriteEnabled)) {
-                add(SessionStatusTool(harness, sessionStatusScript))
+                add(RemoveSubAgentTool(harness, agentRuns, cards))
                 add(
                     RunAgentTool(
                         harness = harness,
@@ -56,6 +59,7 @@ class ChatToolFactory(
                         project = settings.pcProject,
                         agentsRoot = AGENTS_ROOT,
                         allowWrite = settings.opencodeWriteEnabled,
+                        cards = cards,
                         directories = settings.agentDirectories
                     )
                 )
@@ -69,9 +73,18 @@ class ChatToolFactory(
 
     /** The reports of runs that have ended since they were last looked at, each with its number. */
     fun endedRuns(settings: AppSettings): List<RunAgentTool.Ended> {
+        cards.retryTaskEdits()
         if (!hasOpenRuns()) return emptyList()
-        return RunAgentTool(harness(settings), agentRuns, settings.pcProject, AGENTS_ROOT, settings.opencodeWriteEnabled, settings.agentDirectories)
-            .endedRuns()
+        return RunAgentTool(harness(settings), agentRuns, settings.pcProject, AGENTS_ROOT, settings.opencodeWriteEnabled,
+            settings.agentDirectories, cards = cards, answerQuestion = { run, text ->
+                answerTaskQuestion(questionEngine, settings, cards, memos, run, text)
+            }).endedRuns()
+    }
+
+    fun bindTaskCards(dir: File, settings: () -> AppSettings) {
+        cards.taskCards = TaskCards(dir, agentRuns) { run, request ->
+            harness(settings()).task(run, request)
+        }
     }
 
     private fun harness(settings: AppSettings) = AgentHarness(
@@ -79,7 +92,8 @@ class ChatToolFactory(
         profile = PcProfile(settings),
         apiKey = settings.apiKey,
         model = settings.model,
-        defaultEngine = if (settings.agentEngine == "codex") AgentHarness.Engine.CODEX else AgentHarness.Engine.OPENCODE,
+        defaultEngine = AgentHarness.Engine.entries.firstOrNull { it.wire == settings.agentEngine } ?: AgentHarness.Engine.OPENCODE,
+        taskDriverScript = taskDriverScript,
         launcherScript = agentLauncherScript,
         macLauncherScript = macAgentLauncherScript,
         directories = settings.agentDirectories

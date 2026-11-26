@@ -152,7 +152,8 @@ class AppCore private constructor(context: Context) {
             cards = cardRepository,
             memos = memoStore,
             agentLauncherScript = { harnessScript(context, "run-agent.sh") },
-            sessionStatusScript = { harnessScript(context, "session-status.py") },
+            taskDriverScript = { harnessScript(context, "task-session.py") },
+            questionEngine = chatEngine,
             agentRuns = agentRuns,
             articles = articles,
             renderArticleScript = { harnessScript(context, "render-article.sh") },
@@ -260,7 +261,8 @@ class AppCore private constructor(context: Context) {
         if (WakeWordBus.consumePending()) voice.onWakeWord()
         // The record of sub agent runs is a card the program keeps, rewritten whenever a run changes.
         val writeLedger = { cardRepository.writeProgramCard(AgentLedger.CARD, AgentLedger.render(agentRuns.all()), AgentLedger.PURPOSE) }
-        agentRuns.onChange = { writeLedger() }
+        toolFactory.bindTaskCards(File(context.filesDir, "task-card-sync"), settingsRepository::load)
+        agentRuns.onChange = { mainHandler.post { writeLedger() } }
         writeLedger()
         // The review card is written from the to-dos whenever they change, and the alarms follow them.
         val writeMemos = {

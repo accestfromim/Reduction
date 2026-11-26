@@ -21,7 +21,7 @@ class AgentWatch(
     private val quiet: () -> Boolean,
     private val deliver: (Report) -> Boolean,
     private val scope: CoroutineScope,
-    private val everyMillis: Long = 15_000
+    private val everyMillis: Long = 4_000
 ) {
     /** [title] is what the user is shown; [text] is what the assistant is given, with [images] to look at. */
     class Report(val title: String, val text: String, val images: List<ChatImage> = emptyList())

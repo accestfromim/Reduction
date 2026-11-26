@@ -60,10 +60,9 @@ object SystemPrompt {
                 "${it.path}（${if (it.writable && settings.opencodeWriteEnabled) "读写" else "只读"}）"
             }.ifBlank { "无" }
             tools += listOf(
-                "- session_status：查看电脑上 Claude、codex、opencode 这几类编程会话各自的状态：最后活动时间、在做什么、是否卡住或在等用户。用户问“那边做到哪了”“卡住没有”时调用。拿到的是电脑上脚本提取的摘要。",
                 "- run_agent：派发 sub agent 的唯一接口。sub agent 在电脑上后台运行，按保存的目录权限访问文件。已授权路径：$directories。子路径规则优先；只读任务对所有授权目录都只读。",
                 "  · action=start 交出任务卡，立刻返回任务编号（任务 1、任务 2……由程序分配），不等它做完。",
-                "  · action=status 报告所有没结束的任务各做到哪了，做完的给出结果；只想看一个就填 run=编号。用户问“进度怎么样”“做完了吗”时就查。",
+                "  · action=status 查询任务状态。进展和往来在任务卡里，读卡会核对服务器全文。action=send 带 run、text 向已有会话补充消息。",
                 "  · action=stop 结束一个任务；有几个在跑时填 run=编号。",
                 "  · folder 只在 start 时填：可填已授权目录的完整路径；project 指 ${settings.pcProject}，也须在设置中授权。独立工作区填名称，默认 research。",
                 "  · $access",
@@ -111,7 +110,7 @@ object SystemPrompt {
             "",
             "# 长任务",
             "派发之后马上回复用户：说派了什么、是任务几，然后结束这轮回复。不要在同一轮里反复查 status 等它做完。",
-            "每个任务由程序直接记进卡片「${AgentLedger.CARD}」，一个任务一句目标、一句结果，这张卡片你改不了。任务的全过程（任务卡原文、交回的结果全文）程序另外存着，卡片上不显示，你平时也不用去看；只有用户明确要看某个任务的原文时，用 action=record 取出来。",
+            "「${AgentLedger.CARD}」是唯一的 sub agent 目录，每个会话一行。每个任务的进展和双方往来是一张可编辑、可删除的普通卡。删卡保留会话；remove_sub_agent 按编号从目录移除会话并删除两端任务卡。",
             "任务结束时，程序会自动把结果发给你：一条以“【任务 N 已结束】”开头的消息。它不是用户说的话。收到后用一轮回复向用户汇报结果，该验收的照验收的规矩办。用户中途问起进度，用 status 查询。",
             "",
             "# 备忘卡片",

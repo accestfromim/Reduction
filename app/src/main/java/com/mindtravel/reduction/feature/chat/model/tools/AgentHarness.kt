@@ -21,7 +21,8 @@ class AgentHarness(
     private val model: String,
     private val directories: List<AgentDirectory> = emptyList(),
     private val macLauncherScript: (() -> String)? = null,
-    private val defaultEngine: Engine = Engine.OPENCODE,
+    private val taskDriverScript: (() -> String)? = null,
+    val defaultEngine: Engine = Engine.OPENCODE,
     private val launcherScript: () -> String
 ) {
     enum class Agent(val wire: String) {
@@ -47,14 +48,7 @@ class AgentHarness(
     class Progress(
         val state: State,
         val exitCode: Int?,
-        /** Everything the agent has said, in order. */
-        val said: String,
-        /** One line per tool call the agent has made. */
-        val steps: List<String>,
-        /** Errors reported by the run itself, such as the model refusing the request. */
         val errors: List<String>,
-        /** What the agent returned as its answer, when its engine says so separately from what it said along the way. */
-        val returned: String = "",
         /** What the agent left in its result file. */
         val resultFile: String = "",
         /** The pictures the agent left beside its result file, to be looked at. */
@@ -64,14 +58,6 @@ class AgentHarness(
     ) {
         val succeeded: Boolean get() = state == State.DONE && exitCode == 0 && errors.isEmpty()
 
-        /** The run was ended for taking too long. */
-        val timedOut: Boolean get() = exitCode == TIMEOUT_EXIT
-
-        /**
-         * The result, as content only: what the process returned first, then the result file.
-         * What was said along the way is the last resort, for engines that return nothing separately.
-         */
-        val content: String get() = returned.ifBlank { resultFile }.ifBlank { said }.trim()
     }
 
     val isConfigured: Boolean get() = profile.host.isNotBlank() && profile.user.isNotBlank()
@@ -83,7 +69,41 @@ class AgentHarness(
         return id?.takeIf { it.isNotBlank() } ?: throw IllegalStateException(output.ifBlank { "harness 没有响应" })
     }
 
+    val hostId: String get() = "${profile.user}@${profile.host}:${profile.port}"
+    val managed: Boolean get() = taskDriverScript != null
+
+    data class Started(val id: String, val directory: String)
+
+    fun startTask(agent: Agent, folder: String, prompt: String, body: String): Started {
+        val input = JSONObject().put("prompt", prompt).put("body", body).toString().toByteArray(Charsets.UTF_8)
+        val output = launcher("start", agent.wire, folder, "--task-stdin", engine = defaultEngine, payload = input)
+        val id = output.lineSequence().firstOrNull { it.startsWith("RUN ") }?.removePrefix("RUN ")?.trim()
+            ?: throw IllegalStateException(output.trim().ifEmpty { "服务器未返回任务编号" })
+        require(Regex("[A-Za-z0-9-]{1,80}").matches(id)) { "无效的任务编号" }
+        val directory = output.lineSequence().firstOrNull { it.startsWith("TASK_PATH ") }?.removePrefix("TASK_PATH ").orEmpty()
+        require(directory.startsWith("/") && directory.endsWith("/runs/$id")) { "服务器未返回任务目录" }
+        return Started(id, directory)
+    }
+
+    fun task(run: AgentRuns.Run, request: JSONObject): JSONObject {
+        check(run.host == hostId) { "任务属于 ${run.host}，当前连接是 $hostId" }
+        val input = request.toString().toByteArray(Charsets.UTF_8)
+        val out = if (run.remoteDir.isEmpty()) {
+            runScript("sh -s --", launcherScript(), "task", run.folder, run.launcherId, input = input)
+        } else {
+            val driver = quote(run.remoteDir + "/bridge.py")
+            val missing = if (request.optString("op") == "remove") "{\"detached\":true}" else "{\"error\":\"找不到服务器任务\"}"
+            pcGateway.send(profile, "if [ -f $driver ]; then python3 $driver rpc ${quote(run.remoteDir)}; else echo ${quote(missing)}; fi", input)
+        }
+        val answer = runCatching { JSONObject(out.trim()) }.getOrNull()
+            ?: error("任务服务未响应：${out.take(180)}")
+        check(!answer.has("error")) { answer.optString("error") }
+        return answer
+    }
+
     fun progress(folder: String, id: String): Progress = parse(launcher("status", folder, id))
+
+    fun pictures(run: AgentRuns.Run): List<ChatImage> = parse(launcher("pictures", run.folder, run.launcherId)).images
 
     fun stop(folder: String, id: String) {
         launcher("stop", folder, id)
@@ -103,14 +123,14 @@ class AgentHarness(
      * Runs [script] on the computer with [input] as what it reads. The script is written to a file
      * of its own first, since its standard input is taken by [input].
      */
-    fun runScript(interpreter: String, script: String, vararg args: String, input: ByteArray): String {
+    fun runScript(interpreter: String, script: String, vararg args: String, input: ByteArray, environment: String = ""): String {
         val encoded = Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_8))
         val command = "f=\$(mktemp) && echo $encoded | base64 -d > \"\$f\" && " +
-            "${interpreter.replace(" -s --", "")} \"\$f\" " + args.joinToString(" ") { quote(it) } + "; s=\$?; rm -f \"\$f\"; exit \$s"
+            "$environment${interpreter.replace(" -s --", "")} \"\$f\" " + args.joinToString(" ") { quote(it) } + "; s=\$?; rm -f \"\$f\"; exit \$s"
         return pcGateway.send(profile, command, input)
     }
 
-    private fun launcher(vararg args: String, engine: Engine? = null): String {
+    private fun launcher(vararg args: String, engine: Engine? = null, payload: ByteArray? = null): String {
         val environment = buildString {
             if (engine != null) {
                 val rules = JSONArray(directories.map { it.toJson() }).toString()
@@ -120,18 +140,19 @@ class AgentHarness(
                 append("AGENT_KEY=${quote(apiKey)} AGENT_MODEL=${quote("deepseek/$model")} ")
             }
         }
-        val shell = launcherScript()
+        val driver = if (payload != null) taskDriverScript?.invoke() else null
+        val shell = if (driver == null) launcherScript() else
+            "export REDUCTION_TASK_DRIVER=" + quote(Base64.getEncoder().encodeToString(driver.toByteArray())) + "\n" + launcherScript()
         val mac = if (engine != null) macLauncherScript?.invoke() else null
         val script = if (mac.isNullOrEmpty()) shell else {
             val encoded = Base64.getEncoder().encodeToString(mac.toByteArray(Charsets.UTF_8))
             "REDUCTION_MAC_AGENT_SCRIPT=${quote(encoded)}\n$shell"
         }
-        return runScript("sh -s --", script, *args, environment = environment)
+        return if (payload == null) runScript("sh -s --", script, *args, environment = environment)
+        else runScript("sh -s --", script, *args, input = payload, environment = environment)
     }
 
     companion object {
-        /** What the launcher's `timeout` exits with. */
-        const val TIMEOUT_EXIT = 124
         private const val RESULT_FILE_MARK = "\n=====RESULT FILE=====\n"
 
         /** "=====IMAGE name type=====" before a picture in base64; "=====IMAGE SKIPPED name=====" for one left behind. */
@@ -146,7 +167,7 @@ class AgentHarness(
 
         fun quote(value: String): String = "'" + value.replace("'", "'\\''") + "'"
 
-        /** 解析启动脚本的状态行和执行器的 JSON 事件。 */
+        /** 读取生命周期、显式交付的结果文件和附件。 */
         fun parse(output: String): Progress {
             // Pictures come last, each under a line of its own; what is before them is as it always was.
             val images = ArrayList<ChatImage>()
@@ -162,7 +183,6 @@ class AgentHarness(
             val text = if (marks.isEmpty()) output else output.substring(0, marks.first().range.first)
             val (events, resultFile) = text.split(RESULT_FILE_MARK, limit = 2).let { it[0] to it.getOrElse(1) { "" }.trim() }
             val lines = events.lines()
-            var returned = ""
             val header = lines.firstOrNull { it.startsWith("STATE ") }?.removePrefix("STATE ")?.trim().orEmpty()
             val state = when {
                 header.startsWith("running") -> State.RUNNING
@@ -171,86 +191,8 @@ class AgentHarness(
             }
             val exitCode = header.removePrefix("done").trim().toIntOrNull()
 
-            val said = ArrayList<String>()
-            val steps = LinkedHashMap<String, String>()
-            val errors = ArrayList<String>()
-            for (line in lines) {
-                val event = runCatching { JSONObject(line) }.getOrNull()
-                if (event == null) {
-                    // The launcher's own messages are plain text.
-                    if (line.startsWith("harness：")) errors += line
-                    continue
-                }
-                val type = event.optString("type")
-                if (type == "error" || type == "turn.failed") {
-                    val error = event.optJSONObject("error")
-                    val message = error?.optJSONObject("data")?.optString("message").orEmpty()
-                        .ifBlank { error?.optString("message").orEmpty() }
-                        .ifBlank { error?.optString("name").orEmpty() }
-                        .ifBlank { event.optString("message") }
-                    if (type == "turn.failed" || error != null || exitCode != 0) {
-                        errors += message.ifBlank { "未知错误" }
-                    }
-                    continue
-                }
-                // Claude Code: each turn is a message of blocks, and the last event carries what it returns.
-                when (type) {
-                    "item.started", "item.updated", "item.completed" -> {
-                        val item = event.optJSONObject("item") ?: continue
-                        when (item.optString("type")) {
-                            "agent_message" -> if (type == "item.completed") {
-                                item.optString("text").takeIf { it.isNotBlank() }?.let { said += it; returned = it }
-                            }
-                            "command_execution" -> {
-                                val command = item.optString("command").replace('\n', ' ').take(120)
-                                steps[item.optString("id")] = "命令：$command（${item.optString("status")}）"
-                            }
-                            "file_change" -> steps[item.optString("id")] = "文件修改（${item.optString("status")}）"
-                        }
-                        continue
-                    }
-                    "assistant" -> {
-                        val blocks = event.optJSONObject("message")?.optJSONArray("content") ?: continue
-                        for (i in 0 until blocks.length()) {
-                            val block = blocks.optJSONObject(i) ?: continue
-                            when (block.optString("type")) {
-                                "text" -> block.optString("text").takeIf { it.isNotBlank() }?.let { said += it }
-                                "tool_use" -> {
-                                    val input = block.optJSONObject("input")
-                                    val what = input?.let { args ->
-                                        args.optString("command").ifBlank { args.optString("file_path") }
-                                            .ifBlank { args.optString("url") }.ifBlank { args.optString("pattern") }
-                                            .ifBlank { args.toString() }
-                                    }.orEmpty().replace('\n', ' ').take(120)
-                                    steps[block.optString("id").ifBlank { "${steps.size}" }] = "${block.optString("name")}: $what"
-                                }
-                            }
-                        }
-                        continue
-                    }
-                    "result" -> {
-                        returned = event.optString("result")
-                        if (event.optBoolean("is_error")) errors += returned.ifBlank { event.optString("subtype") }.take(400)
-                        continue
-                    }
-                }
-                val part = event.optJSONObject("part") ?: continue
-                when (part.optString("type")) {
-                    "text" -> part.optString("text").takeIf { it.isNotBlank() }?.let { said += it }
-                    "tool" -> {
-                        val toolState = part.optJSONObject("state")
-                        val input = toolState?.optJSONObject("input")
-                        val what = input?.let { args ->
-                            args.optString("command").ifBlank { args.optString("filePath") }
-                                .ifBlank { args.optString("url") }.ifBlank { args.optString("pattern") }
-                                .ifBlank { args.toString() }
-                        }.orEmpty().replace('\n', ' ').take(120)
-                        val key = part.optString("callID").ifBlank { part.optString("id") }.ifBlank { "${steps.size}" }
-                        steps[key] = "${part.optString("tool")}: $what（${toolState?.optString("status").orEmpty()}）"
-                    }
-                }
-            }
-            return Progress(state, exitCode, said.joinToString("\n"), steps.values.toList(), errors.distinct(), returned, resultFile, images, skipped)
+            val errors = lines.filter { it.startsWith("harness：") }
+            return Progress(state, exitCode, errors, resultFile, images, skipped)
         }
     }
 }

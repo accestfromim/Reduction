@@ -301,7 +301,8 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
         cards = cards,
         memos = memos,
         agentLauncherScript = { resourceText("harness/run-agent.sh") },
-        sessionStatusScript = { resourceText("harness/session-status.py") },
+        taskDriverScript = { resourceText("harness/task-session.py") },
+        questionEngine = ChatSession(models.chatGateway),
         agentRuns = agentRuns,
         articles = articles,
         hostTools = { listOf(CardTool(cards, cardFiles, it)) },
@@ -429,7 +430,8 @@ class Desktop(data: File, val settingsFile: File) : ToolApprovalHost {
 
     init {
         val writeLedger = { cards.writeProgramCard(AgentLedger.CARD, AgentLedger.render(agentRuns.all()), AgentLedger.PURPOSE) }
-        agentRuns.onChange = { writeLedger() }
+        toolFactory.bindTaskCards(File(data, "task-card-sync"), settings::load)
+        agentRuns.onChange = { onMain { writeLedger() } }
         writeLedger()
         // The review card for to-dos, written from the store as the phone writes it.
         val writeMemos = { cards.writeProgramCard(MemoCard.CARD, MemoCard.render(memos), MemoCard.PURPOSE) }

@@ -90,25 +90,26 @@ class AgentHarnessTest {
     }
 
     @Test
-    fun progressIsReadFromTheEvents() {
+    fun statusIgnoresToolEventsAndMessages() {
         val progress = AgentHarness.parse("STATE running\n$toolEvent\n$textEvent\n")
         assertEquals(AgentHarness.State.RUNNING, progress.state)
-        assertEquals(listOf("bash: ls -la（completed）"), progress.steps)
-        assertEquals("做完了。", progress.said)
+        assertTrue(progress.resultFile.isEmpty())
+        assertTrue(progress.errors.isEmpty())
     }
 
     @Test
-    fun aModelErrorIsReportedNotSwallowed() {
+    fun aFailedExitIsReportedWithoutReadingTheTranscript() {
         val error = """{"type":"error","error":{"name":"APIError","data":{"message":"Insufficient Balance (request_id: x)","statusCode":402}}}"""
         val progress = AgentHarness.parse("STATE done 1\n$error\n")
         assertFalse(progress.succeeded)
-        assertEquals(listOf("Insufficient Balance (request_id: x)"), progress.errors)
+        assertEquals(1, progress.exitCode)
+        assertTrue(progress.errors.isEmpty())
     }
 
     @Test
     fun aFinishedTaskReturnsWhatTheAgentSaid() {
         val launcher = FakeLauncher()
-        launcher.status("STATE done 0\n$toolEvent\n$textEvent\n")
+        launcher.status("STATE done 0\n=====RESULT FILE=====\n做完了。\n")
         val said = tool(launcher).execute(args("action" to "start", "task" to "查资料"))
         assertEquals("【完成】任务 1\n做完了。", said)
         assertEquals(listOf("plan", "/home/u/agents/research"), launcher.started().take(2))
@@ -125,10 +126,10 @@ class AgentHarnessTest {
         assertEquals(listOf("build", "/home/u/agents/notes"), launcher.started().take(2))
 
         val during = tool(launcher).execute(args("action" to "status"))
-        assertTrue(during, during.startsWith("【进行中】任务 1：大任务") && during.contains("- bash: ls -la（completed）"))
+        assertTrue(during, during.startsWith("【进行中】任务 1：大任务") && !during.contains("ls -la"))
 
         // Asking later needs neither the number nor the folder: the app knows both.
-        launcher.status("STATE done 0\n$toolEvent\n$textEvent\n")
+        launcher.status("STATE done 0\n=====RESULT FILE=====\n做完了。\n")
         assertEquals("【完成】任务 1\n做完了。", tool(launcher).execute(args("action" to "status")))
         assertEquals("现在没有在跑的任务。", tool(launcher).execute(args("action" to "stop")))
     }
@@ -146,7 +147,7 @@ class AgentHarnessTest {
     @Test
     fun aProjectNeedsAStoredDirectoryGrant() {
         val launcher = FakeLauncher()
-        launcher.status("STATE done 0\n$textEvent\n")
+        launcher.status("STATE done 0\n=====RESULT FILE=====\n做完了。\n")
         val args = args("action" to "start", "task" to "改代码", "folder" to "project", "access" to "write")
         assertEquals("工作目录未获授权或名称无效：project", tool(launcher).execute(args))
         assertTrue(launcher.started().isEmpty())
@@ -210,7 +211,7 @@ class AgentHarnessTest {
         tool(launcher).execute(args("action" to "start", "task" to "查甲"))
         assertEquals(emptyList<RunAgentTool.Ended>(), tool(launcher).endedRuns())
 
-        launcher.status("STATE done 0\n$textEvent\n")
+        launcher.status("STATE done 0\n=====RESULT FILE=====\n做完了。\n")
         assertEquals(listOf(RunAgentTool.Ended(1, "【完成】任务 1\n做完了。")), tool(launcher).endedRuns())
         assertEquals(emptyList<RunAgentTool.Ended>(), tool(launcher).endedRuns())
     }
@@ -240,40 +241,16 @@ class AgentHarnessTest {
     }
 
     @Test
-    fun theLedgerKeepsOneLineOfTheGoalAndOneOfTheResultAndTheWholeStaysOnRecord() {
-        var clock = 1_700_000_000_000L
-        val runs = AgentRuns(now = { clock })
-        val launcher = FakeLauncher()
-        launcher.status("STATE running\n")
-        val tool = RunAgentTool(harness(launcher.script), runs, "/home/u/project", "/home/u/agents", true, emptyList(), 300, 20)
-        tool.execute(args("action" to "start", "task" to "## 查甲的出处\n## 约束：只读\n交回原文和链接", "folder" to "notes"))
-
-        val during = AgentLedger.render(runs.all())
-        assertTrue(during, during.contains("## 任务 1 · 进行中"))
-        assertTrue(during, during.contains("- 目标：查甲的出处\n- 结果：（还在做）"))
-        // The rest of the task is not on the card.
-        assertFalse(during, during.contains("约束") || during.contains("交回原文"))
-
-        clock += 200_000
-        launcher.status("STATE done 0\n$textEvent\n")
-        tool.execute(args("action" to "status"))
-        val after = AgentLedger.render(runs.all())
-        assertTrue(after, after.contains("## 任务 1 · 完成") && after.contains("用时 3 分钟") && after.contains("- 结果：做完了。"))
-        assertFalse(after, after.contains("（还在做）"))
-
-        // The whole of it is still there for the asking.
-        val record = tool.execute(args("action" to "record", "run" to "1"))
-        assertTrue(record, record.contains("## 约束：只读") && record.contains("交回原文和链接") && record.contains("做完了。"))
-        assertTrue(tool.execute(args("action" to "record")).contains("要填任务编号"))
-    }
-
-    @Test
-    fun aLineOfTheLedgerIsTheFirstThatSaysSomethingCutToLength() {
-        assertEquals("找到三篇", AgentLedger.line("## 依据\n\n- 找到三篇\n- 第二条", 120))
-        assertEquals("错误：超时", AgentLedger.line("错误：超时\n别的", 120))
-        assertEquals("一二三四…", AgentLedger.line("一二三四五六七", 5))
-        assertEquals("", AgentLedger.line("  \n---\n", 120))
-        assertEquals("FAIL", AgentLedger.line("**FAIL**\n理由如下", 120))
+    fun theDirectoryKeepsAllSessionsAndContainsOnlyMetadata() {
+        val runs = AgentRuns()
+        repeat(35) { i -> runs.add("t$i", "research", "/a/research", "查询 $i\n私有任务正文") }
+        val run = runs.find(1)!!
+        runs.card(run, "sub agent/任务 1")
+        runs.end(run, AgentRuns.DONE, "私有结果")
+        val directory = AgentLedger.render(runs.all())
+        assertEquals(35, directory.lines().count { it.startsWith("- 任务") })
+        assertTrue(directory.contains("任务 1 · 查询 0 · opencode · 完成 · 卡片「sub agent/任务 1」"))
+        assertFalse(directory.contains("私有"))
     }
 
     @Test
@@ -285,7 +262,7 @@ class AgentHarnessTest {
                 "\n=====IMAGE photo.jpg image/jpeg=====\nR0hJ"
         )
         // What came back in words is untouched by the pictures after it.
-        assertEquals(listOf(before.said, before.resultFile, before.content), listOf(after.said, after.resultFile, after.content))
+        assertEquals(before.resultFile, after.resultFile)
         assertEquals("结果文件", after.resultFile)
         assertTrue(before.images.isEmpty() && before.skippedImages.isEmpty())
         assertEquals(
@@ -302,7 +279,7 @@ class AgentHarnessTest {
         launcher.status("STATE running\n")
         val tool = RunAgentTool(harness(launcher.script), runs, "/home/u/project", "/home/u/agents", true, emptyList(), 300, 20)
         tool.execute(args("action" to "start", "task" to "画一张图", "folder" to "notes"))
-        launcher.status("STATE done 0\n$textEvent\n\n=====IMAGE chart.png image/png=====\nQUJD")
+        launcher.status("STATE done 0\n=====RESULT FILE=====\n做完了。\n\n=====IMAGE chart.png image/png=====\nQUJD")
         val ended = tool.endedRuns().single()
         assertEquals(listOf(ChatImage("chart.png", "image/png", "QUJD")), ended.images)
         assertTrue(ended.report, ended.report.startsWith("【完成】任务 1\n做完了。") && ended.report.contains("附图 1 张") && ended.report.contains("chart.png"))
@@ -317,7 +294,7 @@ class AgentHarnessTest {
         launcher.status("STATE running\n")
         val tool = RunAgentTool(harness(launcher.script), runs, "/home/u/project", "/home/u/agents", true, emptyList(), 300, 20)
         tool.execute(args("action" to "start", "task" to "画一张图", "folder" to "notes"))
-        launcher.status("STATE done 0\n$textEvent\n\n=====IMAGE chart.png image/png=====\nQUJD")
+        launcher.status("STATE done 0\n=====RESULT FILE=====\n做完了。\n\n=====IMAGE chart.png image/png=====\nQUJD")
         // A tool's answer is words: it says the picture is on its way, and does not claim to hold it.
         val answer = tool.execute(args("action" to "status"))
         assertTrue(answer, answer.contains("chart.png") && answer.contains("随后会单独发给你") && !answer.contains("就在这条消息里"))
@@ -357,6 +334,6 @@ class AgentHarnessTest {
         runs.add("t1", "research", "/a/research", "查甲")
         runs.add("t2", "research", "/a/research", "查乙")
         val card = AgentLedger.render(runs.all())
-        assertTrue(card.indexOf("## 任务 2") in 1 until card.indexOf("## 任务 1"))
+        assertTrue(card.indexOf("- 任务 2") in 0 until card.indexOf("- 任务 1"))
     }
 }

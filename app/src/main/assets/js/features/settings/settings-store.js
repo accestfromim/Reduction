@@ -41,7 +41,7 @@ export function normalizeSettings(raw) {
     wakeWordEnabled: raw?.wakeWordEnabled === true,
     bargeInEnabled: raw?.bargeInEnabled !== false,
     headsetMicEnabled: raw?.headsetMicEnabled === true,
-    agentEngine: raw?.agentEngine === 'codex' ? 'codex' : DEFAULT_SETTINGS.agentEngine,
+    agentEngine: ['codex', 'claude'].includes(raw?.agentEngine) ? raw.agentEngine : DEFAULT_SETTINGS.agentEngine,
     opencodeEnabled: raw?.opencodeEnabled === true,
     opencodeWriteEnabled: raw?.opencodeWriteEnabled === true,
     opencodeSessionId: string(raw?.opencodeSessionId).trim(),
