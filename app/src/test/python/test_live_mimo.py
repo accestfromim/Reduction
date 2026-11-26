@@ -20,6 +20,13 @@ class Model(BaseHTTPRequestHandler):
 
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+        if self.path.startswith("/alternate/") or self.headers.get("Authorization") != "Bearer " + self.server.key:
+            self.send_response(401)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            reason = "API_KEY_INVALID: " + self.headers.get("Authorization", "")
+            self.wfile.write(json.dumps({"error": {"message": reason, "type": "invalid_api_key"}}).encode())
+            return
         messages = body["messages"]
         conversation = json.dumps(messages, ensure_ascii=False)
         last = messages[-1]
@@ -67,6 +74,7 @@ class Model(BaseHTTPRequestHandler):
 class LiveMiMoTest(unittest.TestCase):
     def test_native_question_and_followup_share_one_session(self):
         model = ThreadingHTTPServer(("127.0.0.1", 0), Model)
+        model.key = "fixture-first-key"
         threading.Thread(target=model.serve_forever, daemon=True).start()
         self.addCleanup(model.server_close)
         self.addCleanup(model.shutdown)
@@ -74,13 +82,28 @@ class LiveMiMoTest(unittest.TestCase):
             home = Path(tmp)
             config = home / "account/config"
             config.mkdir(parents=True)
+            data = home / "account/data"
+            data.mkdir()
+            state = home / "account/state"
+            state.mkdir()
+            (state / "model.json").write_text(json.dumps({"recent": [{"providerID": "fixture", "modelID": "test"}]}))
+            providers = {
+                name: {"npm": "@ai-sdk/openai-compatible", "name": name,
+                       "options": {"baseURL": f"http://127.0.0.1:{model.server_port}/{name}/v1"},
+                       "models": {"test": {"name": "Local fixture", "tool_call": True}}}
+                for name in ("alternate", "fixture")
+            }
+            def save_credentials():
+                (data / "auth.json").write_text(json.dumps({
+                    "alternate": {"type": "api", "key": "other-fixture-key"},
+                    "fixture": {"type": "api", "key": model.key},
+                }))
+            save_credentials()
             (config / "mimocode.json").write_text(json.dumps({
-                "model": "fixture/test", "small_model": "fixture/test", "enabled_providers": ["fixture"],
-                "provider": {"fixture": {"npm": "@ai-sdk/openai-compatible", "name": "Fixture",
-                                         "options": {"baseURL": f"http://127.0.0.1:{model.server_port}/v1", "apiKey": "fixture"},
-                                         "models": {"test": {"name": "Local fixture", "tool_call": True}}}},
+                "small_model": "fixture/test", "enabled_providers": list(providers), "provider": providers,
             }))
             env = {"HOME": str(home), "PATH": os.environ["PATH"], "MIMOCODE_HOME": str(config.parent),
+                   "MIMOCODE_SERVER_USERNAME": "terminal-service", "AGENT_KEY": "phone-fixture-key",
                    "MIMOCODE_BIN_PATH": shutil.which("mimo") or "mimo", "AGENT_ENGINE": "mimocode", "AGENT_TIMEOUT": "90",
                    "REDUCTION_TASK_DRIVER": base64.b64encode((HARNESS / "task-session.py").read_bytes()).decode()}
             folder = "~/reduction-agents/verify"
@@ -90,17 +113,17 @@ class LiveMiMoTest(unittest.TestCase):
             self.assertIn("TASK_PATH ", receipt, receipt)
             run = Path(receipt.split("TASK_PATH ", 1)[1].strip())
 
-            def rpc(op, **fields):
-                return json.loads(subprocess.check_output(["python3", str(run / "bridge.py"), "rpc", str(run)],
+            def rpc(op, task=run, **fields):
+                return json.loads(subprocess.check_output(["python3", str(task / "bridge.py"), "rpc", str(task)],
                                   env=env, text=True, input=json.dumps(dict(op=op, **fields))))
 
-            def wait_for(predicate):
+            def wait_for(predicate, task=run):
                 deadline = time.monotonic() + 60
                 while time.monotonic() < deadline:
-                    status = rpc("status")
-                    self.assertNotEqual("failed", status["status"], status)
+                    status = rpc("status", task)
                     if predicate(status):
                         return status
+                    self.assertNotEqual("failed", status["status"], status)
                     time.sleep(.25)
                 self.fail(f"timed out: {status}, {rpc('read')}")
 
@@ -108,12 +131,27 @@ class LiveMiMoTest(unittest.TestCase):
                 pending = wait_for(lambda s: s["question"])
                 question = pending["question"]
                 self.assertIn("采用哪个版本", question["text"])
+                other = subprocess.check_output(launcher + ["start", "plan", folder, "--task-stdin"], env=env, text=True,
+                                                input=json.dumps({"prompt": "separate task", "body": "other"}))
+                second = Path(other.split("TASK_PATH ", 1)[1].strip())
+                try:
+                    ready = wait_for(lambda s: s["status"] == "idle", second)
+                    self.assertNotEqual(pending["session"], ready["session"])
+                    self.assertIsNone(ready["question"])
+                    self.assertEqual(question["id"], rpc("status")["question"]["id"])
+                    listed = subprocess.check_output([env["MIMOCODE_BIN_PATH"], "session", "list", "--format", "json"],
+                                                     env=env, cwd=home / "reduction-agents/verify", text=True, timeout=15)
+                    self.assertTrue({pending["session"], ready["session"]} <= {s["id"] for s in json.loads(listed)})
+                finally:
+                    subprocess.run(launcher + ["stop", folder, second.name], env=env, capture_output=True, check=True)
                 card = rpc("read")
                 self.assertEqual(1, card["text"].count("采用哪个版本"))
                 rpc("save", base=card["rev"], text=card["text"] + "\n手机的进展")
                 rpc("send", id="reply", question=question["id"], text="采用稳定版")
                 wait_for(lambda s: s["status"] == "idle")
                 self.assertIn("收到原生问题的回答：采用稳定版", rpc("read")["text"])
+                model.key = "fixture-rotated-key"
+                save_credentials()
                 rpc("send", id="followup", text="fixture-followup")
                 again = wait_for(lambda s: s["status"] == "idle")
                 self.assertEqual(pending["session"], again["session"])
@@ -121,11 +159,30 @@ class LiveMiMoTest(unittest.TestCase):
                 self.assertIn("原会话续聊成功", body)
                 self.assertIn("手机的进展", body)
                 self.assertIn("执行器写入的进展", body)
+                self.assertFalse((run / "mimocode/data/auth.json").exists())
+                self.assertNotIn(model.key, (run / "driver.json").read_text())
+                valid_key = model.key
+                model.key = "rejected-fixture-key"
+                rpc("send", id="bad-key", text="fixture-followup")
+                failure = wait_for(lambda s: s["status"] == "failed")["detail"]
+                self.assertIn("fixture/test", failure)
+                self.assertIn("401", failure)
+                self.assertNotIn(valid_key, failure)
+                model.key = valid_key
             finally:
                 subprocess.run(launcher + ["stop", folder, run.name], env=env, capture_output=True, check=True)
 
             legacy = dict(env)
             del legacy["REDUCTION_TASK_DRIVER"]
+            del legacy["MIMOCODE_HOME"]
+            # A native custom config may be the only credential source on a headless server.
+            (config / "fixture.key").write_text(model.key)
+            providers["fixture"]["options"]["apiKey"] = "{file:fixture.key}"
+            external = config / "custom.json"
+            external.write_text(json.dumps({"model": "fixture/test", "enabled_providers": ["fixture"],
+                                            "provider": {"fixture": providers["fixture"]}}))
+            legacy["MIMOCODE_CONFIG"] = str(external)
+            legacy["XDG_DATA_HOME"] = str(home / "xdg-data")
             receipt = subprocess.check_output(launcher + ["start", "plan", folder, "单次任务"], env=legacy, text=True)
             self.assertTrue(receipt.startswith("RUN "), receipt)
             legacy_id = receipt.strip().split()[1]

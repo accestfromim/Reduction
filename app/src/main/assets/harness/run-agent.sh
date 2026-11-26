@@ -192,22 +192,10 @@ for key in ("prompt", "body"):
   platform=$(uname -s)
   mounts=$(directory_rules "$platform" 2>&1) || say "harness：$mounts"
   if [ "$engine" = mimocode ]; then
-    mimo=${MIMOCODE_BIN_PATH:-$(PATH="$home/.mimocode/bin:$home/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH" command -v mimo)} || say "harness：这台电脑上找不到 MiMo Code（mimo）"
+    mimo=${MIMOCODE_BIN_PATH:-$(PATH="$PATH:$home/.mimocode/bin:$home/.local/bin:/opt/homebrew/bin:/usr/local/bin" command -v mimo)} || say "harness：这台电脑上找不到 MiMo Code（mimo）"
     mimo=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$mimo")
     case "$mimo" in */mimo.js) mimo=$(dirname "$mimo")/vendor/mimo ;; esac
     [ -x "$mimo" ] || say "harness：找不到 MiMo Code 原生程序，请先在执行电脑上运行 mimo"
-    config=${XDG_CONFIG_HOME:-$home/.config}/mimocode
-    auth=${XDG_DATA_HOME:-$home/.local/share}/mimocode/auth.json
-    if [ -n "${MIMOCODE_HOME:-}" ]; then config=$MIMOCODE_HOME/config; auth=$MIMOCODE_HOME/data/auth.json; fi
-    # Each task owns its native session database. Seed only the server's login and model settings.
-    if [ ! -s "$auth" ] && [ ! -s "$config/mimocode.json" ] && [ ! -s "$config/mimocode.jsonc" ] && [ ! -s "$config/config.json" ]; then
-      say "harness：请先在执行电脑上运行 mimo，用 /connect 登录或配置模型"
-    fi
-    mkdir -p "$run/mimocode/data" "$run/mimocode/config"
-    if [ -s "$auth" ]; then cp "$auth" "$run/mimocode/data/auth.json"; fi
-    for file in config.json mimocode.json mimocode.jsonc; do
-      if [ -f "$config/$file" ]; then cp "$config/$file" "$run/mimocode/config/$file"; fi
-    done
     export REDUCTION_MIMO_BIN="$mimo"
   fi
   if [ "$platform" = Darwin ]; then
@@ -245,7 +233,7 @@ for key in ("prompt", "body"):
     fi
     ;;
   mimocode)
-    export MIMOCODE_HOME="$run/mimocode" MIMOCODE_DISABLE_AUTOUPDATE=true
+    export MIMOCODE_DISABLE_AUTOUPDATE=true
     ;;
   esac
 

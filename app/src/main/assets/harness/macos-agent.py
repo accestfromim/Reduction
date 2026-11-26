@@ -11,6 +11,27 @@ import uuid
 from pathlib import Path
 
 
+def prepare_mimo_profile(profile):
+    # Sandbox Runtime keeps task state writable while the account supplies live model settings.
+    account = os.environ.get("MIMOCODE_HOME")
+    config = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "mimocode"
+    data = Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local/share") / "mimocode"
+    state = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state") / "mimocode"
+    if account:
+        root = Path(account)
+        if not root.is_absolute():
+            sys.exit("harness：MIMOCODE_HOME 需要绝对路径")
+        config, data, state = root / "config", root / "data", root / "state"
+    (profile / "data").mkdir(parents=True)
+    (profile / "state").mkdir()
+    if config.is_dir():
+        (profile / "config").symlink_to(config.resolve(), target_is_directory=True)
+    else:
+        (profile / "config").mkdir()
+    (profile / "data/auth.json").symlink_to(data / "auth.json")
+    (profile / "state/model.json").symlink_to(state / "model.json")
+
+
 def sandbox_config(project, run, program, agent, domains, auth):
     codex_home = auth.get("CODEX_HOME")
     readable = [project, run / "home", run / "result", run / "prompt.txt", program if codex_home or "MIMOCODE_HOME" in auth else program.parent]
@@ -22,9 +43,16 @@ def sandbox_config(project, run, program, agent, domains, auth):
         ).stdout.strip()
         readable.append(Path(common).resolve(strict=True))
     writable = [run / "home", run / "result"]
+    native_settings = []
     if "MIMOCODE_HOME" in auth:
-        readable.append(Path(auth["MIMOCODE_HOME"]))
-        writable.append(Path(auth["MIMOCODE_HOME"]))
+        profile = Path(auth["MIMOCODE_HOME"])
+        readable.append(profile)
+        writable.append(profile)
+        for source in (profile / "config", profile / "data/auth.json", profile / "state/model.json"):
+            if source.is_symlink():
+                native_settings.append(source.resolve())
+        readable.extend(native_settings)
+        readable.extend(Path(auth[key]) for key in ("MIMOCODE_CONFIG", "MIMOCODE_CONFIG_DIR") if key in auth)
     mounts = {}
     for line in os.environ["REDUCTION_AGENT_MOUNTS"].splitlines():
         binding, raw = line.split("\t", 1)
@@ -53,7 +81,7 @@ def sandbox_config(project, run, program, agent, domains, auth):
             "denyRead": literal([Path.home().resolve(), Path("/Users"), Path("/Volumes"), Path("/private/var/root")]),
             "allowRead": literal(readable),
             "allowWrite": literal(writable),
-            "denyWrite": literal(protected),
+            "denyWrite": literal(protected + native_settings),
         },
         "network": {"allowedDomains": domains, "deniedDomains": [], "allowLocalBinding": "MIMOCODE_HOME" in auth and (run / "channel").is_dir()},
     }
@@ -66,8 +94,13 @@ def backend(engine, model, agent, workspace, prompt, result_file):
     program = Path(executable).resolve(strict=True)
     if engine == "mimocode":
         profile = result_file.parent.parent / "mimocode"
+        prepare_mimo_profile(profile)
+        auth = {"MIMOCODE_HOME": str(profile), "MIMOCODE_DISABLE_AUTOUPDATE": "true"}
+        for key in ("MIMOCODE_CONFIG", "MIMOCODE_CONFIG_DIR"):
+            if os.environ.get(key):
+                auth[key] = str((workspace / os.environ[key]).resolve())
         args = ["run", "--format", "json", "--agent", agent, "--dir", str(workspace), "--", prompt]
-        return program, args, {"MIMOCODE_HOME": str(profile), "MIMOCODE_DISABLE_AUTOUPDATE": "true"}, [
+        return program, args, auth, [
             "api.xiaomimimo.com", "platform.xiaomimimo.com", "token-plan-cn.xiaomimimo.com",
             "token-plan-ams.xiaomimimo.com", "token-plan-sgp.xiaomimimo.com", "models.dev",
         ]
@@ -167,9 +200,9 @@ def main():
     prompt += f"\n本任务的交付目录：{run / 'result'}\n"
     if os.environ.get("REDUCTION_TASK_DRIVER"):
         prompt += f"本任务的任务卡目录：{run / 'channel'}\n"
+    os.umask(0o077)
     program, args, auth, domains = backend(engine, model, agent, project, prompt, run / "result" / "result.md")
     domains += os.environ.get("REDUCTION_AGENT_ALLOWED_DOMAINS", "").split()
-    os.umask(0o077)
     home = run / "home"
     temp = home / "tmp"
     temp.mkdir(parents=True)

@@ -309,7 +309,8 @@ open dist/Reduction.app
 在桌面或手机的「设置 → 子代理执行器」选择 OpenCode、Codex、Claude Code 或 MiMo Code，保存后用于新任务。已派发的任务继续使用原执行器和会话。手机通过 SSH 派发时，执行器和登录凭据位于 SSH 所连接的电脑。Linux 和 WSL 上，执行器在选定的工作目录中直接运行，文件访问由登录账号的系统权限和执行器自己的沙箱、审批配置决定。手机会检查工作目录和写入授权，目录的只读或可写规则会随任务传给执行器。
 
 - OpenCode 使用 Reduction 设置中的 DeepSeek API Key 和模型。
-- MiMo Code 使用执行电脑上的 `mimo`。先以 SSH 登录用户运行一次 `mimo`，通过 `/connect` 登录，也可以在 MiMo 配置中指定模型。每个任务使用自己的会话数据库，从服务器的 MiMo 配置目录和 `auth.json` 读取初始配置。设置了 `MIMOCODE_HOME` 的用户需让 SSH 会话也能读到这个环境变量。Android 和桌面会在每轮任务开始时启动临时的 `mimo serve`，通过执行电脑的回环接口接收 MiMo 原生问题并写入任务卡。回合结束时进程退出。启动失败的原因可以在任务状态中查看。主动补充的指令在同一会话的下一轮执行。
+- MiMo Code 使用执行电脑上 SSH 用户的模型设置与凭据。在 Linux / WSL 上，任务直接使用该用户的 MiMo 配置、最近模型记录和原生会话库。每个任务新建自己的会话，续聊沿用同一编号。这些任务也会出现在该账号的 MiMo 会话列表。使用自定义 `MIMOCODE_HOME`、`MIMOCODE_CONFIG` 或环境变量密钥时，非交互 SSH 会话需要能读取相应设置。
+- macOS 的 MiMo 任务在沙箱里使用独立会话库，通过只读路径读取账号的 MiMo 配置目录、`auth.json` 和最近模型记录。Android 和桌面每轮按需启动 `mimo serve` 接收原生提问，答复和后续指令发回原会话。可在任务状态中查看启动错误，以及模型服务拒绝凭据时对应的服务商和模型。
 - Codex 使用支持 `codex exec --json` 的新版 Codex CLI。先在执行电脑上登录一次。下面的命令将凭据存入专供 Reduction 的目录。macOS 也可以使用 ChatGPT 应用随附的 Codex CLI。
 
 ```bash

@@ -26,6 +26,9 @@ from pathlib import Path
 from urllib.parse import quote
 
 LIMIT = 60000
+# Keep each task on its original native profile across SSH calls. Save paths, never key contents.
+MIMO_PROFILE_PATHS = ("MIMOCODE_HOME", "MIMOCODE_DB", "MIMOCODE_CONFIG", "MIMOCODE_CONFIG_DIR",
+                      "XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME")
 
 
 def atomic(path, data):
@@ -564,8 +567,16 @@ def mimo_turn(run, opts, prompt, mid):
             info = reply["info"]
             if info.get("error"):
                 error = info["error"]
-                detail = (error.get("data") or {}).get("message") or error.get("name", "")
-                raise ValueError("MiMo Code 执行失败：" + str(detail)[:250])
+                data = error.get("data") or {}
+                provider = info.get("providerID") or data.get("providerID")
+                model = info.get("modelID")
+                target = "/".join(part for part in (provider, model) if part)
+                detail = data.get("message") or error.get("name", "")
+                if data.get("statusCode") == 401:
+                    # Providers sometimes include the submitted key in a 401 response.
+                    detail = "模型服务拒绝了执行端凭据（HTTP 401）"
+                source = f"（{target}）" if target else ""
+                raise ValueError(f"MiMo Code 执行失败{source}：{str(detail)[:250]}")
             if info.get("role") != "assistant":
                 raise ValueError("MiMo Code 未返回此轮的执行结果")
             return "\n".join(part["text"] for part in reply["parts"]
@@ -683,6 +694,9 @@ def serve(run):
             env = os.environ.copy()
             for key in ("AGENT_KEY", "REDUCTION_TASK_DRIVER", "REDUCTION_MAC_AGENT_SCRIPT"):
                 env.pop(key, None)
+            if opts["engine"] == "mimocode":
+                for key in MIMO_PROFILE_PATHS:
+                    env.pop(key, None)
             opts["env"] = {**env, **opts["env"]}
         while True:
             with transaction(run) as s:
@@ -720,7 +734,8 @@ def main():
             password = sys.stdin.readline().strip()
             if not password:
                 raise ValueError("缺少 MiMo Code 会话凭据")
-            os.environ.update(MIMOCODE_SERVER_PASSWORD=password, MIMOCODE_ENABLE_QUESTION_TOOL="1")
+            os.environ.update(MIMOCODE_SERVER_USERNAME="mimocode", MIMOCODE_SERVER_PASSWORD=password,
+                              MIMOCODE_ENABLE_QUESTION_TOOL="1")
             exe = sys.argv[2]
             os.execv(exe, [exe, "serve", "--hostname", "127.0.0.1", "--port", "0"])
         return worker_cli()
@@ -733,11 +748,11 @@ def main():
         keys = {"PATH", "HOME", "REDUCTION_TASK_DIR", "REDUCTION_RESULT_DIR"}
         if host:
             keys.update({"codex": {"CODEX_HOME"}, "opencode": {"XDG_DATA_HOME"},
-                         "mimocode": {"MIMOCODE_HOME", "MIMOCODE_DISABLE_AUTOUPDATE"}, "claude": set()}[engine])
+                         "mimocode": {*MIMO_PROFILE_PATHS, "MIMOCODE_DISABLE_AUTOUPDATE"}, "claude": set()}[engine])
         else:
             keys.update({"TERM", "LANG", "TMPDIR", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"})
             keys.update({"codex": {"CODEX_HOME", "CODEX_CA_CERTIFICATE"},
-                         "mimocode": {"MIMOCODE_HOME", "MIMOCODE_DISABLE_AUTOUPDATE"},
+                         "mimocode": {"MIMOCODE_HOME", "MIMOCODE_CONFIG", "MIMOCODE_CONFIG_DIR", "MIMOCODE_DISABLE_AUTOUPDATE"},
                          "claude": {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"},
                          "opencode": {"DEEPSEEK_API_KEY", "OPENCODE_DISABLE_AUTOUPDATE"}}[engine])
         opts = dict(engine=engine, cwd=cwd, timeout=int(seconds), command=sys.argv[6:],
