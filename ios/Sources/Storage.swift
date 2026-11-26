@@ -105,7 +105,7 @@ final class PhoneStore {
     static let maximumAttachment = 20 * 1024 * 1024
     static let defaults: [String: JSON] = [
         "model": "deepseek-flash", "autoSpeak": true, "webSearchEnabled": true, "calculatorEnabled": true,
-        "pcHost": "", "pcUser": "", "pcPort": 22, "pcProject": "~/Reduction-iterate",
+        "pcHost": "", "pcUser": "", "pcPort": 22, "pcProxyJump": "", "pcProject": "~/Reduction-iterate",
         "agentEngine": "opencode", "agentDirectories": [], "opencodeEnabled": false, "opencodeWriteEnabled": false
     ]
 

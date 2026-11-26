@@ -1,41 +1,46 @@
 package com.mindtravel.reduction.hardware.pc
 
-import android.content.Context
 import com.jcraft.jsch.ChannelExec
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.Session
 import com.mindtravel.reduction.core.ApiException
 import com.mindtravel.reduction.core.Logs
-import com.mindtravel.reduction.hardware.pc.PcGateway
-import com.mindtravel.reduction.hardware.pc.PcInfo
-import com.mindtravel.reduction.hardware.pc.PcProfile
+import com.mindtravel.reduction.shared.ssh.SshJumpHost
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.LocalDateTime
 import java.util.Base64
 
-class SshPcClient(context: Context) : PcGateway {
+class SshPcClient(filesDir: File, previousProfile: PcProfile) : PcGateway {
 
-    private val keyStore = SshKeyStore(context)
-    private val hostKeyFile = File(context.filesDir, "ssh/host_key.txt")
-    private val hostKeys = PinnedHostKeyRepository(hostKeyFile)
+    private val sshDir = File(filesDir, "ssh")
+    private val keyStore = SshKeyStore(sshDir)
+    private val hostKeys = PinnedHostKeyRepository(sshDir, previousProfile)
     private val lock = Any()
 
-    private var session: Session? = null
+    private class Route(val target: Session, val jump: Session? = null) : AutoCloseable {
+        override fun close() {
+            try {
+                target.disconnect()
+            } finally {
+                jump?.disconnect()
+            }
+        }
+    }
+
+    private var route: Route? = null
     private var connectedProfile: PcProfile? = null
 
     private val watchLock = Any()
-    private var watchSession: Session? = null
-    private var watchChannel: ChannelExec? = null
-    private var watchThread: Thread? = null
+    private val watches = mutableSetOf<Route>()
 
     override fun connect(profile: PcProfile) {
         synchronized(lock) { ensureSessionLocked(profile) }
     }
 
     override fun isConnected(): Boolean = synchronized(lock) {
-        session?.isConnected == true
+        route?.target?.isConnected == true
     }
 
     override fun info(profile: PcProfile): PcInfo = synchronized(lock) {
@@ -49,7 +54,7 @@ class SshPcClient(context: Context) : PcGateway {
                 os = os,
                 user = user,
                 time = LocalDateTime.now().toString(),
-                hostKey = hostKeys.currentFingerprint()
+                hostKey = PinnedHostKeyRepository.fingerprint(Base64.getDecoder().decode(current.hostKey.key))
             )
         }
     }
@@ -78,21 +83,17 @@ class SshPcClient(context: Context) : PcGateway {
         val channel: ChannelExec
         val input: java.io.InputStream
         try {
-            channel = fresh.openChannel("exec") as ChannelExec
+            channel = fresh.target.openChannel("exec") as ChannelExec
             channel.setCommand(watchCommand(manifestUrl))
             channel.setErrStream(ByteArrayOutputStream())
             input = channel.inputStream
             channel.connect(10_000)
         } catch (t: Throwable) {
-            runCatching { fresh.disconnect() }
+            fresh.close()
             throw ApiException("更新监听失败：${t.message ?: t.javaClass.simpleName}", t)
         }
-        synchronized(watchLock) {
-            stopWatchLocked()
-            watchSession = fresh
-            watchChannel = channel
-        }
-        val thread = Thread({
+        synchronized(watchLock) { watches.add(fresh) }
+        Thread({
             try {
                 input.bufferedReader().use { reader ->
                     while (true) {
@@ -102,20 +103,21 @@ class SshPcClient(context: Context) : PcGateway {
                 }
             } catch (t: Throwable) {
                 Logs.add("PC update watcher stopped: ${t.message}")
+            } finally {
+                closeWatch(fresh)
             }
         }, "reduction-update-watch").apply {
             isDaemon = true
             start()
         }
-        synchronized(watchLock) { watchThread = thread }
-        return AutoCloseable { synchronized(watchLock) { stopWatchLocked() } }
+        return AutoCloseable { closeWatch(fresh) }
     }
 
     override fun publicKey(): String = keyStore.publicKey()
 
     override fun close() {
         synchronized(lock) { disconnectLocked() }
-        stopWatch()
+        synchronized(watchLock) { watches.toList() }.forEach(::closeWatch)
     }
 
     private fun <T> withSessionLocked(profile: PcProfile, block: (Session) -> T): T {
@@ -132,61 +134,72 @@ class SshPcClient(context: Context) : PcGateway {
     }
 
     private fun ensureSessionLocked(profile: PcProfile): Session {
-        val existing = session
+        val existing = route?.target
         if (existing?.isConnected == true && connectedProfile == profile) return existing
         disconnectLocked()
         val fresh = openSession(profile)
-        session = fresh
+        route = fresh
         connectedProfile = profile
-        return fresh
+        return fresh.target
     }
 
-    private fun openSession(profile: PcProfile): Session {
+    private fun openSession(profile: PcProfile): Route {
         if (profile.host.isBlank()) throw ApiException("请先填写电脑主机")
         if (profile.user.isBlank()) throw ApiException("请先填写 SSH 用户")
 
+        val via = SshJumpHost.parse(profile.proxyJump, profile.user)
         val key = keyStore.ensure()
         val jsch = JSch().apply {
             addIdentity("dsassist", key.privateKey, null as ByteArray?, null as ByteArray?)
             hostKeyRepository = hostKeys
         }
-        val fresh = jsch.getSession(profile.user, profile.host, profile.port)
-        fresh.setConfig(
-            "StrictHostKeyChecking",
-            if (hostKeys.currentFingerprint().isBlank()) "no" else "yes"
-        )
+        if (via == null) return Route(dial(jsch, profile))
+        val jump = try {
+            dial(jsch, PcProfile(via.host, via.port, via.user))
+        } catch (e: Exception) {
+            throw ApiException("跳板机连接失败：${e.message}", e)
+        }
+        try {
+            // JSch opens a direct-tcpip channel from the jump host to the target, including DNS resolution.
+            val targetHost = profile.host.removeSurrounding("[", "]")
+            val localPort = jump.setPortForwardingL("127.0.0.1", 0, targetHost, profile.port, null, 10_000)
+            val target = dial(jsch, profile, "127.0.0.1", localPort)
+            // Closing the listener leaves the established channel and its end-to-end SSH session intact.
+            jump.delPortForwardingL("127.0.0.1", localPort)
+            return Route(target, jump)
+        } catch (e: Exception) {
+            jump.disconnect()
+            throw ApiException("经跳板机连接目标失败：${e.message}", e)
+        }
+    }
+
+    private fun dial(jsch: JSch, endpoint: PcProfile, address: String = endpoint.host, port: Int = endpoint.port): Session {
+        val hostId = PinnedHostKeyRepository.hostId(endpoint.host, endpoint.port)
+        val fresh = jsch.getSession(endpoint.user, address, port)
+        fresh.hostKeyAlias = hostId
+        fresh.setConfig("StrictHostKeyChecking", "yes")
         fresh.setConfig("PreferredAuthentications", "publickey")
         fresh.setConfig("ServerAliveInterval", "30")
         fresh.setConfig("ServerAliveCountMax", "3")
-        fresh.connect(10_000)
-
-        fresh.hostKey?.let { hostKey ->
-            val raw = Base64.getDecoder().decode(hostKey.key)
-            hostKeys.pinIfEmpty(raw)
+        try {
+            fresh.connect(10_000)
+            val raw = Base64.getDecoder().decode(fresh.hostKey.key)
+            hostKeys.remember(hostId, PinnedHostKeyRepository.fingerprint(raw))
+            return fresh
+        } catch (e: Exception) {
+            fresh.disconnect()
+            throw e
         }
-        return fresh
     }
 
     private fun disconnectLocked() {
-        runCatching { session?.disconnect() }
-        session = null
+        route?.close()
+        route = null
         connectedProfile = null
     }
 
-    private fun stopWatch() {
-        synchronized(watchLock) { stopWatchLocked() }
-    }
-
-    private fun stopWatchLocked() {
-        val channel = watchChannel
-        val watch = watchSession
-        val thread = watchThread
-        watchChannel = null
-        watchSession = null
-        watchThread = null
-        runCatching { channel?.disconnect() }
-        runCatching { watch?.disconnect() }
-        thread?.interrupt()
+    private fun closeWatch(watch: Route) {
+        if (synchronized(watchLock) { watches.remove(watch) }) watch.close()
     }
 
     private fun watchCommand(manifestUrl: String): String {

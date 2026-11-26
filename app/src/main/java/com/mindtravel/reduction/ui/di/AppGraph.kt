@@ -43,7 +43,7 @@ class AppGraph(
     private val voiceBridge = VoiceBridge(core.recording, core.speech, core.voice)
 
     val bridge = AndroidBridge(
-        settings = SettingsBridge(core.settingsRepository, core.conversation),
+        settings = SettingsBridge(core.settingsRepository, core.conversation, core.pc::close),
         voice = voiceBridge,
         chat = ChatBridge(core.conversation),
         cards = CardBridge(core.cardRepository, core.cardOverlay, { activity.askToAllowOverlay() }, core.articles),

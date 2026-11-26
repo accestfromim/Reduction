@@ -1,22 +1,21 @@
 package com.mindtravel.reduction.hardware.pc
 
-import android.content.Context
 import com.jcraft.jsch.JSch
 import com.jcraft.jsch.KeyPair
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.Base64
 
-class SshKeyStore(context: Context) {
+class SshKeyStore(private val dir: File) {
 
     data class Key(val privateKey: ByteArray, val publicKey: String)
 
-    private val dir = File(context.filesDir, "ssh").apply { mkdirs() }
     private val privateFile = File(dir, "id_rsa")
     private val publicFile = File(dir, "id_rsa.pub")
 
     @Synchronized
     fun ensure(): Key {
+        dir.mkdirs()
         if (privateFile.exists() && publicFile.exists()) {
             return Key(privateFile.readBytes(), publicFile.readText().trim())
         }

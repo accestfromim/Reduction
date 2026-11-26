@@ -18,6 +18,7 @@ export function openPc() {
   ui.els.pcHostInput.value = state.settings.pcHost || '';
   ui.els.pcPortInput.value = state.settings.pcPort || 22;
   ui.els.pcUserInput.value = state.settings.pcUser || '';
+  ui.els.pcProxyJumpInput.value = state.settings.pcProxyJump || '';
   ui.openSheet(ui.els.pcSheet, ui.els.pcBackdrop);
   callBridge('pcConnect');
   refreshPcConnection();
@@ -32,7 +33,8 @@ function savePcFields() {
     ...state.settings,
     pcHost: ui.els.pcHostInput.value.trim(),
     pcPort: Math.max(1, Math.min(65535, Number(ui.els.pcPortInput.value) || 22)),
-    pcUser: ui.els.pcUserInput.value.trim()
+    pcUser: ui.els.pcUserInput.value.trim(),
+    pcProxyJump: ui.els.pcProxyJumpInput.value.trim()
   };
   const result = saveSettings(next);
   if (!result.ok) {

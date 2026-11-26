@@ -119,7 +119,8 @@ function currentSettingsFromForm() {
     pcProject: ui.els.pcProjectInput.value.trim() || '~/Reduction-iterate',
     pcHost: state.settings.pcHost || '',
     pcPort: state.settings.pcPort || 22,
-    pcUser: state.settings.pcUser || ''
+    pcUser: state.settings.pcUser || '',
+    pcProxyJump: state.settings.pcProxyJump || ''
   };
 }
 

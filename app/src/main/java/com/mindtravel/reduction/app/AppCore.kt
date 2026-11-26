@@ -49,6 +49,7 @@ import com.mindtravel.reduction.hardware.audio.RecordingArchive
 import com.mindtravel.reduction.hardware.audio.WavPcm
 import com.mindtravel.reduction.hardware.audio.WavRecorder
 import com.mindtravel.reduction.hardware.pc.PcGateway
+import com.mindtravel.reduction.hardware.pc.PcProfile
 import com.mindtravel.reduction.hardware.power.DeviceBattery
 import com.mindtravel.reduction.hardware.pc.SshPcClient
 import com.mindtravel.reduction.model.ModelGraph
@@ -92,7 +93,7 @@ class AppCore private constructor(context: Context) {
     private val mainHandler = Handler(Looper.getMainLooper())
     private val audioQueue = AudioQueue(AudioTrackSink()) { callback -> mainHandler.post(callback) }
     private val pcmPlayer = PcmPlayer(context, audioQueue, scope)
-    private val pcGateway: PcGateway = SshPcClient(context)
+    private val pcGateway: PcGateway = SshPcClient(context.filesDir, PcProfile(settingsRepository.load()))
     private val deviceBattery = DeviceBattery(context)
     private val recordings = RecordingArchive(File(context.filesDir, "recordings"))
 

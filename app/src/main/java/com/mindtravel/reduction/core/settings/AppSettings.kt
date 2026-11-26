@@ -26,7 +26,8 @@ data class AppSettings(
     val opencodeSessionId: String = "",
     val pcProject: String = DEFAULT_PROJECT,
     val agentDirectories: List<AgentDirectory> = emptyList(),
-    val agentEngine: String = "opencode"
+    val agentEngine: String = "opencode",
+    val pcProxyJump: String = ""
 ) {
     fun toJson(): JSONObject = JSONObject().apply {
         put("apiKey", apiKey)
@@ -36,6 +37,7 @@ data class AppSettings(
         put("pcHost", pcHost)
         put("pcPort", pcPort)
         put("pcUser", pcUser)
+        put("pcProxyJump", pcProxyJump)
         put("webSearchEnabled", webSearchEnabled)
         put("calculatorEnabled", calculatorEnabled)
         put("wakeWordEnabled", wakeWordEnabled)
@@ -72,6 +74,7 @@ data class AppSettings(
                 pcHost = json.stringOrEmpty("pcHost").trim(),
                 pcPort = json.optInt("pcPort", 22).takeIf { it in 1..65535 } ?: 22,
                 pcUser = json.stringOrEmpty("pcUser").trim(),
+                pcProxyJump = json.stringOrEmpty("pcProxyJump").trim(),
                 webSearchEnabled = json.optBoolean("webSearchEnabled", true),
                 calculatorEnabled = json.optBoolean("calculatorEnabled", true),
                 wakeWordEnabled = json.optBoolean("wakeWordEnabled", false),

@@ -76,7 +76,7 @@ class ChatToolFactory(
 
     private fun harness(settings: AppSettings) = AgentHarness(
         pcGateway = pcGateway,
-        profile = PcProfile(settings.pcHost, settings.pcPort, settings.pcUser),
+        profile = PcProfile(settings),
         apiKey = settings.apiKey,
         model = settings.model,
         defaultEngine = if (settings.agentEngine == "codex") AgentHarness.Engine.CODEX else AgentHarness.Engine.OPENCODE,

@@ -21,9 +21,6 @@
   window.Android = new Proxy({}, { get: (_, method) => here[method] || ((...args) => call(method, args)) });
 
   addEventListener('DOMContentLoaded', () => {
-    document.getElementById('pcUserInput').placeholder = '电脑上的 SSH 用户名';
-    const details = document.querySelector('#pcSheet .app-info');
-    details.textContent = '请在电脑开启 SSH，并把公钥加入该用户的 authorized_keys。首次连接会固定主机密钥。';
     const apiField = document.getElementById('apiKeyInput')?.closest('label');
     if (apiField) {
       const note = document.createElement('p');

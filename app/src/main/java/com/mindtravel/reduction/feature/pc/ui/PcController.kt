@@ -9,6 +9,8 @@ import com.mindtravel.reduction.hardware.pc.PcProfile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -33,9 +35,7 @@ class PcController(
     @Volatile
     private var connectionState = "disconnected"
 
-    private val watchLock = Any()
-    private var watch: AutoCloseable? = null
-    private var watchStarting = false
+    private var watchJob: Job? = null
     private var logJob: Job? = null
     private var recordingJob: Job? = null
 
@@ -52,13 +52,13 @@ class PcController(
                 startConnectedWork()
                 onUpdateSignal()
             }
-            "disconnected" -> stopWatch()
+            "disconnected" -> stopConnectedWork()
         }
         emitter.emit("onPcConnection", next)
     }
 
     fun connect() {
-        val profile = profile()
+        val profile = currentProfile()
         if (profile.host.isBlank() || profile.user.isBlank()) return
         if (pcGateway.isConnected()) {
             setState("connected")
@@ -71,7 +71,9 @@ class PcController(
             try {
                 var last: Throwable? = null
                 repeat(3) { attempt ->
+                    if (profile != currentProfile()) return@launch
                     val result = runCatching { pcGateway.connect(profile) }
+                    if (profile != currentProfile()) return@launch
                     if (result.isSuccess) {
                         Logs.add("PC SSH auto-connected")
                         setState("connected")
@@ -91,15 +93,17 @@ class PcController(
     fun isConnected(): Boolean = pcGateway.isConnected()
 
     fun info(requestId: String) {
-        val profile = profile()
+        val profile = currentProfile()
         scope.launch(Dispatchers.IO) {
             runCatching { pcGateway.info(profile) }
                 .onSuccess {
+                    if (profile != currentProfile()) return@launch
                     Logs.add("PC SSH info ok")
                     setState("connected")
                     emitter.emit("onPcInfo", requestId, it.toJson().toString())
                 }
                 .onFailure {
+                    if (profile != currentProfile()) return@launch
                     Logs.add("PC SSH info failed: ${it.message}")
                     setState("disconnected")
                     emitter.emit("onPcError", requestId, it.message ?: "连接电脑失败")
@@ -112,16 +116,18 @@ class PcController(
             emitter.emit("onPcError", requestId, "命令为空")
             return
         }
-        val profile = profile()
+        val profile = currentProfile()
         Logs.add("PC SSH exec length=${command.length}")
         emitter.emit("onPcStatus", requestId, "执行中…")
         scope.launch(Dispatchers.IO) {
             runCatching { pcGateway.exec(profile, command) }
                 .onSuccess {
+                    if (profile != currentProfile()) return@launch
                     setState("connected")
                     emitter.emit("onPcExec", requestId, it)
                 }
                 .onFailure {
+                    if (profile != currentProfile()) return@launch
                     setState("disconnected")
                     emitter.emit("onPcError", requestId, it.message ?: "命令执行失败")
                 }
@@ -131,45 +137,35 @@ class PcController(
     fun publicKey(): String = pcGateway.publicKey()
 
     fun close() {
-        stopWatch()
+        stopConnectedWork()
         setState("disconnected")
         pcGateway.close()
     }
 
     /** Everything that runs for as long as the computer is reachable. Safe to call again. */
     private fun startConnectedWork() {
-        val profile = profile()
+        val profile = currentProfile()
         startWatch(profile)
         startLogShipping(profile)
         startRecordingShipping(profile)
     }
 
+    @Synchronized
     private fun startWatch(profile: PcProfile) {
-        if (profile.host.isBlank() || profile.user.isBlank()) return
-        synchronized(watchLock) {
-            if (watch != null || watchStarting) return
-            watchStarting = true
-        }
-        scope.launch(Dispatchers.IO) {
+        if (updateManifestUrl.isBlank() || watchJob?.isActive == true) return
+        watchJob = scope.launch(Dispatchers.IO) {
             try {
-                val handle = pcGateway.watchUpdates(profile, updateManifestUrl) { line ->
+                pcGateway.watchUpdates(profile, updateManifestUrl) { line ->
                     val code = line.removePrefix("UPDATE ").trim()
                     if (line.startsWith("UPDATE ") && code.isNotEmpty()) {
                         Logs.add("PC update signal: $code")
                         onUpdateSignal()
                     }
-                }
-                synchronized(watchLock) {
-                    if (connectionState == "connected") {
-                        watch = handle
-                    } else {
-                        runCatching { handle.close() }
-                    }
-                }
+                }.use { awaitCancellation() }
+            } catch (e: CancellationException) {
+                throw e
             } catch (t: Throwable) {
                 Logs.add("PC update watch failed: ${t.message}")
-            } finally {
-                synchronized(watchLock) { watchStarting = false }
             }
         }
     }
@@ -234,13 +230,14 @@ class PcController(
         return pcGateway.send(profile, command, data).trim() == "DELIVERED"
     }
 
-    private fun stopWatch() {
-        val current = synchronized(watchLock) {
-            val active = watch
-            watch = null
-            active
-        }
-        runCatching { current?.close() }
+    @Synchronized
+    private fun stopConnectedWork() {
+        watchJob?.cancel()
+        logJob?.cancel()
+        recordingJob?.cancel()
+        watchJob = null
+        logJob = null
+        recordingJob = null
     }
 
     private companion object {
@@ -250,12 +247,5 @@ class PcController(
         const val RECORDING_SHIP_INTERVAL_MS = 10_000L
     }
 
-    private fun profile(): PcProfile {
-        val settings = settingsRepository.load()
-        return PcProfile(
-            host = settings.pcHost,
-            port = settings.pcPort,
-            user = settings.pcUser
-        )
-    }
+    private fun currentProfile() = PcProfile(settingsRepository.load())
 }

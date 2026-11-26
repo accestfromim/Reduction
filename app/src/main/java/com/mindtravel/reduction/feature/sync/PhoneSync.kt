@@ -55,7 +55,7 @@ class PhoneSync(
     private fun exchange() {
         if (!pcGateway.isConnected()) return
         val saved = settings.load()
-        val profile = PcProfile(saved.pcHost, saved.pcPort, saved.pcUser)
+        val profile = PcProfile(saved)
         try {
             val answer = post(profile, sync.export()) ?: return
             merging = true

@@ -75,6 +75,7 @@ export const els = {
   pcHostInput: byId('pcHostInput'),
   pcPortInput: byId('pcPortInput'),
   pcUserInput: byId('pcUserInput'),
+  pcProxyJumpInput: byId('pcProxyJumpInput'),
   pcTest: byId('pcTest'),
   pcCopyKey: byId('pcCopyKey'),
   pcCommandInput: byId('pcCommandInput'),

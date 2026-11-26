@@ -286,7 +286,7 @@
       <div class="pc-status" id="pcStatus">未连接</div>
 
       <label class="field">
-        <span>电脑主机（Tailscale / MagicDNS）</span>
+        <span>目标主机</span>
         <input id="pcHostInput" placeholder="desktop.tailnet.ts.net" autocomplete="off" />
       </label>
 
@@ -297,7 +297,12 @@
 
       <label class="field">
         <span>SSH 用户</span>
-        <input id="pcUserInput" placeholder="Windows 用户名" autocomplete="off" />
+        <input id="pcUserInput" placeholder="目标主机上的 SSH 用户名" autocomplete="off" />
+      </label>
+
+      <label class="field">
+        <span>SSH 跳板机（可选，留空直连）</span>
+        <input id="pcProxyJumpInput" placeholder="用户名@跳板机:22" autocomplete="off" autocapitalize="none" spellcheck="false" />
       </label>
 
       <div class="actions">
@@ -305,7 +310,7 @@
         <button class="secondary-btn" id="pcCopyKey">复制公钥</button>
       </div>
 
-      <div class="app-info">先连接 Tailscale，并在 Windows 开启 OpenSSH Server。首次连接会固定 host key。</div>
+      <div class="app-info">将手机公钥加入目标主机的 authorized_keys。使用跳板机时，也将同一公钥加入跳板机。首次连接会分别固定两台主机的密钥。</div>
 
       <label class="field" style="margin-top:16px;">
         <span>执行命令</span>

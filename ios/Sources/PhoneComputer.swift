@@ -4,6 +4,7 @@ import Foundation
 import NIOCore
 import NIOSSH
 import OSLog
+import ReductionShared
 
 struct PhoneAgentRun: Codable, Equatable {
     var id: Int
@@ -20,16 +21,28 @@ private struct ComputerProfile: Equatable {
     let host: String
     let user: String
     let port: Int
+    let proxyJump: String
     var pin: String { "ssh-host/\(host):\(port)" }
 
     init?(_ settings: JSON) {
         host = settings["pcHost"].text.trimmed
         user = settings["pcUser"].text.trimmed
         port = settings["pcPort"].integer
+        proxyJump = settings["pcProxyJump"].text.trimmed
         guard !host.isEmpty, !user.isEmpty, (1...65535).contains(port) else { return nil }
     }
 
     func owns(_ run: PhoneAgentRun) -> Bool { run.host == host && run.user == user && run.port == port }
+}
+
+private struct ComputerConnection {
+    let target: SSHClient
+    let jump: SSHClient?
+
+    func close() async {
+        try? await target.close()
+        try? await jump?.close()
+    }
 }
 
 private struct HostPin: NIOSSHClientServerAuthenticationDelegate {
@@ -53,9 +66,10 @@ final class PhoneComputer {
     private let emit: PageEvent
     private let confirm: (String, String) async -> Bool
     private let log = Logger(subsystem: "com.mindtravel.reduction.ios", category: "Computer")
-    private var ssh: SSHClient?
+    private var route: ComputerConnection?
+    private var ssh: SSHClient? { route?.target }
     private var profile: ComputerProfile?
-    private var dialing: Task<SSHClient, Error>?
+    private var dialing: Task<ComputerConnection, Error>?
     private var dialingID = UUID()
     private var timer: Task<Void, Never>?
     private var debounced: Task<Void, Never>?
@@ -99,28 +113,51 @@ final class PhoneComputer {
     private func connection() async throws -> SSHClient {
         let target = try configured()
         if target == profile, let ssh, ssh.isConnected { return ssh }
-        if target == profile, let dialing { return try await dialing.value }
+        if target == profile, let dialing {
+            let id = dialingID
+            let result = try await dialing.value
+            guard dialingID == id else { throw CancellationError() }
+            return result.target
+        }
         close()
         profile = target
         let key = try privateKey()
-        let pin = HostPin(name: target.pin, store: store.secrets)
-        var settings = SSHClientSettings(host: target.host, port: target.port,
-                                         authenticationMethod: { .ed25519(username: target.user, privateKey: key) },
-                                         hostKeyValidator: .custom(pin))
-        settings.connectTimeout = .seconds(12)
-        let configuration = settings
+        func settings(_ host: String, _ port: Int, _ user: String) -> SSHClientSettings {
+            let pin = HostPin(name: "ssh-host/\(host):\(port)", store: store.secrets)
+            var config = SSHClientSettings(host: host, port: port,
+                                           authenticationMethod: { .ed25519(username: user, privateKey: key) },
+                                           hostKeyValidator: .custom(pin))
+            config.connectTimeout = .seconds(12)
+            return config
+        }
+        let configuration = settings(target.host, target.port, target.user)
+        let via = try SshJumpHost.companion.parse(spec: target.proxyJump, defaultUser: target.user)
+        let jumpSettings = via.map { settings($0.host, Int($0.port), $0.user) }
         setState("connecting")
         let id = UUID()
         dialingID = id
-        let task = Task { try await SSHClient.connect(to: configuration) }
+        let task = Task {
+            guard let jumpSettings else {
+                return ComputerConnection(target: try await SSHClient.connect(to: configuration), jump: nil)
+            }
+            let jump = try await SSHClient.connect(to: jumpSettings)
+            do {
+                try Task.checkCancellation()
+                let target = try await jump.jump(to: configuration)
+                return ComputerConnection(target: target, jump: jump)
+            } catch {
+                try? await jump.close()
+                throw error
+            }
+        }
         dialing = task
         do {
-            let client = try await task.value
-            guard dialingID == id else { try await client.close(); throw CancellationError() }
+            let connection = try await task.value
+            guard dialingID == id else { await connection.close(); throw CancellationError() }
             dialing = nil
-            ssh = client
+            route = connection
             setState("connected")
-            return client
+            return connection.target
         } catch {
             if dialingID == id { dialing = nil; setState("disconnected") }
             throw error
@@ -131,8 +168,8 @@ final class PhoneComputer {
         dialingID = UUID()
         dialing?.cancel()
         dialing = nil
-        if let ssh { Task { try? await ssh.close() } }
-        ssh = nil
+        if let route { Task { await route.close() } }
+        route = nil
         profile = nil
         setState("disconnected")
     }
