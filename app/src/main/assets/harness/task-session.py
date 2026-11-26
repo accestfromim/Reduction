@@ -3,13 +3,16 @@
 The driver runs outside the existing agent sandbox. The worker sees a read-only copy
 of this script and task.md, and can submit card operations through its result folder.
 """
+import base64
 import contextlib
 import fcntl
 import hashlib
+import http.client
 import json
 import os
 import queue
 import re
+import secrets
 import shutil
 import signal
 import stat
@@ -20,6 +23,7 @@ import threading
 import time
 import uuid
 from pathlib import Path
+from urllib.parse import quote
 
 LIMIT = 60000
 
@@ -377,7 +381,168 @@ def read_events(pipe, events):
         events.put(None)
 
 
+class MiMoAPI:
+    def __init__(self, port, password):
+        self.port = port
+        token = base64.b64encode(("mimocode:" + password).encode()).decode()
+        self.headers = {"Authorization": "Basic " + token, "Content-Type": "application/json"}
+
+    def request(self, path, body=None, timeout=10, accepted=None, missing_ok=False):
+        # Always contact the private loopback listener directly, including on hosts with HTTP_PROXY.
+        conn = http.client.HTTPConnection("127.0.0.1", self.port, timeout=timeout)
+        try:
+            conn.request("GET" if body is None else "POST", path,
+                         None if body is None else encode(body).encode(), self.headers)
+            response = conn.getresponse()
+            if missing_ok and response.status == 404:
+                return False
+            if response.status != 200:
+                raise ValueError(f"MiMo Code {path} 返回 HTTP {response.status}")
+            if accepted is not None:
+                accepted()
+            return json.load(response)
+        finally:
+            conn.close()
+
+
+def mimo_answers(question, text):
+    labels = [opt["label"] for opt in question.get("options", [])]
+    if question.get("multiple") and text not in labels:
+        selected = [label.strip() for label in re.split(r"[、\n]", text)]
+        if all(label in labels for label in selected):
+            return list(dict.fromkeys(selected))
+    return [text]
+
+
+def clear_mimo_questions(run, keys, delivery="expired"):
+    with transaction(run) as s:
+        for key in keys:
+            item = s["pending"].pop(key, None)
+            if item and "messageId" in item and not s["detached"]:
+                s["seen"][item["messageId"]] = delivery
+
+
+def poll_mimo_questions(api, run, session, known):
+    current = set()
+    for request in api.request("/question"):
+        if request["sessionID"] != session:
+            continue
+        rid, questions = request["id"], request["questions"]
+        keys = [f"mimo/{rid}/{index}" for index in range(len(questions))]
+        with transaction(run) as s:
+            if rid not in known:
+                for key, q in zip(keys, questions):
+                    labels = "、".join(opt["label"] for opt in q.get("options", []))
+                    suffix = ("（" + ("可多选：" if q.get("multiple") else "") + labels + "）") if labels else ""
+                    ask(s, key, q["question"] + suffix, native=True)
+                known[rid] = keys
+            entries = [s["pending"].get(key) for key in keys]
+        path = "/question/" + quote(rid, safe="")
+        if not all(entries):
+            api.request(path + "/reject", {}, missing_ok=True)
+            clear_mimo_questions(run, keys)
+        elif all("answer" in item for item in entries):
+            answers = [mimo_answers(q, item["answer"]) for q, item in zip(questions, entries)]
+            replied = api.request(path + "/reply", {"answers": answers}, missing_ok=True)
+            clear_mimo_questions(run, keys, "answered" if replied else "expired")
+        current.add(rid)
+    for rid in known.keys() - current:
+        clear_mimo_questions(run, known.pop(rid))
+    # A permission prompt cannot grant new access through the question/answer channel.
+    for perm in api.request("/permission"):
+        if perm["sessionID"] == session:
+            api.request("/permission/" + quote(perm["id"], safe="") + "/reply", {"reply": "reject"}, missing_ok=True)
+
+
+def mimo_turn(run, opts, prompt, mid):
+    password = secrets.token_urlsafe(32)
+    proc = subprocess.Popen(opts["command"], cwd=opts["cwd"], env=opts["env"], stdin=subprocess.PIPE,
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
+    ready, result = queue.Queue(), queue.Queue()
+    known = {}
+
+    def listen():
+        for line in proc.stdout:
+            match = re.fullmatch(r"mimocode server listening on http://127\.0\.0\.1:(\d+)", line.strip())
+            if match:
+                ready.put(int(match[1]))
+        ready.put(None)
+
+    def run_prompt():
+        try:
+            body = {"agent": opts["agent"], "parts": [{"type": "text", "text": prompt}]}
+            acknowledge = (lambda: delivered(run, mid, "next")) if mid else None
+            result.put(api.request("/session/" + quote(session, safe="") + "/message", body, opts["timeout"], acknowledge))
+        except Exception as exc:
+            result.put(exc)
+
+    threading.Thread(target=listen, daemon=True).start()
+    try:
+        # The password travels on stdin. It never enters the SSH command line or driver.json.
+        proc.stdin.write(password + "\n")
+        proc.stdin.close()
+        try:
+            port = ready.get(timeout=min(30, opts["timeout"]))
+        except queue.Empty:
+            raise ValueError("MiMo Code 服务启动超时") from None
+        if not port:
+            raise ValueError("MiMo Code 服务未启动，请检查服务器上的 mimo 安装")
+        api = MiMoAPI(port, password)
+        with transaction(run) as s:
+            session = s["session"]
+        if not session:
+            session = api.request("/session", {})["id"]
+            with transaction(run) as s:
+                s["session"] = session
+        threading.Thread(target=run_prompt, daemon=True).start()
+        deadline = time.monotonic() + opts["timeout"]
+        poll_at = 0
+        while time.monotonic() < deadline:
+            mailbox(run)
+            if time.monotonic() >= poll_at:
+                poll_mimo_questions(api, run, session, known)
+                poll_at = time.monotonic() + 1
+            try:
+                reply = result.get(timeout=.12)
+            except queue.Empty:
+                continue
+            if isinstance(reply, Exception):
+                raise reply
+            info = reply["info"]
+            if info.get("error"):
+                error = info["error"]
+                detail = (error.get("data") or {}).get("message") or error.get("name", "")
+                raise ValueError("MiMo Code 执行失败：" + str(detail)[:250])
+            if info.get("role") != "assistant":
+                raise ValueError("MiMo Code 未返回此轮的执行结果")
+            return "\n".join(part["text"] for part in reply["parts"]
+                             if part["type"] == "text" and not part.get("synthetic")).strip()
+        raise ValueError("MiMo Code 执行超时")
+    finally:
+        try:
+            if proc.poll() is None:
+                proc.terminate()
+                try:
+                    proc.wait(timeout=3)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+        finally:
+            proc.stdin.close()
+            proc.stdout.close()
+            clear_mimo_questions(run, (key for keys in known.values() for key in keys))
+
+
 def one_turn(run, opts, prompt, mid):
+    final = mimo_turn(run, opts, prompt, mid) if opts["engine"] == "mimocode" else stream_turn(run, opts, prompt, mid)
+    with transaction(run) as s:
+        if final and not s["detached"]:
+            note(s, "执行器", final)
+        if s["status"] == "running":
+            s["status"] = "done" if s.pop("completionRequested", False) and not s["pending"] else "idle"
+
+
+def stream_turn(run, opts, prompt, mid):
     engine = opts["engine"]
     cmd = list(opts["command"])
     with transaction(run) as s:
@@ -432,11 +597,7 @@ def one_turn(run, opts, prompt, mid):
                     raise ValueError("执行器报告错误")
         else:
             raise ValueError("执行超时")
-        with transaction(run) as s:
-            if final and not s["detached"]:
-                note(s, "执行器", final)
-            if s["status"] == "running":
-                s["status"] = "done" if s.pop("completionRequested", False) and not s["pending"] else "idle"
+        return final
     finally:
         if codex:
             for rpc_id in list(codex.questions):
@@ -500,6 +661,13 @@ def serve(run):
 
 def main():
     if Path(__file__).name == "card.py":
+        if sys.argv[1] == "mimo-serve":
+            password = sys.stdin.readline().strip()
+            if not password:
+                raise ValueError("缺少 MiMo Code 会话凭据")
+            os.environ.update(MIMOCODE_SERVER_PASSWORD=password, MIMOCODE_ENABLE_QUESTION_TOOL="1")
+            exe = sys.argv[2]
+            os.execv(exe, [exe, "serve", "--hostname", "127.0.0.1", "--port", "0"])
         return worker_cli()
     mode, run = sys.argv[1], Path(sys.argv[2]).resolve()
     if mode == "init":
@@ -511,9 +679,11 @@ def main():
         if outer != "bwrap":
             keys.update({"HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"})
             keys.update({"codex": {"CODEX_HOME", "CODEX_CA_CERTIFICATE"},
+                         "mimocode": {"MIMOCODE_HOME", "MIMOCODE_DISABLE_AUTOUPDATE"},
                          "claude": {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"},
                          "opencode": {"DEEPSEEK_API_KEY", "OPENCODE_DISABLE_AUTOUPDATE"}}[engine])
         opts = dict(engine=engine, cwd=cwd, timeout=int(seconds), command=sys.argv[6:],
+                    agent=os.environ.get("REDUCTION_TASK_AGENT", "plan"),
                     sandbox="danger-full-access" if outer in ("bwrap", "srt") else "read-only",
                     env={k: os.environ[k] for k in keys if k in os.environ})
         atomic(run / "driver.json", encode(opts))

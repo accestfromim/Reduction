@@ -241,7 +241,7 @@ class RunAgentTool(
                 共享任务卡全文位于 ~/.reduction-task/task.md。阶段进展、证据和阻塞点直接更新这张卡。
                 python3 ~/.reduction-task/card.py read 返回全文与 rev。把完整新正文通过标准输入交给
                 python3 ~/.reduction-task/card.py save REV。版本冲突时重新读取，再应用你的修改。
-                需要手机助手决策时用 Codex 的 request_user_input 或 python3 ~/.reduction-task/card.py ask '问题'。
+                需要手机助手决策时用 MiMo Code 的 question、Codex 的 request_user_input 或 python3 ~/.reduction-task/card.py ask '问题'。
                 文件式提问后可结束这一轮等原会话续聊。答复尚未确定时，继续能独立做的部分。
                 确认完成整个任务时调用 python3 ~/.reduction-task/card.py done。普通一轮结束表示可续聊。
             """.trimIndent()

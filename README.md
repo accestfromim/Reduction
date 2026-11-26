@@ -102,7 +102,7 @@ desktop/install.sh     # 装成应用：桌宠、开机自启、桌面图标
 
 如果目标主机在跳板机后面，在手机「电脑」面板的「SSH 跳板机」填写 `用户名@跳板机:端口`，例如 `ops@bastion.example.com:2222`。省略用户名会沿用目标 SSH 用户，省略端口时使用 22，留空则直连。把手机的同一份公钥加入两端相应用户的 `authorized_keys`，目标主机名由跳板机解析。
 
-在电脑上开启 SSH 服务，在手机 App 里点电脑图标，复制公钥加到电脑的 `~/.ssh/authorized_keys`，再填入电脑地址。在「设置 → 子代理执行器」选择 OpenCode 或 Codex。Linux 和 WSL 需要 `bwrap`，macOS 需要 Python 3 和 Anthropic Sandbox Runtime。[执行器登录和依赖](docs/DEVELOPMENT.md#子代理执行器)
+在电脑上开启 SSH 服务，在手机 App 里点电脑图标，复制公钥加到电脑的 `~/.ssh/authorized_keys`，再填入电脑地址。在「设置 → 子代理执行器」选择 OpenCode、Codex、Claude Code 或 MiMo Code。Linux 和 WSL 需要 `bwrap`，macOS 需要 Python 3 和 Anthropic Sandbox Runtime。[执行器登录和依赖](docs/DEVELOPMENT.md#子代理执行器)
 
 ## 你的数据在哪
 

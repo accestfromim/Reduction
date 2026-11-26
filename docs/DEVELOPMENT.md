@@ -306,9 +306,10 @@ open dist/Reduction.app
 
 ### 子代理执行器
 
-在桌面或手机的「设置 → 子代理执行器」选择 OpenCode 或 Codex，保存后用于新任务。手机通过 SSH 派发时，执行器和登录凭据位于 SSH 所连接的电脑。Linux 和 WSL 的任务由 `bwrap` 隔离。
+在桌面或手机的「设置 → 子代理执行器」选择 OpenCode、Codex、Claude Code 或 MiMo Code，保存后用于新任务。已派发的任务继续使用原执行器和会话。手机通过 SSH 派发时，执行器和登录凭据位于 SSH 所连接的电脑。Linux 和 WSL 的任务由 `bwrap` 隔离。
 
 - OpenCode 使用 Reduction 设置中的 DeepSeek API Key 和模型。
+- MiMo Code 使用执行电脑上的 `mimo`。先以 SSH 登录用户运行一次 `mimo`，通过 `/connect` 登录，也可以在 MiMo 配置中指定模型。每个任务使用自己的会话数据库，从服务器的 MiMo 配置目录和 `auth.json` 读取初始配置。设置了 `MIMOCODE_HOME` 的用户需让 SSH 会话也能读到这个环境变量。Android 和桌面通过本机回环接口把 MiMo 原生问题写入任务卡，由手机或桌面助手作答。主动补充的指令在同一会话的下一轮执行。
 - Codex 使用支持 `codex exec --json` 的新版 Codex CLI。先在执行电脑上登录一次。下面的命令将凭据存入专供 Reduction 的目录。macOS 也可以使用 ChatGPT 应用随附的 Codex CLI。
 
 ```bash

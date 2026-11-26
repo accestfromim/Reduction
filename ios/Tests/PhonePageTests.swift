@@ -181,7 +181,7 @@ final class PhonePageTests: XCTestCase {
             XCTAssertEqual(saved as? Bool, true)
         }
 
-        for engine in ["codex", "opencode"] {
+        for engine in ["codex", "mimocode", "opencode"] {
             let saved = try await view.callAsyncJavaScript("""
                 document.getElementById('settingsBtn').click();
                 const picker = document.getElementById('agentEngineSelect');

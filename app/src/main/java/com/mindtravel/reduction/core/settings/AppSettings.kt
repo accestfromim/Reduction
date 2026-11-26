@@ -80,7 +80,7 @@ data class AppSettings(
                 wakeWordEnabled = json.optBoolean("wakeWordEnabled", false),
                 bargeInEnabled = json.optBoolean("bargeInEnabled", true),
                 headsetMicEnabled = json.optBoolean("headsetMicEnabled", false),
-                agentEngine = json.stringOrEmpty("agentEngine").takeIf { it in setOf("codex", "claude") } ?: "opencode",
+                agentEngine = json.stringOrEmpty("agentEngine").takeIf { it in setOf("codex", "claude", "mimocode") } ?: "opencode",
                 opencodeEnabled = json.optBoolean("opencodeEnabled", false),
                 opencodeWriteEnabled = json.optBoolean("opencodeWriteEnabled", false),
                 opencodeSessionId = json.stringOrEmpty("opencodeSessionId").trim(),

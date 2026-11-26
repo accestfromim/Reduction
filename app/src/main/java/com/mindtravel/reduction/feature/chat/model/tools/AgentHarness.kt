@@ -37,6 +37,7 @@ class AgentHarness(
     enum class Engine(val wire: String, val timeoutSeconds: Int) {
         OPENCODE("opencode", 900),
         CODEX("codex", 900),
+        MIMOCODE("mimocode", 900),
 
         /** Claude Code, on the computer's own login. Given two hours. */
         CLAUDE("claude", 7_200)

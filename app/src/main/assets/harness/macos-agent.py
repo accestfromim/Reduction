@@ -13,7 +13,7 @@ from pathlib import Path
 
 def sandbox_config(project, run, program, agent, domains, auth):
     codex_home = auth.get("CODEX_HOME")
-    readable = [project, run / "home", run / "result", run / "prompt.txt", program if codex_home else program.parent]
+    readable = [project, run / "home", run / "result", run / "prompt.txt", program if codex_home or "MIMOCODE_HOME" in auth else program.parent]
     git_pointer = project / ".git"
     if git_pointer.is_file():
         common = subprocess.run(
@@ -22,6 +22,9 @@ def sandbox_config(project, run, program, agent, domains, auth):
         ).stdout.strip()
         readable.append(Path(common).resolve(strict=True))
     writable = [run / "home", run / "result"]
+    if "MIMOCODE_HOME" in auth:
+        readable.append(Path(auth["MIMOCODE_HOME"]))
+        writable.append(Path(auth["MIMOCODE_HOME"]))
     mounts = {}
     for line in os.environ["REDUCTION_AGENT_MOUNTS"].splitlines():
         binding, raw = line.split("\t", 1)
@@ -52,15 +55,22 @@ def sandbox_config(project, run, program, agent, domains, auth):
             "allowWrite": literal(writable),
             "denyWrite": literal(protected),
         },
-        "network": {"allowedDomains": domains, "deniedDomains": [], "allowLocalBinding": False},
+        "network": {"allowedDomains": domains, "deniedDomains": [], "allowLocalBinding": "MIMOCODE_HOME" in auth and (run / "channel").is_dir()},
     }
 
 
 def backend(engine, model, agent, workspace, prompt, result_file):
-    executable = shutil.which(engine)
+    executable = os.environ.get("REDUCTION_MIMO_BIN") if engine == "mimocode" else shutil.which(engine)
     if not executable:
         sys.exit(f"harness：这台 Mac 上找不到 {engine}")
     program = Path(executable).resolve(strict=True)
+    if engine == "mimocode":
+        profile = result_file.parent.parent / "mimocode"
+        args = ["run", "--format", "json", "--agent", agent, "--dir", str(workspace), "--", prompt]
+        return program, args, {"MIMOCODE_HOME": str(profile), "MIMOCODE_DISABLE_AUTOUPDATE": "true"}, [
+            "api.xiaomimimo.com", "platform.xiaomimimo.com", "token-plan-cn.xiaomimimo.com",
+            "token-plan-ams.xiaomimimo.com", "token-plan-sgp.xiaomimimo.com", "models.dev",
+        ]
     if engine == "opencode":
         key = os.environ.get("AGENT_KEY", "")
         if not re.fullmatch(r"[A-Za-z0-9_-]+", key):
@@ -153,7 +163,7 @@ def main():
         sys.exit("harness：macOS 需要 Anthropic Sandbox Runtime（srt），请按电脑端说明安装")
 
     project = Path(folder).resolve(strict=True)
-    run = Path(state).resolve() / "runs" / uuid.uuid4().hex
+    run = Path(sys.argv[9]) if engine == "mimocode" and len(sys.argv) > 9 else Path(state).resolve() / "runs" / uuid.uuid4().hex
     program, args, auth, domains = backend(engine, model, agent, project, prompt, run / "result" / "result.md")
     domains += os.environ.get("REDUCTION_AGENT_ALLOWED_DOMAINS", "").split()
     os.umask(0o077)
@@ -164,12 +174,16 @@ def main():
     (home / ".reduction-result").symlink_to(run / "result", target_is_directory=True)
     (run / "prompt.txt").write_text(prompt + "\n", encoding="utf-8")
     driver = run / "bridge.py"
+    executable = program
     if os.environ.get("REDUCTION_TASK_DRIVER"):
         driver.write_bytes(base64.b64decode(os.environ["REDUCTION_TASK_DRIVER"], validate=True))
         subprocess.run([sys.executable, str(driver), "init", str(run)], input=body, text=True, check=True)
         (home / ".reduction-task").symlink_to(run / "channel", target_is_directory=True)
         if engine == "codex":
             args = ["app-server", "--enable", "default_mode_request_user_input", "-c", 'cli_auth_credentials_store="file"']
+        elif engine == "mimocode":
+            args = [str(home / ".reduction-task/card.py"), "mimo-serve", str(program)]
+            executable = Path(sys.executable)
         else:
             args = args[:args.index("--")]
     settings = run / "sandbox.json"
@@ -181,8 +195,9 @@ def main():
         "PATH": os.pathsep.join(item for item in os.environ.get("PATH", "").split(os.pathsep) if os.path.isabs(item)),
         "OPENCODE_DISABLE_AUTOUPDATE": "true", **auth,
     }
-    command = [srt, "--settings", str(settings), "--", "/usr/bin/env", f"TMPDIR={temp}", str(program), *args]
+    command = [srt, "--settings", str(settings), "--", "/usr/bin/env", f"TMPDIR={temp}", str(executable), *args]
     if driver.exists():
+        env["REDUCTION_TASK_AGENT"] = agent
         env["TMPDIR"] = tempfile.mkdtemp(prefix="r", dir=socket_root)
         subprocess.run([sys.executable, str(driver), "launch", str(run), engine, str(project),
                         str(seconds), *command], env=env, check=True)

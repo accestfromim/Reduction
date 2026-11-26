@@ -4,6 +4,12 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class AppSettingsTest {
+    @Test fun mimocodeSelectionSurvivesSavingAndUnknownEnginesUseTheDefault() {
+        val saved = AppSettings(agentEngine = "mimocode").toJson().toString()
+        assertEquals("mimocode", AppSettings.fromJson(saved).agentEngine)
+        assertEquals("opencode", AppSettings.fromJson("""{"agentEngine":"unknown"}""").agentEngine)
+    }
+
 
     @Test
     fun aProjectPathFromAnEarlierNameFollowsTheDirectory() {

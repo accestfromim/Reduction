@@ -81,6 +81,48 @@ class TaskSessionTest(unittest.TestCase):
         with bridge.transaction(self.run_dir) as state:
             self.assertEqual(["instruction"], [m["id"] for m in state["outbox"]])
 
+    def test_mimo_questions_are_ordered_scoped_and_distinct_from_permissions(self):
+        requests = [
+            {"sessionID": "other", "id": "ignore", "questions": [{"question": "another task"}]},
+            {"sessionID": "mine", "id": "q1", "questions": [
+                {"question": "选择范围", "multiple": True, "options": [{"label": "甲"}, {"label": "乙"}]},
+                {"question": "下一步"}]},
+        ]
+        posts = []
+
+        class API:
+            def request(self, path, body=None, missing_ok=False):
+                if path == "/question":
+                    return requests
+                if path == "/permission":
+                    return [{"sessionID": "mine", "id": "perm"}]
+                posts.append((path, body))
+                return True
+
+        known, api = {}, API()
+        def poll():
+            bridge.poll_mimo_questions(api, self.run_dir, "mine", known)
+        poll()
+        poll()
+        self.assertEqual(1, self.rpc("read")["text"].count("选择范围"))
+        self.assertNotIn("another task", self.rpc("read")["text"])
+        self.rpc("send", id="separate", text="补充任务")
+        for mid, text in [("a", "乙、甲"), ("b", "尚未确定")]:
+            self.rpc("send", id=mid, question=self.rpc("status")["question"]["id"], text=text)
+            poll()
+        self.assertEqual([("/question/q1/reply", {"answers": [["乙", "甲"], ["尚未确定"]]})],
+                         [p for p in posts if p[0].endswith("q1/reply")])
+        self.assertIn(("/permission/perm/reply", {"reply": "reject"}), posts)
+        with bridge.transaction(self.run_dir) as s:
+            self.assertEqual(["separate"], [m["id"] for m in s["outbox"]])
+            self.assertEqual("answered", s["seen"]["b"])
+        requests[1]["id"] = "q2"
+        poll()
+        self.rpc("delete", base=self.rpc("read")["rev"])
+        poll()
+        self.assertIn(("/question/q2/reject", {}), posts)
+        self.assertIsNone(self.rpc("status")["question"])
+
     def test_deleting_card_preserves_send_and_removal_rejects_late_updates(self):
         base = self.rpc("read")["rev"]
         self.assertTrue(self.rpc("delete", base=base)["deleted"])

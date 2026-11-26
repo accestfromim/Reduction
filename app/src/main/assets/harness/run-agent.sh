@@ -6,7 +6,7 @@
 #                                                        then a line "=====RESULT FILE=====" and what the agent
 #                                                        wrote into its result file, if anything
 #
-# AGENT_ENGINE 选择执行器，可用 opencode（默认）、codex 或 claude。
+# AGENT_ENGINE 选择执行器，可用 opencode（默认）、codex、claude 或 mimocode。
 # A run is ended after AGENT_TIMEOUT seconds; its exit code is then 124.
 #
 # Every run is given a folder of its own, ~/.reduction-result, to leave its final result in:
@@ -50,7 +50,7 @@ for line in proc.stdout:
         continue
     if engine == "claude" and item.get("type") == "result":
         final = item.get("result", "")
-    elif engine == "opencode" and item.get("type") == "text":
+    elif engine in ("opencode", "mimocode") and item.get("type") == "text":
         final = item.get("part", {}).get("text", "")
 if final:
     try:
@@ -108,10 +108,15 @@ home, workdir, workspace, agent = sys.argv[1:]
 system = {"/usr", "/bin", "/sbin", "/lib", "/lib64", "/proc", "/dev", "/tmp", "/etc",
           "/sys", "/run", "/boot"}
 private = {home + "/" + part for part in (
+    ".mimocode", ".config/mimocode", ".local/share/mimocode", ".cache/mimocode", ".local/state/mimocode",
     ".opencode", ".claude", ".claude.json", ".config/opencode", ".cache/opencode",
     ".local/share/opencode", ".local/share/reduction", ".local/share/reduction-agents",
     ".config/reduction", ".local/share/reduction-codex", ".reduction-result", "reduction-agents",
 )}
+for name in ("MIMOCODE_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"):
+    if os.environ.get(name):
+        path = os.path.realpath(os.environ[name])
+        private.add(path if name == "MIMOCODE_HOME" else os.path.join(path, "mimocode"))
 if os.environ.get("REDUCTION_CLAUDE_ROOT"):
     private.add(os.environ["REDUCTION_CLAUDE_ROOT"])
 
@@ -187,13 +192,34 @@ for key in ("prompt", "body"):
     (pathlib.Path(sys.argv[1]) / key).write_text(data[key], encoding="utf-8")' "$payload_dir"
   fi
   case "$agent" in build|plan) ;; *) say "harness：未知的 agent 类型 $agent" ;; esac
-  case "$engine" in opencode|codex|claude) ;; *) say "harness：未知的执行者 $engine" ;; esac
+  case "$engine" in opencode|codex|claude|mimocode) ;; *) say "harness：未知的执行者 $engine" ;; esac
+  id=$(date +%Y%m%d-%H%M%S)-$$
+  run=$state/runs/$id
+  if [ "$engine" = mimocode ]; then
+    mimo=${MIMOCODE_BIN_PATH:-$(PATH="$home/.mimocode/bin:$home/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH" command -v mimo)} || say "harness：这台电脑上找不到 MiMo Code（mimo）"
+    mimo=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$mimo")
+    case "$mimo" in */mimo.js) mimo=$(dirname "$mimo")/vendor/mimo ;; esac
+    [ -x "$mimo" ] || say "harness：找不到 MiMo Code 原生程序，请先在执行电脑上运行 mimo"
+    config=${XDG_CONFIG_HOME:-$home/.config}/mimocode
+    auth=${XDG_DATA_HOME:-$home/.local/share}/mimocode/auth.json
+    if [ -n "${MIMOCODE_HOME:-}" ]; then config=$MIMOCODE_HOME/config; auth=$MIMOCODE_HOME/data/auth.json; fi
+    # Each task owns its native session database. Seed only the server's login and model settings.
+    if [ ! -s "$auth" ] && [ ! -s "$config/mimocode.json" ] && [ ! -s "$config/mimocode.jsonc" ] && [ ! -s "$config/config.json" ]; then
+      say "harness：请先在执行电脑上运行 mimo，用 /connect 登录或配置模型"
+    fi
+    mkdir -p "$run/mimocode/data" "$run/mimocode/config"
+    if [ -s "$auth" ]; then cp "$auth" "$run/mimocode/data/auth.json"; fi
+    for file in config.json mimocode.json mimocode.jsonc; do
+      if [ -f "$config/$file" ]; then cp "$config/$file" "$run/mimocode/config/$file"; fi
+    done
+    export REDUCTION_MIMO_BIN="$mimo"
+  fi
   if [ "$(uname -s)" = Darwin ]; then
     export PATH="$home/.local/bin:$home/.opencode/bin:/opt/homebrew/bin:/usr/local/bin:$PATH:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS"
     command -v python3 >/dev/null 2>&1 || say "harness：macOS 需要 Python 3"
     [ -n "${REDUCTION_MAC_AGENT_SCRIPT:-}" ] || say "harness：没有收到 macOS 沙箱启动程序，请更新发出任务的 Reduction"
     mounts=$(mount_plan 2>&1) || say "harness：$mounts"
-    printf '%s' "$REDUCTION_MAC_AGENT_SCRIPT" | base64 -d | REDUCTION_TASK_INPUT="$payload_dir" REDUCTION_LEGACY_CAPTURE="$legacy_capture" REDUCTION_AGENT_MOUNTS="$mounts" python3 - "$state" "$dir" "$agent" "$prompt" "$engine" "$limit" "$model" "$body"
+    printf '%s' "$REDUCTION_MAC_AGENT_SCRIPT" | base64 -d | REDUCTION_TASK_INPUT="$payload_dir" REDUCTION_LEGACY_CAPTURE="$legacy_capture" REDUCTION_AGENT_MOUNTS="$mounts" python3 - "$state" "$dir" "$agent" "$prompt" "$engine" "$limit" "$model" "$body" "$run"
     exit
   fi
   command -v bwrap >/dev/null 2>&1 || say "harness：电脑上没有 bwrap，无法隔离运行"
@@ -225,8 +251,6 @@ for key in ("prompt", "body"):
     ;;
   esac
 
-  id=$(date +%Y%m%d-%H%M%S)-$$
-  run=$state/runs/$id
   mkdir -p "$run/result"
   if [ -n "$payload_dir" ]; then
     cp "$payload_dir/prompt" "$run/prompt.txt"
@@ -283,6 +307,17 @@ MOUNTS
   set -- "$@" --chdir "$dir"
 
   case "$engine" in
+  mimocode)
+    profile="$home/.reduction-mimo"
+    set -- "$@" --ro-bind "$mimo" "$mimo" --bind "$run/mimocode" "$profile" \
+      --setenv MIMOCODE_HOME "$profile" --setenv MIMOCODE_DISABLE_AUTOUPDATE true
+    if [ -f "$run/bridge.py" ]; then
+      set -- "$@" python3 "$home/.reduction-task/card.py" mimo-serve "$mimo"
+    else
+      set -- "$@" timeout "$limit" "$mimo" run --format json --agent "$agent" --dir "$dir" -- "$prompt"
+    fi
+    input=/dev/null
+    ;;
   codex)
     set -- "$@" --setenv CODEX_HOME "$codex_home" --bind "$codex_home" "$codex_home"
     case "$codex" in
@@ -338,7 +373,7 @@ MOUNTS
   esac
 
   if [ -f "$run/bridge.py" ]; then
-    python3 "$run/bridge.py" launch "$run" "$engine" "$dir" "$limit" bwrap "$@"
+    REDUCTION_TASK_AGENT="$agent" python3 "$run/bridge.py" launch "$run" "$engine" "$dir" "$limit" bwrap "$@"
     printf 'RUN %s\nTASK_PATH %s\n' "$id" "$run"
     exit
   fi

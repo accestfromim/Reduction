@@ -154,7 +154,7 @@ final class PhoneStore {
         }
         var next = Self.defaults
         for key in Self.defaults.keys where input[key] != .null { next[key] = input[key] }
-        guard ["opencode", "codex"].contains(next["agentEngine"]?.text ?? "") else {
+        guard ["opencode", "codex", "claude", "mimocode"].contains(next["agentEngine"]?.text ?? "") else {
             throw ReductionError("子代理执行器无效")
         }
         guard ["deepseek-flash", "deepseek-v4-pro"].contains(next["model"]?.text ?? ""),
