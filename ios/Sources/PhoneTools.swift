@@ -73,7 +73,7 @@ enum PhoneTools {
         }
         if online && (settings["opencodeEnabled"].flag || settings["opencodeWriteEnabled"].flag) {
             tools.append(specification("session_status", "查看自己电脑上的编程会话摘要。", [], required: []))
-            tools.append(specification("run_agent", "在用户自己的电脑上用设置中选定的子代理执行器派发沙箱任务，或查询、结束已有任务。", [
+            tools.append(specification("run_agent", "在用户自己的电脑上用设置中选定的子代理执行器派发任务，或查询、结束已有任务。", [
                 ("action", "string", "start、status 或 stop"), ("task", "string", "任务描述"),
                 ("access", "string", "read 或 write"), ("folder", "string", "project 或实际任务文件夹名"), ("run", "integer", "任务编号")
             ], required: ["action"]))

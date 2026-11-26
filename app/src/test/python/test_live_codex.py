@@ -1,8 +1,9 @@
-"""Opt in with REDUCTION_LIVE_CODEX=1 on a Linux host with bwrap and a logged-in Codex."""
+"""Opt in with REDUCTION_LIVE_CODEX=1 on a Linux host with a logged-in Codex."""
 import base64
 import json
 import os
 from pathlib import Path
+import shlex
 import shutil
 import subprocess
 import sys
@@ -14,7 +15,7 @@ import unittest
 @unittest.skipUnless(os.environ.get("REDUCTION_LIVE_CODEX") == "1", "live Codex is opt-in")
 class LiveCodexTest(unittest.TestCase):
     def test_question_active_steer_resume_and_worker_edit(self):
-        self.assertTrue(sys.platform.startswith("linux") and shutil.which("bwrap") and shutil.which("codex"))
+        self.assertTrue(sys.platform.startswith("linux") and shutil.which("codex"))
         assets = Path(__file__).resolve().parents[2] / "main/assets/harness"
         auth = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")) / "auth.json"
         with tempfile.TemporaryDirectory(prefix="reduction-live-codex-") as tmp:
@@ -71,10 +72,11 @@ class LiveCodexTest(unittest.TestCase):
                 wait(lambda s: s["status"] == "idle")
                 self.assertEqual("current", json.loads((run / "task.json").read_text())["seen"]["steer"])
                 self.assertIn("STEERED BLUE", rpc("read")["text"].upper())
-                rpc("send", id="worker", text="Run python3 ~/.reduction-task/card.py read, then save its full text "
-                                              "plus a new line WORKEREDIT using python3 ~/.reduction-task/card.py "
-                                              "save REV with the new document on stdin. Finally call python3 "
-                                              "~/.reduction-task/card.py done and reply OK. Keep project files read-only.")
+                helper = shlex.quote(str(run / "channel/card.py"))
+                rpc("send", id="worker", text=f"Run python3 {helper} read, then save its full text "
+                                              f"plus a new line WORKEREDIT using python3 {helper} save REV "
+                                              f"with the new document on stdin. Finally call python3 {helper} done "
+                                              "and reply OK. Keep project files read-only.")
                 self.assertEqual(thread, wait(lambda s: s["status"] == "done")["session"])
                 body = rpc("read")
                 self.assertIn("WORKEREDIT", body["text"])

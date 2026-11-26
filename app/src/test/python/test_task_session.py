@@ -4,6 +4,9 @@ import importlib.util
 import io
 import json
 import multiprocessing
+import subprocess
+import sys
+import time
 from pathlib import Path
 import tempfile
 import unittest
@@ -59,6 +62,18 @@ class TaskSessionTest(unittest.TestCase):
             self.assertFalse(bridge.batch(edits)["conflict"])
             self.assertEqual(["edited","edited"], [bridge.operate(root / rid, {"op":"read"})["text"] for rid in ("one","two")])
 
+    def test_codex_keeps_native_permissions_on_linux(self):
+        for host in (True, False):
+            pipe = type("Process", (), {"stdin": io.StringIO()})()
+            turn = bridge.CodexTurn(pipe, self.run_dir, {"cwd": "/project", "hostEnvironment": host}, "", None)
+            turn.event({"id": 1, "result": {}})
+            params = json.loads(pipe.stdin.getvalue().splitlines()[-1])["params"]
+            if host:
+                self.assertEqual({"cwd": "/project"}, params)
+            else:
+                self.assertEqual("danger-full-access", params["sandbox"])
+                self.assertEqual("never", params["approvalPolicy"])
+
     def test_native_questions_and_unrelated_send_keep_separate_routes(self):
         pipe = type("Process", (), {"stdin": io.StringIO()})()
         turn = bridge.CodexTurn(pipe, self.run_dir, {}, "", None)
@@ -80,6 +95,15 @@ class TaskSessionTest(unittest.TestCase):
         self.assertEqual(1, self.rpc("read")["text"].count("尚未确定"))
         with bridge.transaction(self.run_dir) as state:
             self.assertEqual(["instruction"], [m["id"] for m in state["outbox"]])
+
+    def test_mimo_accepts_prefixed_colored_loopback_banner(self):
+        lines = ["MiMoCode server listening on http://192.0.2.1:1000",
+                 "[cli] \033[32mMiMo Code server listening on http://localhost:12345\033[0m"]
+        script = "input()\n" + "\n".join(f"print({line!r}, flush=True)" for line in lines)
+        with subprocess.Popen([sys.executable, "-c", script], text=True, stdin=subprocess.PIPE,
+                              stdout=subprocess.PIPE) as proc:
+            api = bridge.start_mimo_api(proc, "fixture", time.monotonic() + 5)
+            self.assertEqual(12345, api.port)
 
     def test_mimo_questions_are_ordered_scoped_and_distinct_from_permissions(self):
         requests = [

@@ -83,10 +83,10 @@ class AgentHarnessTest {
 
     @Test
     fun aRunThatCannotStartReportsTheLaunchersMessage() {
-        val launcher = "printf '%s\\n' 'harness：电脑上没有 bwrap，无法隔离运行'\n"
+        val launcher = "printf '%s\\n' 'harness：这台电脑上找不到 Codex CLI'\n"
         val said = RunAgentTool(harness(launcher), AgentRuns(), "/home/u/p", "/home/u/a", true, emptyList())
             .execute(args("action" to "start", "task" to "查资料"))
-        assertEquals("派发失败：harness：电脑上没有 bwrap，无法隔离运行", said)
+        assertEquals("派发失败：harness：这台电脑上找不到 Codex CLI", said)
     }
 
     @Test

@@ -23,14 +23,12 @@ class ManagedAgentTest {
     @Test fun workerQuestionWakesOnePrivateTurnAndSendResumesSameSession() {
         assumeTrue(System.getProperty("os.name").orEmpty().lowercase().contains("linux"))
         val home = tmp.newFolder("server")
-        val bin = File(home, "bin").apply { mkdir() }
-        val fake = File(bin, "bwrap")
+        val fake = File(home, ".opencode/bin/opencode").apply { requireNotNull(parentFile).mkdirs() }
         fake.writeText("""#!/usr/bin/env python3
 import json, os, sys, time, uuid
 from pathlib import Path
 args = sys.argv[1:]
-destination = str(Path.home() / ".reduction-result")
-result = Path(args[args.index(destination)-1])
+result = Path(os.environ["REDUCTION_RESULT_DIR"])
 def worker(op, **args):
     rid = uuid.uuid4().hex
     tmp = result / (rid + ".tmp")
@@ -52,11 +50,10 @@ else:
 print(json.dumps({"type":"text", "part":{"text":text}, "sessionID":"ses_original"}), flush=True)
 """)
         assertTrue(fake.setExecutable(true))
-        File(home, ".opencode/bin/opencode").apply { requireNotNull(parentFile).mkdirs(); writeText("#!/bin/sh\nexit 1\n"); setExecutable(true) }
         val assets = File("src/main/assets/harness")
         val harness = AgentHarness(LocalShell(home), PcProfile("test", 22, "u"), "sk-test", "test",
             taskDriverScript = { File(assets, "task-session.py").readText() }) {
-            "export PATH=${AgentHarness.quote(bin.absolutePath)}:\$PATH\n" + File(assets, "run-agent.sh").readText()
+            File(assets, "run-agent.sh").readText()
         }
         val runs = AgentRuns()
         val cards = CardRepository(tmp.newFolder("cards"))

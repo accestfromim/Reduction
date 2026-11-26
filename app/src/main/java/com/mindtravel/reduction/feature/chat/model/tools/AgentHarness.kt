@@ -10,7 +10,7 @@ import java.util.Base64
 
 /**
  * Runs sub agents on the computer, in the background. Every run goes through the
- * launcher script, which mounts the configured directories with their saved permissions.
+ * launcher script, which validates the selected workspace.
  * A run can be asked how far it has got at any time.
  */
 class AgentHarness(
@@ -161,7 +161,7 @@ class AgentHarness(
         const val MAX_IMAGES = 4
 
         /** Where a run leaves its result and its pictures, as the agent sees it. */
-        const val RESULT_FOLDER = "~/.reduction-result"
+        const val RESULT_FOLDER = "\$REDUCTION_RESULT_DIR"
 
         /** A path as the computer's shell should read it: "~/" at its start is the home directory there. */
         fun path(value: String): String = if (value.startsWith("~/")) "\"\$HOME\"/" + quote(value.removePrefix("~/")) else quote(value)

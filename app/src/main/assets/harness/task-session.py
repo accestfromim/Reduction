@@ -1,7 +1,6 @@
 """A managed Reduction session. The SSH client and worker share a versioned Markdown card.
 
-The driver runs outside the existing agent sandbox. The worker sees a read-only copy
-of this script and task.md, and can submit card operations through its result folder.
+Each run has its own card helper, task.md and result mailbox.
 """
 import base64
 import contextlib
@@ -22,6 +21,7 @@ import tempfile
 import threading
 import time
 import uuid
+from collections import deque
 from pathlib import Path
 from urllib.parse import quote
 
@@ -225,7 +225,7 @@ def worker_cli():
         req["text"] = " ".join(sys.argv[2:]).strip() or sys.stdin.read().strip()
     elif op not in ("read", "done"):
         sys.exit("card.py read | save VERSION < file | ask QUESTION | done")
-    folder = Path.home() / ".reduction-result"
+    folder = Path(__file__).resolve().parents[1] / "result"
     atomic(folder / ("req-" + req["id"]), encode(req))
     reply = folder / ("res-" + req["id"])
     for _ in range(300):
@@ -297,7 +297,10 @@ class CodexTurn:
                 self.write({"method": "initialized"})
                 with transaction(self.run) as s:
                     session = s["session"]
-                opts = dict(cwd=self.options["cwd"], approvalPolicy="never", sandbox=self.options["sandbox"])
+                opts = {"cwd": self.options["cwd"]}
+                if not self.options["hostEnvironment"]:
+                    # macOS already runs this process and its children inside Sandbox Runtime.
+                    opts.update(approvalPolicy="never", sandbox="danger-full-access")
                 if session:
                     opts["threadId"] = session
                 self.rpc("thread/resume" if session else "thread/start", opts)
@@ -454,19 +457,80 @@ def poll_mimo_questions(api, run, session, known):
             api.request("/permission/" + quote(perm["id"], safe="") + "/reply", {"reply": "reject"}, missing_ok=True)
 
 
-def mimo_turn(run, opts, prompt, mid):
-    password = secrets.token_urlsafe(32)
-    proc = subprocess.Popen(opts["command"], cwd=opts["cwd"], env=opts["env"], stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
-    ready, result = queue.Queue(), queue.Queue()
-    known = {}
+class MiMoStartupError(ValueError):
+    pass
+
+
+def start_mimo_api(proc, password, deadline):
+    ready = queue.Queue()
+    diagnostics = deque(maxlen=3)
 
     def listen():
+        announced = False
         for line in proc.stdout:
-            match = re.fullmatch(r"mimocode server listening on http://127\.0\.0\.1:(\d+)", line.strip())
-            if match:
+            if announced:
+                continue
+            line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", line).strip()
+            match = re.search(r"\bmimo\s?code server listening on http://(?:127\.0\.0\.1|localhost):(\d{1,5})\b", line, re.I)
+            if match and 0 < int(match[1]) <= 65535:
+                announced = True
                 ready.put(int(match[1]))
-        ready.put(None)
+            elif re.search(r"error|fail|fatal|invalid|denied|not (?:found|permitted)|^srt:|^↳", line, re.I):
+                # Config parsers sometimes echo credentials or an entire config line with the error.
+                if password not in line and not re.search(
+                    r"api[\s_-]?key|authorization|bearer\s|token|password|secret|credential|cookie|\bkey\s*[:=]|\bsk-|://[^/\s]*@|[{}]", line, re.I
+                ):
+                    diagnostics.append(" ".join(line.split())[:240])
+        if not announced:
+            ready.put(None)
+
+    threading.Thread(target=listen, daemon=True).start()
+    try:
+        # A failed launcher can exit before reading its one-time password.
+        with proc.stdin:
+            proc.stdin.write(password + "\n")
+    except BrokenPipeError:
+        pass
+    try:
+        port = ready.get(timeout=max(0, deadline - time.monotonic()))
+    except queue.Empty:
+        reason = "在本轮时限内没有报告监听端口"
+    else:
+        if port is not None:
+            return MiMoAPI(port, password)
+        try:
+            code = proc.wait(timeout=.25)
+            reason = f"在报告监听端口前退出（退出码 {code}）"
+        except subprocess.TimeoutExpired:
+            reason = "在报告监听端口前关闭了输出"
+    detail = "\n".join(tuple(diagnostics))[-300:]
+    raise MiMoStartupError("Reduction 启动本轮的 mimo serve 时，子进程" + reason + ("。\n" + detail if detail else "。"))
+
+
+def terminate_turn(process):
+    # The CLI may leave a shell tool running after its own exit or a timeout.
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGTERM)
+    try:
+        process.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        pass
+    with contextlib.suppress(ProcessLookupError):
+        os.killpg(process.pid, signal.SIGKILL)
+    process.wait()
+
+
+def mimo_turn(run, opts, prompt, mid):
+    deadline = time.monotonic() + opts["timeout"]
+    password = secrets.token_urlsafe(32)
+    try:
+        proc = subprocess.Popen(opts["command"], cwd=opts["cwd"], env=opts["env"], stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace",
+                                start_new_session=True)
+    except OSError as exc:
+        raise MiMoStartupError(f"无法运行 MiMo Code 的启动命令 {Path(opts['command'][0]).name}：{exc.strerror}") from exc
+    result = queue.Queue()
+    known = {}
 
     def run_prompt():
         try:
@@ -476,18 +540,8 @@ def mimo_turn(run, opts, prompt, mid):
         except Exception as exc:
             result.put(exc)
 
-    threading.Thread(target=listen, daemon=True).start()
     try:
-        # The password travels on stdin. It never enters the SSH command line or driver.json.
-        proc.stdin.write(password + "\n")
-        proc.stdin.close()
-        try:
-            port = ready.get(timeout=min(30, opts["timeout"]))
-        except queue.Empty:
-            raise ValueError("MiMo Code 服务启动超时") from None
-        if not port:
-            raise ValueError("MiMo Code 服务未启动，请检查服务器上的 mimo 安装")
-        api = MiMoAPI(port, password)
+        api = start_mimo_api(proc, password, deadline)
         with transaction(run) as s:
             session = s["session"]
         if not session:
@@ -495,7 +549,6 @@ def mimo_turn(run, opts, prompt, mid):
             with transaction(run) as s:
                 s["session"] = session
         threading.Thread(target=run_prompt, daemon=True).start()
-        deadline = time.monotonic() + opts["timeout"]
         poll_at = 0
         while time.monotonic() < deadline:
             mailbox(run)
@@ -520,13 +573,7 @@ def mimo_turn(run, opts, prompt, mid):
         raise ValueError("MiMo Code 执行超时")
     finally:
         try:
-            if proc.poll() is None:
-                proc.terminate()
-                try:
-                    proc.wait(timeout=3)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait()
+            terminate_turn(proc)
         finally:
             proc.stdin.close()
             proc.stdout.close()
@@ -552,7 +599,8 @@ def stream_turn(run, opts, prompt, mid):
             cmd += ["--session" if engine == "opencode" else "--resume", session]
         cmd += ["--", prompt]
     proc = subprocess.Popen(cmd, cwd=opts["cwd"], env=opts.get("env"), stdin=subprocess.PIPE,
-                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, errors="replace")
+                            stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, errors="replace",
+                            start_new_session=True)
     events = queue.Queue()
     threading.Thread(target=read_events, args=(proc.stdout, events), daemon=True).start()
     codex = None
@@ -602,13 +650,7 @@ def stream_turn(run, opts, prompt, mid):
         if codex:
             for rpc_id in list(codex.questions):
                 codex.close_question(rpc_id)
-        if proc.poll() is None:
-            proc.terminate()
-            try:
-                proc.wait(timeout=3)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-                proc.wait()
+        terminate_turn(proc)
         proc.stdout.close()
         if not proc.stdin.closed:
             proc.stdin.close()
@@ -630,10 +672,18 @@ def spawn(run):
 
 
 def serve(run):
+    # Unwind the active turn on stop so its entire child process group is reaped.
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(143))
     # A send racing a turn's exit launches another waiter. The lock serializes native sessions.
     with (run / "driver.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         opts = json.loads((run / "driver.json").read_text())
+        if opts.get("hostEnvironment"):
+            # Read the SSH environment for this turn. Persist only the task's overrides.
+            env = os.environ.copy()
+            for key in ("AGENT_KEY", "REDUCTION_TASK_DRIVER", "REDUCTION_MAC_AGENT_SCRIPT"):
+                env.pop(key, None)
+            opts["env"] = {**env, **opts["env"]}
         while True:
             with transaction(run) as s:
                 if s["detached"] or s["status"] == "stopped":
@@ -646,6 +696,7 @@ def serve(run):
                     return
                 prompt = initial if initial is not None else message["text"]
                 s["status"] = "running"
+                s.pop("error", None)
                 s["pid"] = os.getpid()
             try:
                 one_turn(run, opts, prompt, None if initial is not None else message["id"])
@@ -654,6 +705,10 @@ def serve(run):
                     s.pop("pid", None)
                     s["status"] = "failed"
                     s["error"] = str(exc)[:400]
+                    if isinstance(exc, MiMoStartupError):
+                        # A full, locked or deleted card still leaves the diagnostic in task status.
+                        with contextlib.suppress(ValueError):
+                            note(s, "执行器启动失败", s["error"])
                     if message:
                         s["outbox"] = [m for m in s["outbox"] if m["id"] != message["id"]]
                 return
@@ -674,17 +729,19 @@ def main():
         init(run, sys.stdin.read())
     elif mode == "launch":
         engine, cwd, seconds = sys.argv[3:6]
-        outer = Path(sys.argv[6]).name
-        keys = {"PATH", "HOME", "TERM", "LANG", "TMPDIR"}
-        if outer != "bwrap":
-            keys.update({"HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"})
+        host = sys.platform != "darwin"
+        keys = {"PATH", "HOME", "REDUCTION_TASK_DIR", "REDUCTION_RESULT_DIR"}
+        if host:
+            keys.update({"codex": {"CODEX_HOME"}, "opencode": {"XDG_DATA_HOME"},
+                         "mimocode": {"MIMOCODE_HOME", "MIMOCODE_DISABLE_AUTOUPDATE"}, "claude": set()}[engine])
+        else:
+            keys.update({"TERM", "LANG", "TMPDIR", "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY"})
             keys.update({"codex": {"CODEX_HOME", "CODEX_CA_CERTIFICATE"},
                          "mimocode": {"MIMOCODE_HOME", "MIMOCODE_DISABLE_AUTOUPDATE"},
                          "claude": {"ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"},
                          "opencode": {"DEEPSEEK_API_KEY", "OPENCODE_DISABLE_AUTOUPDATE"}}[engine])
         opts = dict(engine=engine, cwd=cwd, timeout=int(seconds), command=sys.argv[6:],
-                    agent=os.environ.get("REDUCTION_TASK_AGENT", "plan"),
-                    sandbox="danger-full-access" if outer in ("bwrap", "srt") else "read-only",
+                    agent=os.environ.get("REDUCTION_TASK_AGENT", "plan"), hostEnvironment=host,
                     env={k: os.environ[k] for k in keys if k in os.environ})
         atomic(run / "driver.json", encode(opts))
         with transaction(run) as s:

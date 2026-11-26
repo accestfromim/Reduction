@@ -197,7 +197,9 @@ class RunAgentTool(
                 val snapshot = harness.task(run, JSONObject().put("op", "status"))
                 if (snapshot.optBoolean("detached")) "任务已移除" else {
                     runs.phase(run, if (snapshot.optJSONObject("question") != null) "waiting" else snapshot.getString("status"))
-                    AgentLedger.render(listOf(run)).trim()
+                    val entry = AgentLedger.render(listOf(run)).trim()
+                    val detail = snapshot.optString("detail")
+                    if (run.phase == "failed" && detail.isNotBlank()) "$entry\n$detail" else entry
                 }
             }
         }
@@ -225,7 +227,7 @@ class RunAgentTool(
             "- ${it.path}：${if (write && it.writable) "读写" else "只读"}"
         }.ifBlank { "没有授权的外部目录。" }
         val brief = if (write) {
-            "你是执行任务的 sub agent。只在系统允许写入的路径工作。" +
+            "你是执行任务的 sub agent。只在任务授权的可写目录修改文件。" +
                 "交回结果时分两块：依据（只放原文、出处、链接、文件路径、实际 diff、命令输出）和分析（只放推断和判断）。" +
                 "你只做执行、预筛和整理，不替人下结论。$PICTURES\n\n授权目录，子路径的规则优先：\n$access\n\n$task"
         } else {
@@ -238,12 +240,12 @@ class RunAgentTool(
             require(task.length <= CardRepository.MAX_CHARS - 100) { "初始任务卡过长" }
             val body = "## 目标与约束\n\n$task\n\n## 当前进展\n\n## 双方往来\n"
             val instructions = """
-                共享任务卡全文位于 ~/.reduction-task/task.md。阶段进展、证据和阻塞点直接更新这张卡。
-                python3 ~/.reduction-task/card.py read 返回全文与 rev。把完整新正文通过标准输入交给
-                python3 ~/.reduction-task/card.py save REV。版本冲突时重新读取，再应用你的修改。
-                需要手机助手决策时用 MiMo Code 的 question、Codex 的 request_user_input 或 python3 ~/.reduction-task/card.py ask '问题'。
+                共享任务卡全文位于 "${'$'}REDUCTION_TASK_DIR/task.md"。阶段进展、证据和阻塞点直接更新这张卡。
+                python3 "${'$'}REDUCTION_TASK_DIR/card.py" read 返回全文与 rev。把完整新正文通过标准输入交给
+                python3 "${'$'}REDUCTION_TASK_DIR/card.py" save REV。版本冲突时重新读取，再应用你的修改。
+                需要手机助手决策时用 MiMo Code 的 question、Codex 的 request_user_input 或 python3 "${'$'}REDUCTION_TASK_DIR/card.py" ask '问题'。
                 文件式提问后可结束这一轮等原会话续聊。答复尚未确定时，继续能独立做的部分。
-                确认完成整个任务时调用 python3 ~/.reduction-task/card.py done。普通一轮结束表示可续聊。
+                确认完成整个任务时调用 python3 "${'$'}REDUCTION_TASK_DIR/card.py" done。普通一轮结束表示可续聊。
             """.trimIndent()
             val started = harness.startTask(if (write) AgentHarness.Agent.BUILD else AgentHarness.Agent.PLAN,
                 folder, "$brief\n\n$instructions", body)

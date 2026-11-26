@@ -9,7 +9,7 @@
 # AGENT_ENGINE 选择执行器，可用 opencode（默认）、codex、claude 或 mimocode。
 # A run is ended after AGENT_TIMEOUT seconds; its exit code is then 124.
 #
-# Every run is given a folder of its own, ~/.reduction-result, to leave its final result in:
+# Every run is given its own REDUCTION_RESULT_DIR to leave its final result in:
 # result.md there is the second way a result comes back, beside what the agent prints.
 # Pictures left in that folder (png, jpg, jpeg, webp, gif) come back with the result, to be
 # looked at by whoever receives it: after the result file, for each picture, a line
@@ -19,21 +19,14 @@
 #   run-agent.sh stop   <folder> <id>                    prints: STOPPED
 #
 # AGENT_DIRECTORIES is the saved list of absolute or ~/ paths with read/write permissions.
-# Only configured user directories and the selected private workspace are mounted.
-# A plan run mounts all work directories read-only. The result directory stays writable.
-#
-# The one credential an agent can read is the one it runs on. For opencode that is the
-# model key the phone sends with each start (AGENT_KEY), the phone's own DeepSeek key.
-# Claude Code runs on this computer's own login: it is given its settings folder, with
-# the records of other sessions in it hidden, and nothing else of the home directory.
-# Codex 使用执行电脑上专供 Reduction 的登录目录。
+# Linux and WSL launch the CLI as the current user in the selected workspace.
+# macOS applies the configured directory permissions with Sandbox Runtime.
 set -eu
 
 home=$HOME
 model=${AGENT_MODEL:-deepseek/deepseek-flash}
 limit=${AGENT_TIMEOUT:-900}
 engine=${AGENT_ENGINE:-opencode}
-opencode=$home/.opencode/bin/opencode
 
 # Older single-shot clients also receive the native final answer. Consume stdout once
 # at execution time so status never fetches or parses a transcript.
@@ -97,14 +90,14 @@ locate() {
   fi
 }
 
-mount_plan() {
-  python3 - "$home" "$dir" "$workspace" "$agent" <<'PYMOUNT'
+directory_rules() {
+  python3 - "$home" "$dir" "$workspace" "$agent" "$1" <<'PYMOUNT'
 import json
 import os
 import sys
 from pathlib import Path
 
-home, workdir, workspace, agent = sys.argv[1:]
+home, workdir, workspace, agent, platform = sys.argv[1:]
 system = {"/usr", "/bin", "/sbin", "/lib", "/lib64", "/proc", "/dev", "/tmp", "/etc",
           "/sys", "/run", "/boot"}
 private = {home + "/" + part for part in (
@@ -117,8 +110,6 @@ for name in ("MIMOCODE_HOME", "XDG_DATA_HOME", "XDG_CONFIG_HOME"):
     if os.environ.get(name):
         path = os.path.realpath(os.environ[name])
         private.add(path if name == "MIMOCODE_HOME" else os.path.join(path, "mimocode"))
-if os.environ.get("REDUCTION_CLAUDE_ROOT"):
-    private.add(os.environ["REDUCTION_CLAUDE_ROOT"])
 
 def within(path, parent):
     return path == parent or path.startswith(parent.rstrip("/") + "/")
@@ -145,6 +136,9 @@ try:
         rules[workspace] = agent == "build"
     if workdir not in rules:
         raise ValueError(f"工作目录未获授权：{workdir}")
+
+    if platform != "Darwin":
+        sys.exit(0)
 
     mounts = dict(rules)
     for path in rules:
@@ -195,6 +189,8 @@ for key in ("prompt", "body"):
   case "$engine" in opencode|codex|claude|mimocode) ;; *) say "harness：未知的执行者 $engine" ;; esac
   id=$(date +%Y%m%d-%H%M%S)-$$
   run=$state/runs/$id
+  platform=$(uname -s)
+  mounts=$(directory_rules "$platform" 2>&1) || say "harness：$mounts"
   if [ "$engine" = mimocode ]; then
     mimo=${MIMOCODE_BIN_PATH:-$(PATH="$home/.mimocode/bin:$home/.local/bin:/opt/homebrew/bin:/usr/local/bin:$PATH" command -v mimo)} || say "harness：这台电脑上找不到 MiMo Code（mimo）"
     mimo=$(python3 -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$mimo")
@@ -214,40 +210,42 @@ for key in ("prompt", "body"):
     done
     export REDUCTION_MIMO_BIN="$mimo"
   fi
-  if [ "$(uname -s)" = Darwin ]; then
+  if [ "$platform" = Darwin ]; then
     export PATH="$home/.local/bin:$home/.opencode/bin:/opt/homebrew/bin:/usr/local/bin:$PATH:/Applications/ChatGPT.app/Contents/Resources/codex-cli/CodexCLI.app/Contents/MacOS"
     command -v python3 >/dev/null 2>&1 || say "harness：macOS 需要 Python 3"
     [ -n "${REDUCTION_MAC_AGENT_SCRIPT:-}" ] || say "harness：没有收到 macOS 沙箱启动程序，请更新发出任务的 Reduction"
-    mounts=$(mount_plan 2>&1) || say "harness：$mounts"
     printf '%s' "$REDUCTION_MAC_AGENT_SCRIPT" | base64 -d | REDUCTION_TASK_INPUT="$payload_dir" REDUCTION_LEGACY_CAPTURE="$legacy_capture" REDUCTION_AGENT_MOUNTS="$mounts" python3 - "$state" "$dir" "$agent" "$prompt" "$engine" "$limit" "$model" "$body" "$run"
     exit
   fi
-  command -v bwrap >/dev/null 2>&1 || say "harness：电脑上没有 bwrap，无法隔离运行"
+  export PATH="$home/.local/bin:$PATH"
+  export REDUCTION_RESULT_DIR="$run/result"
   case "$engine" in
   codex)
-    codex=$(PATH="$home/.local/bin:$PATH" command -v codex) || say "harness：这台电脑上找不到 Codex CLI"
-    codex=$(readlink -f "$codex")
-    codex_home=$home/.local/share/reduction-codex
-    [ -s "$codex_home/auth.json" ] || say "harness：请在执行电脑上登录 Reduction 的 Codex，见 iOS 或桌面使用说明"
-    umask 077
+    codex=$(command -v codex) || say "harness：这台电脑上找不到 Codex CLI"
+    export CODEX_HOME="$home/.local/share/reduction-codex"
+    [ -s "$CODEX_HOME/auth.json" ] || say "harness：请在执行电脑上登录 Reduction 的 Codex，见 iOS 或桌面使用说明"
     ;;
   claude)
-    claude=$(readlink -f "$(PATH="$home/.local/bin:$PATH" command -v claude 2>/dev/null || echo /nonexistent)")
-    [ -x "$claude" ] || say "harness：这台电脑上找不到 Claude Code"
-    [ -d "$home/.claude" ] || say "harness：这台电脑上的 Claude Code 还没有登录"
+    claude=$(command -v claude) || say "harness：这台电脑上找不到 Claude Code"
     ;;
   opencode)
-    [ -x "$opencode" ] || say "harness：找不到 opencode"
-    mkdir -p "$state/opencode"
-    # The agent runs on the key the phone sent. Without one it falls back to this computer's.
+    opencode=$home/.opencode/bin/opencode
+    if [ ! -x "$opencode" ]; then
+      opencode=$(command -v opencode) || say "harness：找不到 opencode"
+    fi
+    account=${XDG_DATA_HOME:-$home/.local/share}/opencode/auth.json
+    export XDG_DATA_HOME="$run/data"
+    mkdir -p "$XDG_DATA_HOME/opencode"
     key=${AGENT_KEY:-}
     if [ -n "$key" ]; then
       case "$key" in *[!A-Za-z0-9_-]*) say "harness：模型密钥格式无效" ;; esac
-      ( umask 077; printf '{"deepseek":{"type":"api","key":"%s"}}\n' "$key" > "$state/opencode/auth.json" )
+      printf '{"deepseek":{"type":"api","key":"%s"}}\n' "$key" > "$XDG_DATA_HOME/opencode/auth.json"
     else
-      cp -p "$home/.local/share/opencode/auth.json" "$state/opencode/auth.json" 2>/dev/null \
-        || say "harness：没有收到模型密钥，这台电脑的 opencode 也没有登录"
+      cp "$account" "$XDG_DATA_HOME/opencode/auth.json" 2>/dev/null || say "harness：没有收到模型密钥，这台电脑的 opencode 也没有登录"
     fi
+    ;;
+  mimocode)
+    export MIMOCODE_HOME="$run/mimocode" MIMOCODE_DISABLE_AUTOUPDATE=true
     ;;
   esac
 
@@ -259,6 +257,7 @@ for key in ("prompt", "body"):
   fi
 
   if [ -n "${REDUCTION_TASK_DRIVER:-}" ]; then
+    export REDUCTION_TASK_DIR="$run/channel"
     printf '%s' "$REDUCTION_TASK_DRIVER" | base64 -d > "$run/bridge.py"
     if [ -n "$payload_dir" ]; then
       python3 "$run/bridge.py" init "$run" < "$payload_dir/body"
@@ -267,123 +266,57 @@ for key in ("prompt", "body"):
     fi
   fi
 
-  if [ "$engine" = claude ]; then
-    REDUCTION_CLAUDE_ROOT=$(dirname "$(dirname "$claude")")
-    export REDUCTION_CLAUDE_ROOT
-  fi
-  mounts=$(mount_plan 2>&1) || say "harness：$mounts"
-  set -- \
-    --clearenv --setenv HOME "$home" --setenv PATH /usr/local/bin:/usr/bin:/bin \
-    --setenv LANG C.UTF-8 --setenv TERM dumb \
-    --ro-bind /usr /usr --dev /dev --proc /proc --tmpfs /tmp \
-    --ro-bind-try /etc/ssl/certs /etc/ssl/certs \
-    --ro-bind-try /etc/resolv.conf /etc/resolv.conf --ro-bind-try /etc/hosts /etc/hosts \
-    --ro-bind-try /etc/nsswitch.conf /etc/nsswitch.conf --ro-bind-try /etc/ld.so.cache /etc/ld.so.cache \
-    --ro-bind-try /etc/passwd /etc/passwd --ro-bind-try /etc/group /etc/group \
-    --bind "$run/result" "$home/.reduction-result" \
-    --unshare-user --disable-userns --unshare-pid --unshare-ipc --die-with-parent --new-session
-  # Carry the host's network route into the otherwise empty sandbox environment.
-  for proxy in HTTPS_PROXY HTTP_PROXY NO_PROXY https_proxy http_proxy no_proxy; do
-    value=$(printenv "$proxy") || continue
-    case "$value" in *@*) continue ;; esac
-    set -- "$@" --setenv "$proxy" "$value"
-  done
+  unset AGENT_KEY REDUCTION_TASK_DRIVER REDUCTION_MAC_AGENT_SCRIPT
+  # Some CLIs filter the environment of their own shell tools.
+  printf '\n本任务的交付目录：%s\n' "$REDUCTION_RESULT_DIR" >> "$run/prompt.txt"
   if [ -f "$run/bridge.py" ]; then
-    set -- "$@" --ro-bind "$run/channel" "$home/.reduction-task"
+    printf '本任务的任务卡目录：%s\n' "$REDUCTION_TASK_DIR" >> "$run/prompt.txt"
   fi
-  for system_dir in /bin /sbin /lib /lib64; do
-    if [ -L "$system_dir" ]; then
-      set -- "$@" --symlink "$(readlink "$system_dir")" "$system_dir"
-    elif [ -d "$system_dir" ]; then
-      set -- "$@" --ro-bind "$system_dir" "$system_dir"
-    fi
-  done
-  tab=$(printf '\t')
-  while IFS="$tab" read -r binding path; do
-    set -- "$@" "$binding" "$path" "$path"
-  done <<MOUNTS
-$mounts
-MOUNTS
-  set -- "$@" --chdir "$dir"
-
+  input=/dev/null
   case "$engine" in
   mimocode)
-    profile="$home/.reduction-mimo"
-    set -- "$@" --ro-bind "$mimo" "$mimo" --bind "$run/mimocode" "$profile" \
-      --setenv MIMOCODE_HOME "$profile" --setenv MIMOCODE_DISABLE_AUTOUPDATE true
     if [ -f "$run/bridge.py" ]; then
-      set -- "$@" python3 "$home/.reduction-task/card.py" mimo-serve "$mimo"
+      set -- python3 "$REDUCTION_TASK_DIR/card.py" mimo-serve "$mimo"
     else
-      set -- "$@" timeout "$limit" "$mimo" run --format json --agent "$agent" --dir "$dir" -- "$prompt"
+      set -- "$mimo" run --format json --agent "$agent" --dir "$dir" -- "$(cat "$run/prompt.txt")"
     fi
-    input=/dev/null
     ;;
   codex)
-    set -- "$@" --setenv CODEX_HOME "$codex_home" --bind "$codex_home" "$codex_home"
-    case "$codex" in
-      */node_modules/@openai/codex/bin/codex.js)
-        packages=${codex%/codex/bin/codex.js}
-        node=$(command -v node) || say "harness：npm 安装的 Codex 需要 Node.js"
-        node=$(readlink -f "$node")
-        set -- "$@" --ro-bind "$packages" "$packages" --ro-bind "$(dirname "$node")" "$(dirname "$node")" \
-          --setenv PATH "$(dirname "$node"):/usr/local/bin:/usr/bin:/bin"
-        ;;
-      "$home"/*)
-        set -- "$@" --ro-bind "$codex" "$codex"
-        ;;
-    esac
-    # bwrap 负责隔离工作目录。Codex 在这个已隔离的进程里执行。
     if [ -f "$run/bridge.py" ]; then
-      set -- "$@" "$codex" app-server --enable default_mode_request_user_input -c 'cli_auth_credentials_store="file"'
+      set -- "$codex" app-server --enable default_mode_request_user_input -c 'cli_auth_credentials_store="file"'
     else
-      set -- "$@" timeout "$limit" "$codex" exec --json --ephemeral --ignore-user-config --ignore-rules \
-      --skip-git-repo-check --dangerously-bypass-approvals-and-sandbox -c 'cli_auth_credentials_store="file"' \
-      --output-last-message "$home/.reduction-result/result.md" -
+      set -- "$codex" exec --json --ephemeral --skip-git-repo-check \
+        -c 'cli_auth_credentials_store="file"' --output-last-message "$REDUCTION_RESULT_DIR/result.md" -
+      input=$run/prompt.txt
     fi
-    input=$run/prompt.txt
     ;;
   claude)
-    # Claude Code itself, its settings and login, and nothing of what other sessions said.
-    set -- "$@" --ro-bind "$(dirname "$(dirname "$claude")")" "$(dirname "$(dirname "$claude")")" --bind "$home/.claude" "$home/.claude"
-    if [ -f "$run/bridge.py" ]; then
-      mkdir -p "$run/claude-projects"
-      set -- "$@" --bind "$run/claude-projects" "$home/.claude/projects"
-    else
-      set -- "$@" --tmpfs "$home/.claude/projects"
-    fi
-    [ -f "$home/.claude.json" ] && set -- "$@" --bind "$home/.claude.json" "$home/.claude.json"
-    # Whatever this computer tells Claude Code through its environment goes with it; nothing else does.
-    for name in $(env | sed -n 's/^\(ANTHROPIC_[A-Z0-9_]*\|CLAUDE_CODE_[A-Z0-9_]*\)=.*/\1/p'); do
-      eval "value=\${$name}"
-      set -- "$@" --setenv "$name" "$value"
-    done
-    # Auto mode: nobody is there to answer a prompt, so Claude Code's own safety check decides each
-    # step, allowing ordinary work and refusing what looks dangerous. The walls around it hold either way.
-    set -- "$@" timeout "$limit" "$claude" -p --output-format stream-json --verbose --permission-mode auto
+    set -- "$claude" -p --output-format stream-json --verbose
     input=$run/prompt.txt
     ;;
   opencode)
-    set -- "$@" --ro-bind "$home/.opencode" "$home/.opencode" --bind "$state/opencode" "$home/.local/share/opencode"
-    [ -d "$home/.config/opencode" ] && set -- "$@" --ro-bind "$home/.config/opencode" "$home/.config/opencode"
-    [ -d "$home/.cache/opencode" ] && set -- "$@" --bind "$home/.cache/opencode" "$home/.cache/opencode"
-    set -- "$@" timeout "$limit" "$opencode" run --format json --model "$model" --agent "$agent" --auto --dir "$dir"
-    [ -f "$run/bridge.py" ] || set -- "$@" -- "$prompt"
-    input=/dev/null
+    set -- "$opencode" run --format json --model "$model" --agent "$agent" --dir "$dir"
+    [ -f "$run/bridge.py" ] || set -- "$@" -- "$(cat "$run/prompt.txt")"
     ;;
   esac
 
+  cd -- "$dir"
   if [ -f "$run/bridge.py" ]; then
-    REDUCTION_TASK_AGENT="$agent" python3 "$run/bridge.py" launch "$run" "$engine" "$dir" "$limit" bwrap "$@"
+    REDUCTION_TASK_AGENT="$agent" python3 "$run/bridge.py" launch "$run" "$engine" "$dir" "$limit" "$@"
     printf 'RUN %s\nTASK_PATH %s\n' "$id" "$run"
     exit
   fi
 
-  set -- python3 -c "$legacy_capture" "$run/result/result.md" "$engine" bwrap "$@"
+  set -- timeout --foreground -k 3 "$limit" python3 -c "$legacy_capture" "$REDUCTION_RESULT_DIR/result.md" "$engine" "$@"
   # Detached from this shell, so the run outlives the SSH command that started it.
   nohup setsid sh -c '
     out=$1; input=$2; shift 2
+    [ ! -e "$out/exit" ] || exit 0
     "$@" > "$out/events.jsonl" 2>&1 < "$input"
-    echo $? > "$out/exit"
+    code=$?
+    (set -C; echo "$code" > "$out/exit") 2>/dev/null || true
+    # All processes in this session belong to this single-shot task.
+    kill -KILL 0
   ' sh "$run" "$input" "$@" > /dev/null 2>&1 < /dev/null &
   echo $! > "$run/pid"
   printf 'RUN %s\n' "$id"
@@ -446,7 +379,7 @@ stop)
   fi
   if [ ! -f "$run/exit" ]; then
     pid=$(cat "$run/pid" 2>/dev/null || echo 0)
-    [ "$pid" -gt 1 ] 2>/dev/null && kill -TERM -- "-$pid" 2>/dev/null || true
+    [ "$pid" -gt 1 ] 2>/dev/null && kill -KILL "-$pid" 2>/dev/null || true
     (set -C; echo 143 > "$run/exit") 2>/dev/null || true
   fi
   printf 'STOPPED\n'

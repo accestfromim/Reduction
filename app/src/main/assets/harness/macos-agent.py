@@ -164,6 +164,9 @@ def main():
 
     project = Path(folder).resolve(strict=True)
     run = Path(sys.argv[9]) if engine == "mimocode" and len(sys.argv) > 9 else Path(state).resolve() / "runs" / uuid.uuid4().hex
+    prompt += f"\n本任务的交付目录：{run / 'result'}\n"
+    if os.environ.get("REDUCTION_TASK_DRIVER"):
+        prompt += f"本任务的任务卡目录：{run / 'channel'}\n"
     program, args, auth, domains = backend(engine, model, agent, project, prompt, run / "result" / "result.md")
     domains += os.environ.get("REDUCTION_AGENT_ALLOWED_DOMAINS", "").split()
     os.umask(0o077)
@@ -193,10 +196,11 @@ def main():
     env = {
         "HOME": str(home), "LANG": "en_US.UTF-8", "TERM": "dumb",
         "PATH": os.pathsep.join(item for item in os.environ.get("PATH", "").split(os.pathsep) if os.path.isabs(item)),
-        "OPENCODE_DISABLE_AUTOUPDATE": "true", **auth,
+        "REDUCTION_RESULT_DIR": str(run / "result"), "OPENCODE_DISABLE_AUTOUPDATE": "true", **auth,
     }
     command = [srt, "--settings", str(settings), "--", "/usr/bin/env", f"TMPDIR={temp}", str(executable), *args]
     if driver.exists():
+        env["REDUCTION_TASK_DIR"] = str(run / "channel")
         env["REDUCTION_TASK_AGENT"] = agent
         env["TMPDIR"] = tempfile.mkdtemp(prefix="r", dir=socket_root)
         subprocess.run([sys.executable, str(driver), "launch", str(run), engine, str(project),

@@ -1,4 +1,4 @@
-"""Opt in with REDUCTION_TEST_MIMO=1 on Linux with mimo and bwrap. The model runs on loopback."""
+"""Opt in with REDUCTION_TEST_MIMO=1 on Linux with mimo. The model runs on loopback."""
 import base64
 import json
 import os
@@ -28,8 +28,8 @@ class Model(BaseHTTPRequestHandler):
                               for msg in messages for call in (msg.get("tool_calls") or []))
         if has_question and last["role"] == "tool" and "采用稳定版" in conversation and not has_worker_save:
             command = ("python3 - <<'PY'\n"
-                       "import json, pathlib, subprocess\n"
-                       "card = str(pathlib.Path.home() / '.reduction-task/card.py')\n"
+                       "import json, os, pathlib, subprocess\n"
+                       "card = str(pathlib.Path(os.environ['REDUCTION_TASK_DIR']) / 'card.py')\n"
                        "doc = json.loads(subprocess.check_output(['python3', card, 'read']))\n"
                        "subprocess.run(['python3', card, 'save', str(doc['rev'])], check=True, "
                        "input=doc['text'] + '\\n执行器写入的进展', text=True)\nPY")

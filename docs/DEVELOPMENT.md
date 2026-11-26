@@ -31,7 +31,7 @@
 - 资源热更新：JS/CSS/HTML 可下载小资源包更新，不重装 APK
 - 更新推送依赖 App 与电脑 SSH 连接存活；App 被杀或断线时，下次连接补查
 - 播放中打断只认唤醒词“Hi Reduction”；需要耳机输出
-- sub agent：super agent 只做对话、任务卡、派发、验收。子代理经 `run_agent` 派发，在电脑沙箱里后台运行，可随时查询进度。OpenCode 读取 Reduction 的 DeepSeek 设置，Codex 使用执行电脑上专供 Reduction 的登录。
+- sub agent：super agent 只做对话、任务卡、派发、验收。子代理经 `run_agent` 派发，在执行电脑上后台运行，可随时查询进度。OpenCode 读取 Reduction 的 DeepSeek 设置，Codex 使用执行电脑上专供 Reduction 的登录。
 - 诊断日志：连接电脑期间，手机每 3 秒把运行日志追加到电脑的 `~/reduction-agents/logs/phone.log`
 - 录音留存：每轮说的话、每次按住说话、每次唤醒词触发前 5 秒的音频（听到名字但没有唤醒的那几秒也留）各存成一个 WAV，识别出的文字放在同名的文本文件里；连接电脑期间送到电脑的 `~/reduction-agents/recordings/`，电脑上的文件大小核对无误后从手机删除；没连上时留在手机上，最多 300 MB，满了先丢最早的
 - Android 和桌面的「sub agent 任务」总目录列出登记的会话、状态与任务卡名称。打开任务卡会先核对执行服务器的时间戳，保存会立即推送全文。普通删卡保留会话，`remove_sub_agent` 同时移除目录条目、两端任务卡和唤醒绑定。
@@ -41,7 +41,7 @@
 - 唤醒词“Hi Reduction”：一口气说完，或者“Hi”之后停顿再说“Reduction”（停顿最长 3 秒），都能唤醒。单独的“Reduction”、句子里出现的“reduction”不唤醒
 - 界面两页：「朗读」是流动的对话，回复全部念出来；「卡片」是固定下来的内容，列表只显示名称，点开后正文铺满整页，顶栏“复制全文”一点即复制，另可编辑、删除
 - 耳机开麦：在耳机上单击（播放/暂停键）和唤醒词一样开始一轮录音，手机可以留在口袋里；录音中再单击是说完了，回答播放中单击是打断并开始新的一轮。安卓把这个键交给最近出声的应用，所以刚在别的应用里听过歌时，单击仍是那个应用的播放/暂停。耳机的“语音助手”手势同样有效。这样开始的录音走耳机麦克风
-- 执行器在 `~/.reduction-task/task.md` 查看任务，使用同目录的 `card.py read / save REV / ask / done` 更新和提问。显式提问唤醒手机助手，答复回到原会话。手机也可以用 `run_agent(action=send)` 主动补充指令。任务明确完成后，助手会向用户汇报。
+- 执行器在 `$REDUCTION_TASK_DIR/task.md` 查看任务，使用同目录的 `card.py read / save REV / ask / done` 更新和提问。显式提问唤醒手机助手，答复回到原会话。手机也可以用 `run_agent(action=send)` 主动补充指令。任务明确完成后，助手会向用户汇报。
 - 输入框收图片：文字输入栏左边的图片按钮在手机上给出“拍照”和“相册”，在电脑上打开文件选择；也可以把剪贴板里的图片直接粘贴进输入框。图片先排在输入框上方（最多 4 张，可逐张去掉），长边缩到 1600 像素，随下一条消息发出，没有文字也能发。助手拿到的是图片本身；最近的 4 张图在随后的几轮里仍然看得到。每张发来的图同时存成附件，程序分配的编号写在这条消息末尾给助手；助手要把图放进卡片，就用 `patch_cards` 在该放的位置加一行 `![说明](media:编号)`。补丁里出现程序没给过的编号会被整份拒绝。没有进任何卡片的图一小时后清掉。对话里的图只留在内存里：记录里只有那行编号说明，重启后助手看不到画面
 - 卡片的附件：编辑卡片时“加附件”收图片（含 SVG，原样保存不压缩）、录音、视频和 PDF，单个不超过 20 MB。程序给每个附件一个编号，卡片正文里是一行 `![说明](media:编号)`，正文本身不含附件内容
   - PDF 挂进来时由页面里的 PDF.js 逐页渲染成 JPEG（长边 1600 像素，最多 200 页），和 PDF 存在一起。卡片里显示的就是这些页面，一页接一页；手机和电脑用的是同一套渲染。从另一台设备同步来的 PDF 连同页面一起过来；缺页面时，打开卡片会当场渲染并存下
@@ -61,7 +61,7 @@
   - 电脑上的 `run-agent.sh status` 返回完整的执行记录和结果文件
 - 卡片搜索：助手的 `search_cards` 工具按关键词搜所有卡片的正文，返回卡片名、命中行的原文、行号和所在小节（最近的一个标题）。多个关键词用空格分开，默认一行里全都出现才算，`match=any` 是出现任意一个；`folder` 只搜某个文件夹及其子文件夹；不分大小写；名称里含关键词的卡片另列一行
 - sub agent 的结果怎么回到助手手里：电脑上的 `harness/run-agent.sh status` 打印一段文本——`STATE` 行、执行过程的事件、`=====RESULT FILE=====` 之后是结果文件，再之后每张图一段 `=====IMAGE 文件名 类型=====` 加 base64。`AgentHarness.parse` 把它读成 `Progress`（文字和图片分开）；`RunAgentTool.report` 拼出给助手的文字；`AgentWatch` 每 15 秒查一次，任务结束就把它作为一条“【任务 N 已结束】”的消息交给 `Conversation.submit`，图片挂在这条消息上，以 `image_url` 的形式和文字一起发给模型
-  - sub agent 把要给人看的图放进 `~/.reduction-result/`（png、jpg、webp、gif，最多 4 张、每张不超过 3 MB），助手拿到的是图片本身。图片只用于这一轮回复，不进对话历史，也不进任务存档
+  - sub agent 把要给人看的图放进 `$REDUCTION_RESULT_DIR/`（png、jpg、webp、gif，最多 4 张、每张不超过 3 MB），助手拿到的是图片本身。图片只用于这一轮回复，不进对话历史，也不进任务存档
   - 助手自己用 `status` 查到任务结束时，工具的回答只有文字，图片由下一次巡查单独补发一条消息
   - 看图要求对话模型支持图片输入：`deepseek-flash` 支持
 - 卡片文件夹：名称里的每个“/”都是一层文件夹，层数不限，比如“产品/开发排期/紧急项”；卡片页按层级画成树，每层逐级缩进，文件夹显示它里面一共有几张卡片，每一层可以单独折叠。打开一张卡片时，它出现在“朗读 / 卡片”那一行的下面，这一行不动：路径接在“卡片”后面同一行（“卡片 › 全部 › 产品 › 开发排期 › 紧急项”）。两个标签只切换页面，不改变各页的状态：点“朗读”去对话，卡片保持打开，再点“卡片”回到它。回列表点路径里的“全部”，点某个文件夹则回到列表并展开它。路径太长时可以横向滑动，默认露出末尾。输入框只有一个，在两个页面下面共用：打了一半的字、待发的图片、正在录的音，切换页面时都留着；编辑卡片时它让出位置。锁定、复制全文、编辑这些按钮在路径这一行下面。
@@ -183,7 +183,7 @@ feature/               功能层：决定什么时候做什么；状态机在这
                        SpeechController、PushToTalkSession、RecordingController
   voice/wake/          WakeWordService、WakeWordDetector、PausedPhrase（带停顿的唤醒词）、WakeWordBus
   chat/model/          ChatSession、ChatEngine、ChatCallbacks、ToolCallAccumulator
-  chat/model/tools/    ToolRegistry、ChatToolFactory、AgentHarness、RunAgentTool 与 AgentRuns（沙箱里的 sub agent；任务编号由手机分配和记住）、
+  chat/model/tools/    ToolRegistry、ChatToolFactory、AgentHarness、RunAgentTool 与 AgentRuns（电脑上的 sub agent；任务编号由手机分配和记住）、
                        SessionStatusTool（电脑上的会话状态）、CardTools（备忘卡片）、WebSearchTool、CalculatorTool、
                        AgentLedger（把任务记录按固定版式写成卡片）
   chat/ui/             Conversation（对话本身：历史、请求、说的和打字的都走它）、ChatController、ReplyObserver、
@@ -254,8 +254,8 @@ assets/js/ui/ui.js, markdown.js, splash.js（启动动画落进图标框）
 - 回复文本由 App 同时送给界面和朗读，JS 不参与朗读分句。
 - 回复只有一种：要念出来的话。App 把它整条朗读，界面原样显示；需要留下来看的证据由助手写进卡片。每个工具都多带一个 `summary` 参数，由助手填写，是界面上那一行摘要的来源。系统提示在 `feature/chat/model/SystemPrompt.kt`，改动后用 `REDUCTION_APPROVE_PROMPTS=app/src/test/resources` 跑 `SystemPromptTest` 更新参考文本，diff 即审阅对象。
 - 下层不 import 上层：`hardware/` 与 `model/` 不依赖 `feature/`、`ui/`。
-- 子代理经 `assets/harness/run-agent.sh` 在电脑上的沙箱里运行。Linux 和 WSL 使用 `bwrap`，macOS 使用 Anthropic Sandbox Runtime。
-- 会话状态由 `assets/harness/session-status.py` 在沙箱之外提取，只读脚本开头 `SOURCES` 列出的三处会话记录；电脑需装有 `python3`。
+- 子代理经 `assets/harness/run-agent.sh` 启动。Linux 和 WSL 直接以登录用户运行，macOS 使用 Anthropic Sandbox Runtime。
+- 会话状态由 `assets/harness/session-status.py` 从执行电脑提取，只读脚本开头 `SOURCES` 列出的三处会话记录；电脑需装有 `python3`。
 - SSE 中 `content: null` 不会变成字符串 `"null"`。
 - 工具参数只接受字符串片段，缺 id/name 会直接失败。
 - 协议层不把 `JSONObject` 传给业务层。
@@ -306,10 +306,10 @@ open dist/Reduction.app
 
 ### 子代理执行器
 
-在桌面或手机的「设置 → 子代理执行器」选择 OpenCode、Codex、Claude Code 或 MiMo Code，保存后用于新任务。已派发的任务继续使用原执行器和会话。手机通过 SSH 派发时，执行器和登录凭据位于 SSH 所连接的电脑。Linux 和 WSL 的任务由 `bwrap` 隔离。
+在桌面或手机的「设置 → 子代理执行器」选择 OpenCode、Codex、Claude Code 或 MiMo Code，保存后用于新任务。已派发的任务继续使用原执行器和会话。手机通过 SSH 派发时，执行器和登录凭据位于 SSH 所连接的电脑。Linux 和 WSL 上，执行器在选定的工作目录中直接运行，文件访问由登录账号的系统权限和执行器自己的沙箱、审批配置决定。手机会检查工作目录和写入授权，目录的只读或可写规则会随任务传给执行器。
 
 - OpenCode 使用 Reduction 设置中的 DeepSeek API Key 和模型。
-- MiMo Code 使用执行电脑上的 `mimo`。先以 SSH 登录用户运行一次 `mimo`，通过 `/connect` 登录，也可以在 MiMo 配置中指定模型。每个任务使用自己的会话数据库，从服务器的 MiMo 配置目录和 `auth.json` 读取初始配置。设置了 `MIMOCODE_HOME` 的用户需让 SSH 会话也能读到这个环境变量。Android 和桌面通过本机回环接口把 MiMo 原生问题写入任务卡，由手机或桌面助手作答。主动补充的指令在同一会话的下一轮执行。
+- MiMo Code 使用执行电脑上的 `mimo`。先以 SSH 登录用户运行一次 `mimo`，通过 `/connect` 登录，也可以在 MiMo 配置中指定模型。每个任务使用自己的会话数据库，从服务器的 MiMo 配置目录和 `auth.json` 读取初始配置。设置了 `MIMOCODE_HOME` 的用户需让 SSH 会话也能读到这个环境变量。Android 和桌面会在每轮任务开始时启动临时的 `mimo serve`，通过执行电脑的回环接口接收 MiMo 原生问题并写入任务卡。回合结束时进程退出。启动失败的原因可以在任务状态中查看。主动补充的指令在同一会话的下一轮执行。
 - Codex 使用支持 `codex exec --json` 的新版 Codex CLI。先在执行电脑上登录一次。下面的命令将凭据存入专供 Reduction 的目录。macOS 也可以使用 ChatGPT 应用随附的 Codex CLI。
 
 ```bash
@@ -342,7 +342,7 @@ desktop/install.sh --remove  # 去掉桌面图标和开机自启（数据保留�
 - 第一次打开在设置里填 DeepSeek API Key；也可以用环境变量 `DEEPSEEK_API_KEY`。设置存在 `~/.config/reduction/settings.json`，只有本人可读。
 - 打字提问，或按住麦克风按钮说话，松开发送。
 - 卡片、对话历史、任务记录存在 `~/.local/share/reduction/`，和手机上的是两份；运行日志在同一处的 `desktop.log`。
-- sub agent 直接在这台电脑上运行，沙箱和手机派发时是同一个脚本。
+- sub agent 直接在这台电脑上运行，与手机派发共用启动脚本。
 - 唤醒词、耳机手势、悬浮卡片是手机才有的，电脑端不提供。
 
 弯曲是显卡做的：Windows 把桌面的画面直接从显卡里交出来（桌面复制，不含桌宠自己），桌宠只取自己身后那一小块，由一段像素着色器按引力透镜的方式重排。背景变化当帧跟上，桌宠自己每秒 60 帧。代价是截图和屏幕共享里看不到桌宠。`ReductionPet.exe --snapshot 文件.png --pose thinking` 把它画在一张假的网格背景上存成图片，用来检查样子。
